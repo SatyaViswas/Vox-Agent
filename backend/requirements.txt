@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+google-genai
+supabase
+composio-core
+playwright
+browser-use
+groq
+python-dotenv
+websockets
+cryptography
+langchain-google-genai
+uv
