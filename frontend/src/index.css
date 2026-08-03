@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  --color-brand-50: #f2f1ff;
+  --color-brand-100: #e6e3ff;
+  --color-brand-200: #c9c3ff;
+  --color-brand-300: #a89dff;
+  --color-brand-400: #8a78ff;
+  --color-brand-500: #6d54ff;
+  --color-brand-600: #5638f0;
+  --color-brand-700: #4527c9;
+  --color-brand-800: #34209b;
+  --color-brand-900: #241a6b;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 dark:bg-[#0a0a12] dark:text-slate-100;
+  font-family: var(--font-sans);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@utility glass {
+  @apply bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl border border-slate-200/70 dark:border-white/10;
+}
+
+@utility glass-panel {
+  @apply bg-white/70 dark:bg-white/[0.04] backdrop-blur-xl border border-slate-200/70 dark:border-white/10;
+  @apply rounded-2xl shadow-[0_4px_30px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_30px_rgba(0,0,0,0.3)];
+}
+
+@utility text-gradient {
+  @apply bg-gradient-to-r from-brand-500 via-brand-400 to-fuchsia-400 bg-clip-text text-transparent;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

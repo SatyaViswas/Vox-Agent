@@ -31,6 +31,7 @@ venv.bak/
 .env
 .env.local
 .env.*
+!.env.example
 
 # Playwright & Browser Automation Caches
 .playwright/

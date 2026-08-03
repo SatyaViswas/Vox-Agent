@@ -9,7 +9,12 @@ venv_bin = str(Path(__file__).parent.parent.parent / "venv" / "bin")
 if venv_bin not in os.environ.get("PATH", ""):
     os.environ["PATH"] = f"{venv_bin}{os.pathsep}{os.environ.get('PATH', '')}"
 
-async def execute_browser_action(task_description: str, session_cookies: list | None = None) -> dict:
+async def execute_browser_action(
+    task_description: str, 
+    session_cookies: list | None = None,
+    user_id: str = "00000000-0000-0000-0000-000000000000",
+    app_name: str | None = None
+) -> dict:
     gemini_key = settings.GEMINI_API_KEY or os.getenv("GOOGLE_API_KEY")
     if not gemini_key:
         return {"status": "error", "error": "GEMINI_API_KEY is not configured."}
@@ -46,15 +51,27 @@ async def execute_browser_action(task_description: str, session_cookies: list | 
             if matches:
                 executable_path = matches[0]
                 break
+                
+        # Setup Browser Context with stored session cookies from Vault if app_name is provided
+        storage_state = None
+        if app_name:
+            from app.services.vault import get_app_credentials
+            credentials = get_app_credentials(user_id, app_name)
+            if credentials and "cookies" in credentials:
+                # Playwright expects this exact structure
+                storage_state = credentials
+                
+        # Merge manual session_cookies if provided
+        if session_cookies and storage_state is None:
+            storage_state = {"cookies": session_cookies, "origins": []}
 
+        browser_kwargs = {"headless": True}
         if executable_path:
-            browser = Browser(executable_path=executable_path)
-        else:
-            browser = Browser()
-        
-        if session_cookies:
-            # Example of how we might inject session cookies in future iterations
-            pass
+            browser_kwargs["executable_path"] = executable_path
+        if storage_state:
+            browser_kwargs["storage_state"] = storage_state
+            
+        browser = Browser(**browser_kwargs)
             
         agent = Agent(
             task=task_description,

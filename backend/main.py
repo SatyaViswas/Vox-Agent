@@ -7,17 +7,20 @@ venv_bin = str(Path(__file__).parent / "venv" / "bin")
 if venv_bin not in os.environ.get("PATH", ""):
     os.environ["PATH"] = f"{venv_bin}{os.pathsep}{os.environ.get('PATH', '')}"
 
+import traceback
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import supabase
 from app.config import settings
-from app.routers import planner, engines
+from app.routers import planner, engines, vault, execution
+from app.routers.execution import arm_event_trigger
+from app.services.scheduler import scheduler, add_or_update_job
 
-app = FastAPI(title="VoxAgent AI Engine")
+app = FastAPI(title="Vox Agent Backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "*"],
+    allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,6 +28,38 @@ app.add_middleware(
 
 app.include_router(planner.router, prefix="/api/v1")
 app.include_router(engines.router, prefix="/api/v1")
+app.include_router(vault.router, prefix="/api/v1")
+app.include_router(execution.router, prefix="/api/v1")
+
+@app.on_event("startup")
+async def _rearm_event_trigger_agents():
+    """Event-trigger listeners live in memory (see trigger_engine.py) — they
+    don't survive a restart on their own, so re-register one for every
+    currently-active event_trigger agent when the server comes back up."""
+    if not supabase:
+        return
+    try:
+        response = supabase.table("agents").select("*").eq("trigger_type", "event_trigger").eq("is_active", True).execute()
+    except Exception:
+        traceback.print_exc()
+        return
+
+    for agent in response.data or []:
+        try:
+            await arm_event_trigger(agent["id"], agent.get("user_id"), agent.get("json_blueprint") or {})
+        except Exception:
+            traceback.print_exc()
+
+    # Load scheduled agents and start the APScheduler
+    try:
+        scheduler.start()
+        sched_response = supabase.table("agents").select("*").eq("trigger_type", "scheduled").eq("is_active", True).execute()
+        for agent in sched_response.data or []:
+            cron = agent.get("cron_schedule")
+            if cron:
+                add_or_update_job(agent["id"], agent.get("user_id"), cron)
+    except Exception:
+        traceback.print_exc()
 
 @app.get("/health")
 def health_check():

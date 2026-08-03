@@ -1,0 +1,23 @@
+import { Route, Routes } from "react-router-dom";
+import AppShell from "./components/layout/AppShell";
+import Landing from "./pages/Landing";
+import AgentStudio from "./pages/AgentStudio";
+import MyAgents from "./pages/MyAgents";
+import AppVault from "./pages/AppVault";
+import VaultNotes from "./pages/VaultNotes";
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route element={<AppShell />}>
+        <Route path="/studio" element={<AgentStudio />} />
+        <Route path="/agents" element={<MyAgents />} />
+        <Route path="/vault" element={<AppVault />} />
+        <Route path="/notes" element={<VaultNotes />} />
+      </Route>
+    </Routes>
+  );
+}
+
+export default App;
