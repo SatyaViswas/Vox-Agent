@@ -34,6 +34,8 @@ GMAIL_ACTION_ALIASES = {
     "SEARCH_MESSAGES": "GMAIL_FETCH_EMAILS",
     "GET_EMAILS": "GMAIL_FETCH_EMAILS",
     "SEARCH": "GMAIL_FETCH_EMAILS",
+    "LIST_MESSAGES": "GMAIL_FETCH_EMAILS",
+    "GMAIL_LIST_MESSAGES": "GMAIL_FETCH_EMAILS",
 }
 
 # Generic, app-agnostic English synonym groups used by
@@ -318,6 +320,8 @@ def _resolve_action_slug(app: str, action_name: str) -> str:
     search_words = action_name.replace("_", " ").strip()
     try:
         candidates = composio.tools.get_raw_composio_tools(toolkits=[toolkit_slug], search=search_words, limit=8)
+        if not candidates:
+            candidates = composio.tools.get_raw_composio_tools(toolkits=[toolkit_slug], limit=40)
     except Exception as e:
         traceback.print_exc()
         print(f"Warning: Failed to search tools for toolkit '{toolkit_slug}' while resolving '{action_name}': {e}")
@@ -466,6 +470,9 @@ def normalize_trigger_payload(payload) -> dict:
             if isinstance(value, str) and value:
                 message_text = value
                 break
+    if message_text is None:
+        import json
+        message_text = json.dumps(payload)
 
     sender = None
     chat = message.get("chat") if isinstance(message.get("chat"), dict) else None
@@ -1039,6 +1046,9 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
     entity_id = resolve_connected_user_id(entity_id, app)
     parameters, not_found_hint = await _auto_resolve_missing_ids(app, action_name, parameters, entity_id)
 
+    if action_name == "GMAIL_FETCH_EMAILS" and "max_results" not in parameters:
+        parameters["max_results"] = 100
+
     if action_name in ("LINKEDIN_CREATE_POST", "LINKEDIN_CREATE_LINKED_IN_POST") and "author" not in (parameters or {}):
         try:
             profile = await asyncio.to_thread(
@@ -1069,6 +1079,16 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
             user_id=entity_id,
             dangerously_skip_version_check=True
         )
+        if action_name == "GMAIL_FETCH_EMAILS":
+            if isinstance(result, dict) and "data" in result and isinstance(result["data"], dict):
+                messages = result["data"].get("messages", [])
+                if isinstance(messages, list):
+                    for msg in messages:
+                        if isinstance(msg, dict):
+                            # Remove the massive raw payload to save tokens (we already have messageText)
+                            msg.pop("payload", None)
+                            msg.pop("raw", None)
+        
         return _build_execution_result(result, app, action_name, parameters, not_found_hint)
     except Exception as e:
         traceback.print_exc()

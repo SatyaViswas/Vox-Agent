@@ -138,10 +138,20 @@ def generate_ai_content(prompt: str, as_list: bool = False):
             return [item if isinstance(item, str) else json.dumps(item) for item in items]
         return [str(items)]
 
+    system_instruction = (
+        "If you cannot fulfill the user's request because you are missing context or data, "
+        "and you must ask the user a clarifying question, keep your question EXTREMELY simple, "
+        "concise, and non-technical. Do not explain the underlying data structures, metadata, "
+        "or integrations. Just state what you need in plain English."
+    )
+
     response = client.models.generate_content(
         model='gemini-3.1-flash-lite',
         contents=[types.Content(role="user", parts=[types.Part.from_text(text=prompt)])],
-        config=types.GenerateContentConfig(temperature=0.7),
+        config=types.GenerateContentConfig(
+            temperature=0.7,
+            system_instruction=system_instruction,
+        ),
     )
     text = _strip_markdown_fences(response.text.strip())
 

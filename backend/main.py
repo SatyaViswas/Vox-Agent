@@ -18,6 +18,21 @@ from app.services.scheduler import scheduler, add_or_update_job
 
 app = FastAPI(title="Vox Agent Backend")
 
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    try:
+        body = await request.body()
+        print(f"\n\n=== 422 Error Payload ===\n{body.decode('utf-8')}\n=======================\n\n")
+    except Exception:
+        pass
+    print(f"\n\n=== 422 Error Detail ===\n{exc.errors()}\n=======================\n\n")
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,

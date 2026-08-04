@@ -350,11 +350,9 @@ export default function AgentStudio() {
       const payloadBlueprint = { ...blueprint, require_approval: requireApproval };
       const { agent_id: newAgentId } = await createAgent({
         title: blueprint.title || "Untitled Agent",
-        original_prompt: prompt,
-        json_blueprint: payloadBlueprint,
-        trigger_type: blueprint.trigger ? "event_trigger" : blueprint.schedule ? "scheduled" : "manual",
-        cron_schedule: blueprint.schedule?.cron || null,
-        user_id: userId,
+        originalPrompt: prompt,
+        blueprint: payloadBlueprint,
+        userId: userId,
       });
       setAgentId(newAgentId);
 

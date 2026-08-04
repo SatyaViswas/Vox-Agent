@@ -1,11 +1,13 @@
-import { useState, useEffect } from "react";
-import { Bell, Check, X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Bell, Check, X, Send } from "lucide-react";
 import { apiClient, BASE_URL } from "../../api/client";
 
 export default function NotificationsDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [inputs, setInputs] = useState({});
+  const dropdownRef = useRef(null);
 
   const fetchNotifications = async () => {
     try {
@@ -14,10 +16,12 @@ export default function NotificationsDropdown() {
       if (data && data.paused_runs) {
         const arr = Object.values(data.paused_runs);
         setNotifications(arr);
+        return arr;
       }
     } catch (e) {
       console.error("Failed to fetch notifications:", e);
     }
+    return null;
   };
 
   useEffect(() => {
@@ -26,11 +30,48 @@ export default function NotificationsDropdown() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
+
+  const handleInputChange = (agentId, value) => {
+    setInputs(prev => ({ ...prev, [agentId]: value }));
+  };
+
+  const handleSubmitInput = async (agentId) => {
+    const answer = inputs[agentId];
+    if (!answer?.trim()) return;
+    
+    setLoading(true);
+    try {
+      await apiClient.post(`/agents/${agentId}/resume`, { answer });
+      const newArr = await fetchNotifications();
+      if (newArr && newArr.length === 0) setIsOpen(false);
+      setInputs(prev => {
+        const next = { ...prev };
+        delete next[agentId];
+        return next;
+      });
+    } catch (e) {
+      console.error("Failed to submit answer:", e);
+    }
+    setLoading(false);
+  };
+
   const handleApprove = async (agentId) => {
     setLoading(true);
     try {
       await apiClient.post(`/agents/${agentId}/resume`, { answer: "Approved" });
-      await fetchNotifications();
+      const newArr = await fetchNotifications();
+      if (newArr && newArr.length === 0) setIsOpen(false);
     } catch (e) {
       console.error("Failed to approve:", e);
     }
@@ -41,7 +82,8 @@ export default function NotificationsDropdown() {
     setLoading(true);
     try {
       await apiClient.post(`/agents/${agentId}/resume`, { answer: "Rejected" });
-      await fetchNotifications();
+      const newArr = await fetchNotifications();
+      if (newArr && newArr.length === 0) setIsOpen(false);
     } catch (e) {
       console.error("Failed to reject:", e);
     }
@@ -49,7 +91,7 @@ export default function NotificationsDropdown() {
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative flex items-center justify-center w-9 h-9 rounded-full text-slate-500 hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
@@ -100,24 +142,52 @@ export default function NotificationsDropdown() {
                       </div>
                     )}
                     
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleApprove(notif.agent_id)}
-                        disabled={loading}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
-                      >
-                        <Check size={14} />
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => handleReject(notif.agent_id)}
-                        disabled={loading}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-medium rounded-lg transition-colors"
-                      >
-                        <X size={14} />
-                        Reject
-                      </button>
-                    </div>
+                    {notif.missing_field && notif.missing_field !== "_approved" ? (
+                      <div className="mt-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 border border-slate-100 dark:border-white/5">
+                        <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">
+                          Required Input
+                        </label>
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="text"
+                            placeholder="Type your response here..."
+                            value={inputs[notif.agent_id] || ""}
+                            onChange={(e) => handleInputChange(notif.agent_id, e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleSubmitInput(notif.agent_id)}
+                            disabled={loading}
+                            className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/50 transition-shadow"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleSubmitInput(notif.agent_id)}
+                            disabled={loading || !inputs[notif.agent_id]?.trim()}
+                            className="p-2 bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white rounded-lg transition-colors flex-shrink-0 flex items-center justify-center"
+                            title="Send Response"
+                          >
+                            <Send size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleApprove(notif.agent_id)}
+                          disabled={loading}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
+                        >
+                          <Check size={14} />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleReject(notif.agent_id)}
+                          disabled={loading}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-medium rounded-lg transition-colors"
+                        >
+                          <X size={14} />
+                          Reject
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })

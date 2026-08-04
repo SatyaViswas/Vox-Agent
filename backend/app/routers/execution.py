@@ -24,6 +24,7 @@ async def get_paused_runs():
             k: {
                 "question": v["question"], 
                 "reconnect_app": v.get("reconnect_app"),
+                "missing_field": v.get("missing_field"),
                 "agent_id": k
             } for k, v in _paused_runs.items()
         }
@@ -91,10 +92,11 @@ async def arm_event_trigger(agent_id: str, user_id: str, blueprint: Dict[str, An
         else:
             loop = asyncio.get_running_loop()
             trigger_config = None
-            if slug == "googlesheets" and target.get("target"):
+            if target.get("app") == "Google Sheets" and target.get("target"):
+                trigger_config = {"spreadsheet_id": target["target"]}
                 from app.services.composio_engine import composio, resolve_connected_user_id, _find_search_tool, _search_tool_query_param, _extract_named_id
                 entity_id = resolve_connected_user_id(user_id, "Google Sheets")
-                search_tool = _find_search_tool(slug)
+                search_tool = _find_search_tool("googlesheets")
                 if search_tool:
                     query_param = _search_tool_query_param(search_tool)
                     try:
@@ -311,6 +313,10 @@ async def update_agent(agent_id: str, request: AgentUpdateRequest):
                 add_or_update_job(agent_id, updated.get("user_id"), updated.get("cron_schedule"))
             else:
                 remove_job(agent_id)
+        elif trigger_type == "event_trigger":
+            remove_job(agent_id)
+            if is_active:
+                await arm_event_trigger(agent_id, updated.get("user_id"), updated.get("json_blueprint"))
         else:
             remove_job(agent_id)
 

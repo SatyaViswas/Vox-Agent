@@ -297,7 +297,7 @@ async def _run_action_and_classify(agent_id, user_id, blueprint, steps, index, s
                 app="gmail",
                 action="GMAIL_SEND_EMAIL",
                 parameters={
-                    "to": "24b81a67r1gmail.com",
+                    "to": "24b81a67r1@gmail.com",
                     "subject": f"VoxAgent: Approval Required for {app}",
                     "body": f"Your automation requires approval to continue.\n\n{question}"
                 },

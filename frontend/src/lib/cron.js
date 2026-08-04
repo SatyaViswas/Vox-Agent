@@ -11,8 +11,11 @@ export const DAYS_OF_WEEK = [
 const pad = (n) => String(n).padStart(2, "0");
 
 export function parseSchedule(triggerType, cronSchedule) {
+  if (triggerType === "event_trigger") {
+    return { preset: "event_trigger", time: "09:00", day: 1, raw: "" };
+  }
   if (triggerType !== "scheduled" || !cronSchedule) {
-    return { preset: "manual", time: "09:00", day: 1, raw: "" };
+    return { preset: "on_demand", time: "09:00", day: 1, raw: "" };
   }
 
   const hourlyMatch = cronSchedule.match(/^0 \* \* \* \*$/);
@@ -39,8 +42,11 @@ export function parseSchedule(triggerType, cronSchedule) {
 export function buildSchedule(preset, { time = "09:00", day = 1, raw = "" } = {}) {
   const [hh, mm] = time.split(":").map(Number);
   switch (preset) {
+    case "event_trigger":
+      return { triggerType: "event_trigger", cronSchedule: null };
+    case "on_demand":
     case "manual":
-      return { triggerType: "manual", cronSchedule: null };
+      return { triggerType: "on_demand", cronSchedule: null };
     case "hourly":
       return { triggerType: "scheduled", cronSchedule: "0 * * * *" };
     case "daily":
@@ -50,7 +56,7 @@ export function buildSchedule(preset, { time = "09:00", day = 1, raw = "" } = {}
     case "custom":
       return { triggerType: "scheduled", cronSchedule: raw.trim() || null };
     default:
-      return { triggerType: "manual", cronSchedule: null };
+      return { triggerType: "on_demand", cronSchedule: null };
   }
 }
 
