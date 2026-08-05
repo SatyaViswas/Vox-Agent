@@ -20,6 +20,14 @@ class WorkflowStep(BaseModel):
     # producing step, e.g. "{{step_1_result}}"; inside this step's own
     # parameters, {{item}} resolves to the current item on each iteration.
     for_each: Optional[str] = None
+    # MutAgent groundwork (Phase 0) — not read by any code path yet; Phase 2+
+    # wires these into the mutation controller. Optional/permissively typed
+    # (on_failure is a plain str, not a Literal) so a plan that omits them,
+    # or a Gemini response that never mentions them, keeps validating
+    # exactly as it did before these fields existed.
+    max_retries: Optional[int] = None
+    on_failure: Optional[str] = None  # intended: "halt" | "skip" | "fallback"; unrecognized/absent -> "halt" (today's only behavior)
+    mutation_budget: Optional[int] = None
 
 class TriggerSpec(BaseModel):
     type: Literal["schedule", "webhook", "manual"]
@@ -40,6 +48,13 @@ class WorkflowBlueprint(BaseModel):
     needs_clarification: bool
     clarification_question: Optional[str] = None
     missing_parameters: List[MissingParameter] = []
+    # Fixes the schema/implementation drift documented in the MutAgent plan
+    # (Part 1.3): orchestrator.py has always read blueprint.get("require_approval",
+    # True) from the stored JSON dict, but this field never actually existed
+    # here — it only worked because the frontend injects it before saving.
+    # Declaring it for real, with the same default, makes that behavior
+    # explicit instead of an undocumented convention.
+    require_approval: bool = True
 
 class PlanRequest(BaseModel):
     prompt: str

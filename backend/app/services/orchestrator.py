@@ -1,14 +1,21 @@
+import asyncio
+import contextvars
 import json
 import logging
 import re
 import traceback
+import uuid
 from datetime import datetime, timezone
+from app.config import settings
 from app.database import supabase
+from app.services import pending_actions
 from app.services.telemetry import telemetry_manager
 from app.services.browser_engine import execute_browser_action
 from app.services import composio_engine
 from app.services.composio_engine import execute_composio_action
 from app.services.http_engine import execute_http_webhook
+from app.services.mutagent import classify_failure, execute_with_mutation
+from app.services.mutagent import memory as mutation_memory
 from app.services.planner import generate_ai_content
 from app.services.telegram_client_engine import execute_telegram_client_action
 from app.services.vault import is_vault_notes_target, save_vault_note
@@ -62,10 +69,65 @@ _CLARIFICATION_HINTS = (
     "i need clarification",
 )
 
-# In-memory registry of paused runs awaiting human input, keyed by agent_id.
-# Deliberately not persisted — a server restart drops any in-flight pause,
-# which is an acceptable trade-off for this scope (see resume_agent_workflow).
-_paused_runs: dict = {}
+# The current run's id, for the duration of one run_agent_workflow /
+# resume_agent_workflow call — threaded through _persist_run and the pause
+# sites below via a contextvar instead of an explicit parameter on every
+# function in the call chain (_execute_steps -> _run_for_each_step/
+# _run_single_step -> _run_for_each_items), since asyncio tasks each get
+# their own copy of the context, so concurrent runs never see each other's
+# run_id. Replaces the old in-memory-only _paused_runs dict — see
+# app.services.pending_actions for the real persistence layer.
+_current_run_id: contextvars.ContextVar = contextvars.ContextVar("orchestrator_current_run_id", default=None)
+
+# The current run's agent.trigger_type ("on_demand" | "scheduled" |
+# "event_trigger"), set alongside _current_run_id — used by
+# _notify_user_of_unattended_pause below to only email for a run nobody's
+# watching live (a scheduled/triggered run), not a manual run where the
+# Studio's own live pause UI already covers it. Also stashed inside each
+# pending_actions row's context_snapshot so resume_agent_workflow /
+# reject_paused_run can restore it for a run that pauses more than once.
+_current_trigger_type: contextvars.ContextVar = contextvars.ContextVar("orchestrator_current_trigger_type", default=None)
+
+_UNATTENDED_TRIGGER_TYPES = {"scheduled", "event_trigger"}
+
+
+def _notify_user_of_unattended_pause(user_id: str, app: str, question: str) -> None:
+    """Best-effort email nudge for a pause on a run nobody's watching live.
+    Replaces the old hardcoded approval-email address (MutAgent plan
+    Part 1.4 — every user's approval requests used to go to one fixed
+    inbox) with a real per-user lookup, and fires for any pause on an
+    unattended run, not just the sensitive-action approval gate. Sent via
+    the same mechanism that hardcoded address used (Composio Gmail, using
+    whichever Gmail account this specific user has connected) — no new
+    email provider needed. Fire-and-forget: nothing breaks if the user has
+    no Gmail connected, they just don't get an email on top of the
+    in-app Action Center."""
+    if _current_trigger_type.get() not in _UNATTENDED_TRIGGER_TYPES:
+        return
+    if not supabase:
+        return
+    try:
+        row = supabase.table("users").select("email").eq("id", user_id).limit(1).execute()
+        email = (row.data[0]["email"] if row.data else None) or ""
+    except Exception:
+        return
+    # Guest/seed accounts carry a synthetic "<uuid>@example.com" placeholder
+    # (see the `users` table) rather than a real address — skip emailing a
+    # fake inbox.
+    if not email or email.endswith("@example.com"):
+        return
+    asyncio.create_task(
+        execute_composio_action(
+            app="gmail",
+            action="GMAIL_SEND_EMAIL",
+            parameters={
+                "to": email,
+                "subject": f"VoxAgent: {app} needs your input",
+                "body": f"Your automation is paused and needs your input:\n\n{question}\n\nOpen VoxAgent's Action Center to respond.",
+            },
+            entity_id=user_id,
+        )
+    )
 
 
 def _resolve_key(match):
@@ -194,6 +256,7 @@ async def _persist_run(agent_id: str, status: str, step_logs: list):
     try:
         supabase.table("execution_logs").insert({
             "agent_id": agent_id,
+            "run_id": _current_run_id.get(),
             "status": status,
             "log_messages": step_logs,
             "proof_screenshot_url": None
@@ -290,32 +353,40 @@ async def _run_action_and_classify(agent_id, user_id, blueprint, steps, index, s
     if require_approval and action and action.upper().strip() in SENSITIVE_ACTIONS and not parameters.get("_approved"):
         safe_params = {k: v for k, v in parameters.items() if k not in ["_approved", "clarification_answer"]}
         question = f"Please review and approve this {app} action:\n```json\n{json.dumps(safe_params, indent=2)}\n```\nReply 'Approved' to proceed."
-        
-        import asyncio
-        asyncio.create_task(
-            execute_composio_action(
-                app="gmail",
-                action="GMAIL_SEND_EMAIL",
-                parameters={
-                    "to": "24b81a67r1@gmail.com",
-                    "subject": f"VoxAgent: Approval Required for {app}",
-                    "body": f"Your automation requires approval to continue.\n\n{question}"
-                },
-                entity_id=user_id
-            )
-        )
+
+        # Previously fired an email to a hardcoded personal address
+        # ("24b81a67r1@gmail.com") regardless of which user's agent
+        # triggered it (see MutAgent plan Part 1.4). Notification for an
+        # unattended run is now handled uniformly at the pause-creation
+        # sites (_run_single_step / _run_for_each_items) via
+        # _notify_user_of_unattended_pause, using the real user's own
+        # registered email — covers this approval-gate pause the same way
+        # it covers any other.
 
         result_data = {"status": "needs_input", "question": question, "missing_field": "_approved"}
+        result_data["failure_class"] = classify_failure(result_data, route=route).value
         return "needs_input", result_data, None, question
 
     # Remove internal tracking parameters before sending to API
     clean_parameters = {k: v for k, v in parameters.items() if k not in ["_approved", "clarification_answer"]}
 
-    try:
-        result_data = await _dispatch_action(agent_id, user_id, blueprint, steps, index, step_number, step_results, app, action, route, clean_parameters)
-    except Exception as e:
-        traceback.print_exc()
-        result_data = {"status": "error", "error": str(e), "message": str(e)}
+    current_step = steps[index] if 0 <= index < len(steps) else {}
+    result_data, caught_exception = await execute_with_mutation(
+        _dispatch_action,
+        (agent_id, user_id, blueprint, steps, index, step_number, step_results, app, action, route, clean_parameters),
+        agent_id=agent_id,
+        step_number=step_number,
+        route=route,
+        app=app,
+        action=action,
+        mutation_budget=current_step.get("mutation_budget"),
+    )
+    if caught_exception is not None:
+        # traceback.print_exc() only works inside a live except block (it
+        # reads sys.exc_info()) — the exception was already caught and
+        # stored inside execute_with_mutation by the time we get here, so
+        # print_exception() with the saved object is used instead.
+        traceback.print_exception(type(caught_exception), caught_exception, caught_exception.__traceback__)
 
     is_error = result_data.get("status") == "error"
     # composio_api steps can report "needs_input" directly (a schema
@@ -332,9 +403,12 @@ async def _run_action_and_classify(agent_id, user_id, blueprint, steps, index, s
     )
 
     if question:
+        result_data["failure_class"] = classify_failure(result_data, caught_exception, route=route).value
         return "needs_input", result_data, extracted_value, question
     if is_error:
+        result_data["failure_class"] = classify_failure(result_data, caught_exception, route=route).value
         return "failed", result_data, extracted_value, None
+    result_data["failure_class"] = None
     return "success", result_data, extracted_value, None
 
 
@@ -359,27 +433,41 @@ async def _run_single_step(agent_id, user_id, blueprint, steps, index, step_numb
 
     if status == "needs_input":
         reconnect_app = result_data.get("reconnect_app")
+        missing_field = result_data.get("missing_field") if result_data.get("question") else None
         step_logs.append(_log_entry(step_number, app, action, route, {"status": "needs_input", "question": question}))
-        _paused_runs[agent_id] = {
-            "user_id": user_id,
-            "blueprint": blueprint,
-            "steps": steps,
-            "step_results": dict(step_results),
-            "paused_index": index,
-            "question": question,
-            # When the pause came from a schema validation error (see
-            # composio_engine._build_execution_result), this names the one
-            # required field that was missing, so resume can drop the
-            # user's answer straight into it instead of an opaque
-            # "clarification_answer" the target tool's schema wouldn't
-            # recognize.
-            "missing_field": result_data.get("missing_field") if result_data.get("question") else None,
-            # Set instead of missing_field when the pause is "this app
-            # isn't connected" (see composio_engine.execute_composio_action)
-            # — resume doesn't need the answer to go anywhere specific,
-            # just to retry once the user has reconnected it elsewhere.
-            "reconnect_app": reconnect_app,
-        }
+        pending_actions.create_pending_action(
+            run_id=_current_run_id.get(),
+            agent_id=agent_id,
+            user_id=user_id,
+            step_number=step_number,
+            question=question,
+            input_type=(
+                "credential_reconnect" if reconnect_app
+                else "confirm" if missing_field == "_approved"
+                else "text"
+            ),
+            context_snapshot={
+                "user_id": user_id,
+                "blueprint": blueprint,
+                "steps": steps,
+                "step_results": dict(step_results),
+                "paused_index": index,
+                # When the pause came from a schema validation error (see
+                # composio_engine._build_execution_result), this names the
+                # one required field that was missing, so resume can drop
+                # the user's answer straight into it instead of an opaque
+                # "clarification_answer" the target tool's schema wouldn't
+                # recognize.
+                "missing_field": missing_field,
+                # Set instead of missing_field when the pause is "this app
+                # isn't connected" (see composio_engine.execute_composio_action)
+                # — resume doesn't need the answer to go anywhere specific,
+                # just to retry once the user has reconnected it elsewhere.
+                "reconnect_app": reconnect_app,
+                "trigger_type": _current_trigger_type.get(),
+            },
+        )
+        _notify_user_of_unattended_pause(user_id, app, question)
         await telemetry_manager.send_log(
             agent_id,
             f"Step {step_number} needs clarification: {question}",
@@ -427,24 +515,39 @@ async def _run_for_each_items(agent_id, user_id, blueprint, steps, index, step_n
 
         if status == "needs_input":
             reconnect_app = result_data.get("reconnect_app")
+            missing_field = result_data.get("missing_field") if result_data.get("question") else None
             step_logs.append(_log_entry(step_number, app, action, route, {"status": "needs_input", "question": question}))
-            _paused_runs[agent_id] = {
-                "user_id": user_id,
-                "blueprint": blueprint,
-                "steps": steps,
-                "step_results": dict(step_results),
-                "paused_index": index,
-                "question": question,
-                "missing_field": result_data.get("missing_field") if result_data.get("question") else None,
-                "reconnect_app": reconnect_app,
-                # The missing value (e.g. a spreadsheet name) almost always
-                # applies to the whole batch, not just this one item — on
-                # resume it gets baked into the step's own template
-                # parameters (see resume_agent_workflow) so every remaining
-                # item picks it up, and the batch continues from here
-                # rather than redoing items[:i] that already succeeded.
-                "for_each": {"items": items, "outputs": list(outputs), "resume_item_index": i},
-            }
+            pending_actions.create_pending_action(
+                run_id=_current_run_id.get(),
+                agent_id=agent_id,
+                user_id=user_id,
+                step_number=step_number,
+                question=question,
+                input_type=(
+                    "credential_reconnect" if reconnect_app
+                    else "confirm" if missing_field == "_approved"
+                    else "text"
+                ),
+                context_snapshot={
+                    "user_id": user_id,
+                    "blueprint": blueprint,
+                    "steps": steps,
+                    "step_results": dict(step_results),
+                    "paused_index": index,
+                    "missing_field": missing_field,
+                    "reconnect_app": reconnect_app,
+                    # The missing value (e.g. a spreadsheet name) almost
+                    # always applies to the whole batch, not just this one
+                    # item — on resume it gets baked into the step's own
+                    # template parameters (see resume_agent_workflow) so
+                    # every remaining item picks it up, and the batch
+                    # continues from here rather than redoing items[:i]
+                    # that already succeeded.
+                    "for_each": {"items": items, "outputs": list(outputs), "resume_item_index": i},
+                    "trigger_type": _current_trigger_type.get(),
+                },
+            )
+            _notify_user_of_unattended_pause(user_id, app, question)
             await telemetry_manager.send_log(
                 agent_id,
                 f"Step {step_number} needs clarification: {question}",
@@ -649,6 +752,7 @@ async def run_agent_workflow(
     than just the text. All three are populated generically for any
     trigger-capable app by composio_engine.normalize_trigger_payload.
     """
+    _current_run_id.set(str(uuid.uuid4()))
     if not supabase:
         logger.error("Supabase client is not initialized")
         return
@@ -658,6 +762,7 @@ async def run_agent_workflow(
         if agent_record is None:
             await telemetry_manager.send_log(agent_id, f"Agent {agent_id} not found.", level="error")
             return
+        _current_trigger_type.set(agent_record.get("trigger_type"))
     except Exception as e:
         traceback.print_exc()
         logger.error(f"Error fetching agent: {e}")
@@ -688,23 +793,51 @@ async def run_agent_workflow(
     await telemetry_manager.send_log(agent_id, final_msg, level=("success" if outcome == "success" else "error"))
 
 
+async def _maybe_record_learned_fix(step_logs, resumed_step, missing_field, answer):
+    """MutAgent Phase 3 — if the answer the human just gave actually
+    resolved the paused step (its fresh result in step_logs shows
+    "success"), remember it in mutation_memory so the exact same
+    (app, action, missing_field) gap self-heals next time instead of
+    pausing again. Never records a "fix" that didn't actually work."""
+    if not (settings.MUTAGENT_ENABLED and missing_field and missing_field != "_approved"):
+        return
+    step_number = resumed_step.get("step_number")
+    matching = next((entry for entry in step_logs if entry.get("step") == step_number), None)
+    if not matching or (matching.get("result") or {}).get("status") != "success":
+        return
+    app = resumed_step.get("app", "Unknown App")
+    action = resumed_step.get("action", "")
+    await mutation_memory.record_fix(
+        app,
+        action,
+        missing_field,
+        fix_type="param_map",
+        fix_payload={"parameter_key": missing_field, "value": answer},
+    )
+
+
 async def resume_agent_workflow(agent_id: str, answer: str):
     """Resumes a run that paused for clarification, injecting the user's
     answer into the paused step's context and continuing from there.
 
-    Only works within the same backend process the run paused in — the
-    pause context is in-memory only, not persisted, so a server restart
-    loses it (the agent would need to be re-run from scratch).
+    The pause context now lives in the `pending_actions` table (see
+    app.services.pending_actions) instead of an in-memory-only dict, so a
+    server restart no longer loses it — this can resume a run paused
+    before this very process started.
     """
-    paused = _paused_runs.pop(agent_id, None)
-    if not paused:
-        raise ValueError("No paused run found for this agent — it may have already been resumed, or the server restarted since it paused.")
+    pending = pending_actions.get_pending_action(agent_id)
+    if not pending:
+        raise ValueError("No paused run found for this agent — it may have already been resumed, or the pause expired.")
 
-    user_id = paused["user_id"]
-    blueprint = paused["blueprint"]
-    steps = list(paused["steps"])
-    step_results = dict(paused["step_results"])
-    paused_index = paused["paused_index"]
+    _current_run_id.set(pending.get("run_id"))
+    context = pending["context_snapshot"] or {}
+    _current_trigger_type.set(context.get("trigger_type"))
+
+    user_id = context["user_id"]
+    blueprint = context["blueprint"]
+    steps = list(context["steps"])
+    step_results = dict(context["step_results"])
+    paused_index = context["paused_index"]
 
     # Re-run the paused step with the user's answer folded into its
     # parameters. If the pause was a schema validation error naming exactly
@@ -713,15 +846,16 @@ async def resume_agent_workflow(agent_id: str, answer: str):
     # otherwise (an LLM's own clarifying question) it's added generically
     # for the acting LLM to interpret.
     resumed_step = dict(steps[paused_index])
-    missing_field = paused.get("missing_field")
+    missing_field = context.get("missing_field")
     answer_key = missing_field or "clarification_answer"
     resumed_step["parameters"] = {**resumed_step.get("parameters", {}), answer_key: answer}
     steps[paused_index] = resumed_step
 
+    pending_actions.resolve_pending_action(pending["id"], answer=answer)
     await telemetry_manager.send_log(agent_id, f"Resuming with clarification: {answer}", level="info")
 
     step_logs = []
-    for_each_state = paused.get("for_each")
+    for_each_state = context.get("for_each")
 
     if for_each_state:
         # The paused step was fanning out over a batch — the answer applies
@@ -737,12 +871,14 @@ async def resume_agent_workflow(agent_id: str, answer: str):
             agent_id, user_id, blueprint, steps, paused_index, step_number, route, app, action,
             raw_parameters, step_results, step_logs, for_each_state,
         )
+        await _maybe_record_learned_fix(step_logs, resumed_step, missing_field, answer)
         if outcome == "needs_input":
             return
         if outcome == "success":
             outcome = await _execute_steps(agent_id, user_id, blueprint, steps, step_results, step_logs, start_index=paused_index + 1)
     else:
         outcome = await _execute_steps(agent_id, user_id, blueprint, steps, step_results, step_logs, start_index=paused_index)
+        await _maybe_record_learned_fix(step_logs, resumed_step, missing_field, answer)
 
     if outcome == "needs_input":
         return
@@ -753,4 +889,56 @@ async def resume_agent_workflow(agent_id: str, answer: str):
 
 
 def has_paused_run(agent_id: str) -> bool:
-    return agent_id in _paused_runs
+    return pending_actions.has_pending_action(agent_id)
+
+
+async def reject_paused_run(agent_id: str, reason: str = "Rejected by user") -> None:
+    """A real reject branch (see MutAgent plan Part 3.2) for a paused step
+    — distinct from resume_agent_workflow, which would otherwise inject
+    "Rejected" as the answer and, for the sensitive-action approval gate
+    specifically, set parameters["_approved"] to that string — a TRUTHY
+    value the gate would treat as approved regardless of what it says.
+    This never re-attempts the paused action at all; it either skips it
+    (if the step's own `on_failure` is "skip") or halts the run, honoring
+    the per-step policy from the Phase 0 schema addition."""
+    pending = pending_actions.get_pending_action(agent_id)
+    if not pending:
+        raise ValueError("No paused run found for this agent — it may have already been resumed, or the pause expired.")
+
+    _current_run_id.set(pending.get("run_id"))
+    context = pending["context_snapshot"] or {}
+    _current_trigger_type.set(context.get("trigger_type"))
+
+    user_id = context["user_id"]
+    blueprint = context["blueprint"]
+    steps = list(context["steps"])
+    step_results = dict(context["step_results"])
+    paused_index = context["paused_index"]
+    rejected_step = steps[paused_index]
+    step_number = rejected_step.get("step_number", paused_index + 1)
+    on_failure = rejected_step.get("on_failure") or "halt"
+
+    pending_actions.resolve_pending_action(pending["id"], answer=reason)
+
+    step_logs = []
+    if on_failure == "skip":
+        step_logs.append(_log_entry(
+            step_number, rejected_step.get("app"), rejected_step.get("action"), rejected_step.get("route"),
+            {"status": "skipped", "reason": reason},
+        ))
+        await telemetry_manager.send_log(
+            agent_id, f"Step {step_number} rejected by user — skipping (on_failure=skip): {reason}", level="warning",
+        )
+        outcome = await _execute_steps(agent_id, user_id, blueprint, steps, step_results, step_logs, start_index=paused_index + 1)
+        if outcome == "needs_input":
+            return
+        await _persist_run(agent_id, outcome, step_logs)
+        final_msg = "Workflow execution completed." if outcome == "success" else "Workflow execution failed."
+        await telemetry_manager.send_log(agent_id, final_msg, level=("success" if outcome == "success" else "error"))
+    else:
+        step_logs.append(_log_entry(
+            step_number, rejected_step.get("app"), rejected_step.get("action"), rejected_step.get("route"),
+            {"status": "failed", "error": f"Rejected by user: {reason}"},
+        ))
+        await telemetry_manager.send_log(agent_id, f"Step {step_number} rejected by user — halting workflow: {reason}", level="error")
+        await _persist_run(agent_id, "failed", step_logs)

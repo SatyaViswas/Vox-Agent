@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Circle, Loader2, CheckCircle2, XCircle, HelpCircle } from "lucide-react";
+import { ChevronDown, Circle, Loader2, CheckCircle2, XCircle, HelpCircle, Wand2 } from "lucide-react";
 import { getRouteConfig } from "../../lib/routeConfig";
 
 const STATUS_CONFIG = {
@@ -14,6 +14,19 @@ const STATUS_CONFIG = {
     icon: Loader2,
     ring: "ring-brand-400/70 shadow-[0_0_0_4px_rgba(109,84,255,0.15)]",
     badge: "bg-brand-500/15 text-brand-600 dark:text-brand-300",
+    spin: true,
+  },
+  // MutAgent is retrying/mutating this step on its own (backoff retry, a
+  // learned mutation_memory fix, a browser re-try with adjusted context, or
+  // an LLM-proposed repair) — distinct from plain "Executing" so this is
+  // visibly *why* a step is taking a bit longer, rather than looking like
+  // silent magic or a hang. Always transitions on its own to Complete/
+  // Failed/Needs Input once the mutation attempt resolves.
+  mutating: {
+    label: "Self-Healing",
+    icon: Wand2,
+    ring: "ring-fuchsia-400/70 shadow-[0_0_0_4px_rgba(232,121,249,0.15)]",
+    badge: "bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-300",
     spin: true,
   },
   success: {
@@ -57,7 +70,7 @@ export default function StepNode({ step, status = "pending", isLast }) {
         )}
       </div>
 
-      <div className={`glass-panel flex-1 mb-4 p-4 transition-colors ${status === "executing" ? "animate-pulse" : ""}`}>
+      <div className={`glass-panel flex-1 mb-4 p-4 transition-colors ${status === "executing" || status === "mutating" ? "animate-pulse" : ""}`}>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1.5">

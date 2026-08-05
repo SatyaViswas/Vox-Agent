@@ -1,0 +1,185 @@
+# AgentSpec 0.3.0 — canonical example · kind: MultiAgent (envelope + embedded member cards + wiring)
+# Intent precedes composition; only the publisher owns an outbound action; embedded members reuse the
+# parent intent/context/actions by reference; the canonical Workflow drives coordination with one
+# BOUNDED retry loop; the optional dataset verifies member outputs, coordination path, watchdog
+# behavior, and system action calls together.
+apiVersion: agentspec.mutagent.io/v0.3.0
+kind: MultiAgent
+metadata:
+  id: controlled-release
+  name: Controlled Release System
+  version: "1.0.0"
+  description: "Separates release evidence, risk judgment, publication, and governance observation."
+
+spec:
+  intent:
+    problem: "One release agent would combine evidence gathering, judgment, and high-impact write authority."
+    outcomes: ["Separate duties.", "Publish only verified and explicitly authorized releases."]
+    sop:
+      - id: controlled-release
+        when: "An operator selects a release candidate."
+        description: "Collect, assess, request approval, publish or stop, while watchdog observes."
+        onFailure: "Stop without publication and retain all evidence."
+    jobs:
+      - { id: collect-evidence, description: "Gather cited repository, CI, artifact, and policy evidence.", expectedOutput: "Release evidence packet." }
+      - { id: assess-risk, description: "Judge evidence against release/compatibility policy.", expectedOutput: "Pass/block verdict with reasons." }
+      - { id: publish-release, description: "Publish only the exact authorized release.", expectedOutput: "Release reference or no-action failure." }
+    constraints: ["Only publisher may write.", "Watchdog observes but never dispatches or publishes."]
+    nonGoals: ["Merge code", "Bypass failed checks", "Self-authorize publication"]
+    assumptions: ["Member IDs are unique inside the card."]
+    unknowns: ["Maximum nested resource-card depth"]
+
+  context:
+    - id: release-evidence
+      description: "Commits, PRs, checks, artifacts, and release policy required for the candidate."
+      modalities: [git-history, pull-request, check-result, artifact, policy]
+      source: "repository + CI + policy service"
+      access:
+        kind: cli
+        ref: gh-git-ci-read
+        allowedOperations: [git.log, git.diff, pr.read, checks.read, artifact.read, policy.read]
+
+  actions:
+    - id: publish-release
+      description: "Create the approved release and upload only approved artifacts."
+      binding: { kind: cli, ref: release-cli, authRef: RELEASE_PUBLISH_TOKEN }
+      allowedOperations: [release.create, artifact.upload]
+      approval: { policy: required, when: "Version, notes digest, and artifact digests are approved." }
+      evidence: "Record approval, command arguments, artifact digests, and provider response."
+      onFailure: "Stop; do not partially retry or widen the operation set."
+
+  capabilities:
+    code: []
+    skills: []
+    delegates: [release-researcher, risk-assessor, release-publisher]
+
+  multiAgent:
+    orchestrator: release-coordinator
+    members:                                     # Embedded resource cards use the same envelope; members
+      - apiVersion: agentspec.mutagent.io/v0.3.0 #   reuse the parent intent/context/actions by REFERENCE.
+        kind: Agent
+        metadata: { id: release-coordinator, name: Release Coordinator, version: "1.0.0", description: "Routes the release graph without read/write authority." }
+        spec:
+          intentRef: "#spec/intent"
+          contextRefs: []
+          actionRefs: []
+          agent:
+            persona: { role: "Release coordinator", description: "Deterministic, evidence-first, unable to self-authorize." }
+            systemPrompt: "Dispatch members through the canonical workflow. Stop on failed evidence, rejection, or watchdog veto."
+            operatingType: orchestrator
+      - apiVersion: agentspec.mutagent.io/v0.3.0
+        kind: Agent
+        metadata: { id: release-researcher, name: Release Researcher, version: "1.0.0", description: "Retrieves cited evidence and cannot change external state." }
+        spec:
+          intentRef: "#spec/intent/jobs/collect-evidence"
+          contextRefs: [release-evidence]
+          actionRefs: []
+          agent:
+            persona: { role: "Evidence researcher", description: "Source-grounded and read-only." }
+            systemPrompt: "Collect approved release evidence and cite every result. Never call write operations."
+            operatingType: automation
+      - apiVersion: agentspec.mutagent.io/v0.3.0
+        kind: Agent
+        metadata: { id: risk-assessor, name: Risk Assessor, version: "1.0.0", description: "Judges supplied evidence without publishing." }
+        spec:
+          intentRef: "#spec/intent/jobs/assess-risk"
+          contextRefs: [release-evidence]
+          actionRefs: []
+          agent:
+            persona: { role: "Independent risk assessor", description: "Conservative and policy-bound." }
+            systemPrompt: "Assess evidence against policy. Return blocking risks and never authorize publication."
+            operatingType: automation
+      - apiVersion: agentspec.mutagent.io/v0.3.0
+        kind: Agent
+        metadata: { id: release-publisher, name: Release Publisher, version: "1.0.0", description: "Performs only the exact authorized publication action." }
+        spec:
+          intentRef: "#spec/intent/jobs/publish-release"
+          contextRefs: [release-evidence]
+          actionRefs: [publish-release]
+          agent:
+            persona: { role: "Bounded publisher", description: "Literal, minimal, and approval-gated." }
+            systemPrompt: "Publish only the approved version, notes, and artifact digests. Stop on any mismatch."
+            operatingType: automation
+      - apiVersion: agentspec.mutagent.io/v0.3.0
+        kind: Agent
+        metadata: { id: safety-watchdog, name: Safety Watchdog, version: "1.0.0", description: "Observes approval and operation boundaries; never dispatches." }
+        spec:
+          intentRef: "#spec/intent"
+          contextRefs: []
+          actionRefs: []
+          agent:
+            persona: { role: "Safety watchdog", description: "Independent, non-dispatching, fail-closed." }
+            systemPrompt: "Observe traces and veto missing approval or unauthorized operations."
+            operatingType: automation
+    relations:
+      subagents:                                 # Dispatch relation — must form an ACYCLIC graph (N02).
+        release-coordinator: [release-researcher, risk-assessor, release-publisher]
+      observes:                                  # Watch relation — kept DISTINCT from dispatch.
+        safety-watchdog: [release-coordinator, release-publisher]
+    workflow:                                     # Same schema as kind: Workflow, not Agent modeling.
+      inline:
+        state: ControlledReleaseState
+        entry: collect
+        nodes:
+          - { id: collect, description: "Dispatch evidence researcher.", executor: { kind: member, ref: release-researcher }, edges: [{ to: assess }] }
+          - id: assess
+            description: "Dispatch risk assessor and receive watchdog observation."
+            executor: { kind: member, ref: risk-assessor }   # strict typed executor {kind, ref} (F03/R4)
+            edges:
+              - { to: authorize, condition: "checks pass and no blocking risk" }
+              - to: collect
+                condition: "required evidence is incomplete"
+                loop: { maxIterations: 2, exitWhen: "evidence complete or retry limit reached" }   # BOUNDED loop (N02).
+              - { to: stop, condition: "blocking risk or retry limit reached" }
+          - id: authorize
+            description: "Show exact release packet and request approval."
+            edges: [{ to: publish, condition: "approved" }, { to: stop, condition: "rejected" }]
+          - { id: publish, description: "Dispatch bounded publisher.", executor: { kind: member, ref: release-publisher }, terminal: true }
+          - { id: stop, description: "Terminate without publication.", terminal: true }
+
+  targets:
+    - id: langgraph
+      type: framework
+      name: langgraph
+      artifact: { format: code, path: src/controlled_release/graph.py }
+      implementation: { language: python, toolchain: uv }
+      capabilityFit: "Graph, member dispatch, CLI reads/writes, and observer traces have target-native mappings."
+      documentation: [{ purpose: graph-and-multi-agent-conventions, url: "https://example.test/langgraph/multi-agent" }]
+    - id: internal-release-platform
+      type: custom
+      name: acme-release-runtime
+      artifact: { format: platform-config, path: deploy/controlled-release.yaml }
+      capabilityFit: "Operator docs define member registration, graph deployment, approval hooks, and trace observation."
+      documentation: [{ purpose: setup-conventions-test-deploy, url: "https://example.test/internal/release-runtime" }]
+
+  evaluation:
+    criteria:
+      - { id: single-action-holder, description: "Only release-publisher references publish-release.", type: code-check, goal: "Zero action references on other members" }
+      - { id: watchdog-no-dispatch, description: "Watchdog observes but never appears in a subagents edge.", type: code-check, goal: "Observation remains distinct" }
+    scenarios:
+      - { id: failed-check-stops, description: "Required CI check fails.", expectedBehavior: "Workflow reaches stop and never dispatches publisher.", edgeCase: true }
+    datasets:
+      - id: controlled-release-cases
+        description: "Release packets that exercise member separation and graph control."
+        mapsTo: { jobs: [collect-evidence, assess-risk, publish-release], scenarios: [failed-check-stops], criteria: [single-action-holder, watchdog-no-dispatch] }
+        categories:
+          - { id: blocking-ci, description: "Candidates with one or more release-blocking checks.", generationGuidance: "Vary which check fails, evidence completeness, and whether a misleading publish signal is present." }
+        caseDimensions:
+          path: { description: "Normal publish path versus blocked path.", values: [publish, stop] }
+          evidence: { description: "Whether the member evidence packet is internally consistent.", values: [consistent, conflicting] }
+        items:
+          - id: release-001
+            category: blocking-ci
+            scenarioRef: failed-check-stops
+            case: { path: stop, evidence: consistent }
+            input: { candidate: "v2.1.0", checks: [{ id: integration, status: failed }], approval: absent }
+            expected:
+              memberOutputs:
+                - { memberRef: release-researcher, output: "Cited failed-check evidence packet." }
+                - { memberRef: risk-assessor, output: "Block verdict with failed check." }
+                - { memberRef: safety-watchdog, output: "No boundary violation; publisher not dispatched." }
+              workflowNodeOutputs:
+                - { nodeRef: collect, output: "evidence-ready" }
+                - { nodeRef: assess, output: "blocked" }
+                - { nodeRef: stop, output: "no-release" }
+              actionCalls: []

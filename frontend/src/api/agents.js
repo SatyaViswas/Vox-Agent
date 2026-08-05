@@ -34,6 +34,20 @@ export function resumeAgent(agentId, answer) {
   return apiClient.post(`/agents/${agentId}/resume`, { answer });
 }
 
+// Scoped to the caller's X-User-Id automatically (apiClient sends it on
+// every request) — see backend/app/routers/execution.py's GET /paused.
+export function getPausedRuns() {
+  return apiClient.get("/paused");
+}
+
+export function approvePendingAction(pendingId) {
+  return apiClient.post(`/pending-actions/${pendingId}/approve`);
+}
+
+export function rejectPendingAction(pendingId, reason) {
+  return apiClient.post(`/pending-actions/${pendingId}/reject`, { reason });
+}
+
 export function getTriggerStatus(agentId) {
   return apiClient.get(`/agents/${agentId}/trigger-status`);
 }

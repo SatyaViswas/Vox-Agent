@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>@@TITLE@@</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a12;--surf:#14141d;--surf2:#1a1a25;--surf3:#22222f;--border:rgba(255,255,255,.09);--borderS:rgba(255,255,255,.16);
+--fg:#d6dbe6;--fgS:#eef1f6;--muted:#8a8698;--dim:#5a5667;--primary:#7E47D7;--primarySoft:#b794f4;--cyan:#45b8cc;
+--pass:#43c39a;--fail:#e06666;--warn:#e8a64d;--pass-bg:rgba(67,195,154,.16);--fail-bg:rgba(224,102,102,.16);--warn-bg:rgba(232,166,77,.16);
+--hm-pass:rgba(67,195,154,.38);--hm-fail:rgba(224,102,102,.42);--hm-indet:rgba(232,166,77,.40);--hm-skip:#22222f;
+--font:'Space Grotesk',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace}
+*{box-sizing:border-box;border-radius:0}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.5;padding-bottom:120px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 40px}
+.hdr{position:sticky;top:0;z-index:40;background:rgba(10,10,18,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:11px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.wm{font-weight:700;font-size:18px;letter-spacing:.5px}
+.wm b{background:linear-gradient(90deg,var(--primarySoft),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+.mockbadge{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--warn);border:1px solid var(--warn);padding:2px 8px}
+.progress{margin-left:auto;display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.progress .pt{width:150px;height:8px;background:var(--surf3);border:1px solid var(--border)}
+.progress .pf{height:100%;background:linear-gradient(90deg,var(--primary),var(--cyan))}
+#submitbtn{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:6px 14px;background:var(--surf2);border:1px solid var(--pass);color:var(--pass);cursor:pointer}
+.panel{border:1px solid var(--border);background:var(--surf);margin-top:14px}
+.panel-h{display:flex;align-items:center;gap:8px;padding:9px 15px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--primarySoft);background:var(--surf2)}
+.panel-h .r{margin-left:auto;color:var(--muted);text-transform:none}
+.panel-b{padding:13px 15px}
+.chip{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--border);padding:1px 6px}
+.verd{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 8px;border:1px solid}
+.verd.pass{color:var(--pass);border-color:var(--pass)} .verd.fail{color:var(--fail);border-color:var(--fail)} .verd.inc{color:var(--warn);border-color:var(--warn)}
+.explain{font-size:14px;line-height:1.6;color:var(--muted);border-left:3px solid var(--cyan);background:rgba(69,184,204,.05);padding:8px 13px;margin:0 0 14px;max-width:88ch}
+.explain b{color:var(--fg)}
+.hero{padding:26px 0 10px;border-bottom:1px solid var(--border);margin-bottom:6px}
+.hero .who{font-family:var(--mono);font-size:11.5px;color:var(--cyan);text-transform:uppercase;letter-spacing:.14em;margin-bottom:7px}
+.hero h1{font-size:clamp(24px,3.4vw,32px);margin:0 0 8px;color:var(--fgS);letter-spacing:-.01em;font-weight:700}
+.hero p{font-size:15.5px;color:var(--muted);max-width:88ch;margin:0 0 8px;line-height:1.65}
+.hero p b{color:var(--fg)}
+.hero .meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+/* subject profile card (mirrors the eval report triple card) */
+.profgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:0;border:1px solid var(--border);background:var(--surf2);margin:12px 0 2px}
+.profgrid>div{padding:11px 14px;border-right:1px solid var(--border)}
+.profgrid>div:last-child{border-right:0}
+.pk{font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.pv{font-size:14px;color:var(--muted);line-height:1.55}
+.pv b{color:var(--fg)}
+.toolb{font-family:var(--mono);font-size:12px;padding:2px 8px;border:1px solid;margin:2px 4px 2px 0;display:inline-block}
+.toolb.read{color:var(--cyan);border-color:rgba(69,184,204,.6)}
+.toolb.act{color:var(--warn);border-color:rgba(232,166,77,.6)}
+.toolb,.idc,.chip{display:inline-flex;align-items:center;height:20px;line-height:1;box-sizing:border-box}
+.idc{font-family:var(--mono);font-size:12px;padding:0 8px;border:1px solid;margin:5px 4px 2px 0}
+.idc.k{color:var(--primarySoft);border-color:rgba(126,71,215,.6)}
+.idc.m{color:var(--cyan);border-color:rgba(69,184,204,.6)}
+.idc.f{color:var(--warn);border-color:rgba(232,166,77,.6)}
+.lstrip{display:inline-flex;gap:3px;vertical-align:middle}
+.lstrip u{font-family:var(--mono);font-size:11px;text-decoration:none;padding:1px 5px;border:1px solid var(--border);color:var(--dim)}
+.lstrip u.pass{color:var(--pass);border-color:var(--pass)} .lstrip u.fail{color:var(--fail);border-color:var(--fail)}
+.lstrip u.undecidable{color:var(--warn);border-color:var(--warn)} .lstrip u.skip{color:var(--dim);border-style:dashed}
+.lstrip u.fired{color:var(--cyan);border-color:var(--cyan)}
+.confbadge{font-family:var(--mono);font-size:11px;color:var(--fail);border:1px solid var(--fail);padding:1px 6px}
+.vq{border:1px dashed var(--cyan);background:rgba(69,184,204,.05);padding:8px 11px;margin:14px 0}
+.vq .q{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);margin-bottom:5px}
+.vq .opts{display:flex;gap:6px;flex-wrap:wrap}
+.vq .opts button{font-family:var(--mono);font-size:11px;padding:3px 11px;background:var(--surf2);border:1px solid var(--border);color:var(--muted);cursor:pointer}
+.vq .opts button.on{border-color:var(--cyan);color:var(--cyan);background:rgba(69,184,204,.12)}
+/* trace navigator — MATRIX: criteria rows × trace columns (evaluator-report idiom) */
+.navmx{display:grid;gap:3px;align-items:stretch}
+.nmh{border:1px solid rgba(126,71,215,.55);background:var(--surf2);cursor:pointer;padding:5px 4px 4px;text-align:center;position:relative;transition:outline-color .12s}
+.nmh:hover{outline:2px solid var(--primarySoft);outline-offset:1px}
+.nmh:hover::after{content:"▸ open";position:absolute;bottom:-15px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--primarySoft);font-family:var(--mono);white-space:nowrap}
+.nmh.sel{outline:2px solid var(--cyan);outline-offset:1px;background:var(--surf3)}
+.nmh .hid{font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--fgS);display:block}
+.nmh .hgate{font-family:var(--mono);font-size:11px;font-weight:700}
+.nmh .hgate.pass{color:var(--pass)} .nmh .hgate.fail{color:var(--fail)} .nmh .hgate.incomplete{color:var(--warn)}
+.nmh .hconf{color:var(--fail);font-size:11px}
+.nmh .hrv{font-family:var(--mono);font-size:11px;color:var(--cyan);display:block}
+.nml{font-family:var(--mono);font-size:12px;color:var(--fg);text-align:right;padding-right:10px;display:flex;align-items:center;justify-content:flex-end;white-space:nowrap;height:26px}
+.nml i{font-style:normal;color:var(--dim);margin-left:6px;font-size:11px;border:1px solid var(--border);padding:0 5px}
+.nmcorner{font-family:var(--mono);font-size:11px;color:var(--dim);display:flex;align-items:flex-end;justify-content:flex-end;padding:0 10px 4px 0}
+#copyhandoff{background:var(--surf2);border:1px solid var(--pass);color:var(--pass);font-family:var(--mono);font-size:12px;letter-spacing:.05em;padding:7px 14px;cursor:pointer;margin-top:10px}
+#copyhandoff.done{background:var(--pass-bg)}
+.nmc{height:26px;border:1px solid rgba(0,0,0,.35);cursor:pointer}
+.nmc.pass{background:var(--hm-pass)} .nmc.fail{background:var(--hm-fail)} .nmc.uncertain{background:var(--hm-indet)} .nmc.skip{background:var(--hm-skip)}
+.nmc:hover{outline:1px solid var(--primarySoft)}
+.nmc.selc{outline:1px solid var(--cyan)}
+/* (retired tile styles kept for reference) */
+.navgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:8px}
+.ntile{border:1px solid rgba(126,71,215,.55);background:var(--surf2);cursor:pointer;position:relative;padding:8px 10px 8px;transition:outline-color .12s,transform .12s}
+.ntile:hover{outline:2px solid var(--primarySoft);outline-offset:1px;transform:translateY(-1px)}
+.ntile:hover::after{content:"▸ open";position:absolute;top:8px;right:9px;font-size:11.5px;color:var(--primarySoft);font-family:var(--mono)}
+.ntile.sel{outline:2px solid var(--cyan);outline-offset:1px;background:var(--surf3)}
+.ntile.sel::after{content:"▾ open";position:absolute;top:8px;right:9px;font-size:11.5px;color:var(--cyan);font-family:var(--mono)}
+.ntile .nid{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--fgS)}
+.ntile .nsc{font-size:12.5px;color:var(--muted);margin:2px 0 7px}
+.ntile .ngate{font-family:var(--mono);font-size:11.5px;font-weight:700;padding:1px 7px;border:1px solid;margin-left:6px;vertical-align:1px}
+.ntile .ngate.pass{color:var(--pass);border-color:var(--pass)} .ntile .ngate.fail{color:var(--fail);border-color:var(--fail)} .ntile .ngate.incomplete{color:var(--warn);border-color:var(--warn)}
+.ntile .nconf{color:var(--fail);font-size:13px;margin-left:5px}
+.ntile .nrv{font-family:var(--mono);font-size:11.5px;color:var(--cyan);margin-left:6px}
+.critrow{display:flex;gap:2px}
+.critrow u{flex:1;height:17px;text-decoration:none;border:1px solid rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.85)}
+.critrow u.pass{background:var(--hm-pass)} .critrow u.fail{background:var(--hm-fail)} .critrow u.uncertain{background:var(--hm-indet)} .critrow u.skip{background:var(--hm-skip);color:var(--dim)}
+#tip{display:none;position:fixed;z-index:60;background:var(--surf3);border:1px solid var(--primarySoft);padding:9px 12px;font-size:14px;color:var(--fg);max-width:340px;pointer-events:none;box-shadow:0 6px 20px rgba(0,0,0,.5);line-height:1.5}
+#tip .t1{font-family:var(--mono);font-weight:700;color:var(--fgS);font-size:14px}
+#tip .t2{color:var(--muted);margin-top:2px}
+#tip .t3{font-family:var(--mono);font-size:11.5px;color:var(--primarySoft);margin-top:4px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:10px}
+.legend i{font-style:normal}
+.legend .sw{display:inline-block;width:11px;height:11px;vertical-align:-1px;margin-right:5px;border:1px solid rgba(0,0,0,.4)}
+/* trace panel */
+.tpanel{border:1px solid var(--borderS);background:var(--bg);margin-top:14px}
+.tpanel-h{position:sticky;top:52px;z-index:20;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 13px;background:var(--surf2);border-bottom:1px solid var(--borderS)}
+.tpanel-h .tid{font-family:var(--mono);font-weight:600;color:var(--fgS)}
+.tnav{font-family:var(--mono);font-size:11px;padding:3px 12px;background:rgba(126,71,215,.12);border:1px solid var(--primary);color:var(--primarySoft);cursor:pointer;font-weight:600}
+.tnav:hover{color:var(--fgS);border-color:var(--primarySoft);background:rgba(126,71,215,.25)}
+.tprog{font-family:var(--mono);font-size:12px;color:var(--cyan)}
+.tracelabel{display:flex;gap:5px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.tracelabel b{padding:2px 8px;border:1px solid var(--border);color:var(--fg);cursor:pointer;font-size:11px}
+.tracelabel b.on-pass{border-color:var(--pass);color:var(--pass);background:var(--pass-bg)}
+.tracelabel b.on-fail{border-color:var(--fail);color:var(--fail);background:var(--fail-bg)}
+.tracelabel b.on-defer{border-color:var(--warn);color:var(--warn);background:var(--warn-bg)}
+.tnote{background:var(--bg);border:1px solid var(--border);color:var(--fg);font-family:var(--font);font-size:13px;padding:3px 8px;width:220px}
+.cbanner{margin:8px 13px;padding:7px 11px;border:1px solid var(--fail);background:var(--fail-bg);font-size:12px;color:var(--fg)}
+.vwrap{display:grid;grid-template-columns:1fr 360px;gap:0;align-items:start}
+.railcol{border-left:1px solid var(--border);padding:6px 10px;background:var(--surf2);align-self:stretch}
+.step{display:flex;gap:10px;padding:8px 13px}
+.step.divg{border-left:3px solid var(--fail)}
+.step .n{font-family:var(--mono);font-size:11px;color:var(--dim);min-width:18px;padding-top:3px}
+.step .body{flex:1;min-width:0}
+.step .tool{font-family:var(--mono);font-size:14px;color:var(--cyan)}
+.step .tool .args{color:var(--dim)}
+.ltag{font-family:var(--mono);font-size:11px;color:var(--primarySoft);border:1px solid rgba(126,71,215,.5);padding:0 4px;margin-left:6px}
+.divmark{font-family:var(--mono);font-size:11px;color:var(--fail);margin-left:8px}
+.out{font-family:var(--mono);font-size:14px;color:var(--muted);background:var(--bg);border:1px solid var(--border);padding:4px 8px;margin-top:4px;overflow-wrap:anywhere}
+.out mark{background:rgba(67,195,154,.25);color:var(--fgS);padding:0 2px}
+.srow{border-bottom:1px solid var(--border)}
+.vcard{border:1px solid var(--border);background:var(--surf);margin:10px 0;padding:0;font-size:14px}
+.vcard .vh{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 12px;border-bottom:1px solid var(--border);background:var(--surf3)}
+.vcard .vh .cid{font-weight:700;color:var(--fgS);font-size:14.5px}
+.vpill{font-family:var(--mono);font-size:12px;font-weight:700;padding:3px 10px;border:1px solid;letter-spacing:.04em}
+.vpill.pass{color:var(--pass);border-color:var(--pass);background:var(--pass-bg)}
+.vpill.fail{color:var(--fail);border-color:var(--fail);background:var(--fail-bg)}
+.vpill.uncertain{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+.vsec{padding:8px 12px;border-bottom:1px solid var(--border)}
+.vsec:last-child{border-bottom:0}
+.vlab{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--primarySoft);margin-bottom:4px}
+.vcard .stmt{color:var(--fg);font-size:14px;line-height:1.55}
+.vcard .defs{font-size:14px;color:var(--muted);margin-top:4px;line-height:1.55}
+.vcard .defs b{color:var(--fg)}
+.vcard .crit{color:var(--muted);font-size:14px;line-height:1.6}
+.vcard .ref{font-family:var(--mono);font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--border);padding:4px 8px;display:inline-block}
+.vcard .ref b{color:var(--pass)}
+.arr{display:flex;gap:5px;align-items:center;margin-top:7px;flex-wrap:wrap}
+.arr span{font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+.arr b{font-family:var(--mono);font-size:12px;padding:3px 11px;border:1px solid var(--border);color:var(--muted);cursor:pointer}
+.arr b.on-agree{border-color:var(--pass);color:var(--pass);background:var(--pass-bg)}
+.arr b.on-revise{border-color:var(--warn);color:var(--warn);background:var(--warn-bg)}
+.arr b.on-refute{border-color:var(--fail);color:var(--fail);background:var(--fail-bg)}
+.arr input{flex:1;min-width:180px;background:var(--bg);border:1px solid var(--border);color:var(--fg);font-size:14px;padding:8px 10px;font-family:var(--font)}
+.outpill{font-family:var(--mono);font-size:12.5px;font-weight:700;padding:3px 11px;border:1px solid}
+.outpill.pass{color:var(--pass);border-color:var(--pass);background:var(--pass-bg)}
+.outpill.fail{color:var(--fail);border-color:var(--fail);background:var(--fail-bg)}
+.outpill.undecidable{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+.confpill{font-family:var(--mono);font-size:12.5px;font-weight:700;padding:3px 11px;border:1px solid var(--primary);color:var(--primarySoft);background:rgba(126,71,215,.16)}
+#trail{display:none;border:1px solid var(--pass);background:var(--surf);margin:16px 0}
+#trail.show{display:block}
+#trail .th{display:flex;gap:9px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--pass-bg);font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--pass)}
+#trail .tb{padding:11px 15px}
+.trow{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px dashed var(--border);font-size:14px;color:var(--muted)}
+.trow .tk{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--primarySoft);min-width:150px;padding-top:2px}
+.trow b{color:var(--fg)}
+.foot{margin-top:32px;color:var(--dim);font-size:11px;border-top:1px solid var(--border);padding-top:12px;font-family:var(--mono)}
+#fbpanel{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,18,.97);border-top:1px solid var(--primary);padding:9px 22px 11px;z-index:50}
+#fbpanel .frow{max-width:1180px;margin:0 auto;display:flex;gap:12px;align-items:flex-end}
+#fbpanel label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--primarySoft);display:block;margin-bottom:4px}
+#fbtext{flex:1;background:var(--surf2);border:1px solid var(--border);color:var(--fg);font-family:var(--font);font-size:13px;padding:7px 10px;min-height:40px;max-height:110px;resize:vertical}
+#fbcopy{background:var(--surf2);border:1px solid var(--primary);color:var(--primarySoft);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:10px 16px;cursor:pointer;white-space:nowrap}
+#fbcopy.done{border-color:var(--pass);color:var(--pass)}
+@media(max-width:900px){.vwrap{grid-template-columns:1fr}.railcol{border-left:0;border-top:1px solid var(--border)}}
+</style></head><body>
+<div class="hdr">
+  <div class="wm">MUTAGENT<b>/evaluator</b> · Review Report</div>
+  <div class="progress"><span id="progtext">…</span><div class="pt"><div class="pf" id="progfill" style="width:0%"></div></div>
+  <button id="submitbtn" onclick="submitReview()">Submit review</button></div>
+  @@HEADER_RIGHT@@
+</div>
+<div class="wrap">
+
+  <div class="hero" data-component="mgt-report-hero">
+    <div class="who">Human-in-the-loop · calibration surface</div>
+    <h1>@@HERO_TITLE@@</h1>
+    <p>@@HERO_LEDE@@</p>
+    <div class="meta">@@HERO_META@@</div>
+  </div>
+
+  <!-- whose traces are these -->
+  @@SUBJECT_CARD@@
+
+
+  <!-- TRACE NAVIGATOR -->
+  <div class="panel"><div class="panel-h">trace navigator <span class="r"><b style="color:var(--primarySoft)">criteria = rows · traces = columns</b> · click a column header (or any cell) to open that trajectory below</span></div><div class="panel-b" style="padding-top:16px">
+    <div id="navhost" data-component="mgt-trace-navigator"></div>
+    <div class="legend">
+      <i><span class="sw" style="background:var(--hm-pass)"></span>criterion pass</i>
+      <i><span class="sw" style="background:var(--hm-fail)"></span>criterion fail</i>
+      <i><span class="sw" style="background:var(--hm-indet)"></span>undecided</i>
+      <i><span class="sw" style="background:var(--hm-skip)"></span>not judged (truncated)</i>
+      <i>✓/✗ chip = trace gate</i>
+      <i style="color:var(--fail)">⚡ layer conflict</i>
+      <i style="color:var(--cyan)">✓ done = fully reviewed</i>
+      <i>keys: ←/→ switch · 1/2/D label</i>
+    </div>
+  </div></div>
+
+  <!-- OPEN TRACE PANEL -->
+  <div id="tracehost"></div>
+
+  <div id="trail" data-component="mgt-propagation-trail"><div class="th">✓ feedback recorded — propagation trail</div><div class="tb" id="trailbody"></div></div>
+  <div id="tip" data-component="mgt-trace-tooltip"></div>
+
+  <div class="foot">@@FOOT@@</div>
+</div>
+
+<div id="fbpanel" data-component="mgt-feedback-bar"><div class="frow">
+  <div style="flex:1"><label for="fbtext">@@FEEDBACK_LABEL@@</label>
+  <textarea id="fbtext" placeholder="e.g. 'navigator cells need trace duration' …"></textarea></div>
+  <button id="fbcopy" type="button">Copy&nbsp;MD</button>
+</div></div>
+
+<script>window.ASTER=@@DATA_JSON@@;
+window.ASTER.cellFor=function(id,tr){return ((tr.cells||{})[id])||'skip';};</script>
+<script>
+var place='rail', hl='mark', openTrace=(window.ASTER&&ASTER.openTrace)||null;
+var labels={}, traceLabels={}, noteCache={};
+var SCENS=(window.ASTER&&ASTER.scenarios)||[];
+
+function esc(s){return s.split('&').join('&amp;').split('<').join('&lt;');}
+function vKey(tid,six,vix){return tid+'·s'+six+'·v'+vix;}
+function critOf(cid){var c=null;ASTER.criteria.forEach(function(x){if(x.id===cid)c=x;});return c;}
+function traceVerdictCount(tr){var n=0;tr.steps.forEach(function(s){n+=(s.verdicts||[]).length;});return n;}
+function traceReviewed(tr){var n=0;tr.steps.forEach(function(s,six){(s.verdicts||[]).forEach(function(vd,vix){if(labels[vKey(tr.id,six,vix)])n++;});});return n;}
+
+/* ── navigator — MATRIX: criteria rows × trace columns ── */
+var LSHORT={outcome:'outc',trajectory:'traj','tool-outputs':'tools',context:'ctx'};
+var CLUSTER_AT=48, navWin=0;
+function navWindowSize(){return Math.max(10,Math.ceil(ASTER.traces.length/20));}
+
+/* mgt-trace-matrix — criteria rows × trace columns, for any trace subset */
+function matrixHtml(T){
+  var h='<div class="navmx" data-component="mgt-trace-matrix" style="grid-template-columns:255px repeat('+T.length+',minmax(56px,1fr));align-items:center">';
+  h+='<span class="nmcorner">criteria ↓ · traces →</span>';
+  T.forEach(function(tr){
+    var total=traceVerdictCount(tr),done=traceReviewed(tr);
+    h+='<div class="nmh'+(openTrace===tr.id?' sel':'')+'" onclick="openT(\''+tr.id+'\')" '
+      +'onmouseenter="showTip(event,\''+tr.id+'\')" onmousemove="moveTip(event)" onmouseleave="hideTip()">'
+      +'<span class="hid">'+tr.id+'</span>'
+      +'<span class="hgate '+tr.gate+'">'+(tr.gate==='pass'?'✓':tr.gate==='fail'?'✗':'◔')+'</span>'
+      +(tr.conflict?'<span class="hconf">⚡</span>':'')
+      +(total>0&&done===total?'<span class="hrv">✓done</span>':(done>0?'<span class="hrv">'+done+'/'+total+'</span>':'<span class="hrv">&nbsp;</span>'))
+      +'</div>';
+  });
+  ASTER.criteria.forEach(function(c){
+    h+='<span class="nml">'+c.id+' '+c.slug+'<i>'+(LSHORT[c.layer]||c.layer)+'</i></span>';
+    T.forEach(function(tr){
+      var st=ASTER.cellFor(c.id,tr);
+      h+='<span class="nmc '+(st==='undecidable'?'uncertain':st)+(openTrace===tr.id?' selc':'')+'" '
+        +'onclick="openT(\''+tr.id+'\')" title="'+tr.id+' × '+c.id+' '+c.slug+': '+st+'"></span>';
+    });
+  });
+  return h+'</div>';
+}
+
+/* mgt-window-cluster — large-corpus mode: windows of 25, pass-rate cells (production ehm idiom) */
+function clusterHtml(wins){
+  var h='<div class="explain" style="margin-bottom:10px"><b>Large corpus ('+ASTER.traces.length+' traces):</b> traces are grouped into windows of '+navWindowSize()+'. '
+    +'Each cell shows the criterion\'s health over that window (<b style="color:var(--pass)">green ≥95% pass</b> · <b style="color:var(--warn)">amber ≥80%</b> · <b style="color:var(--fail)">red &lt;80%</b>; the number = failures). '
+    +'Click a window → its per-trace matrix opens below → click a trace to review it.</div>';
+  h+='<div class="navmx" data-component="mgt-window-cluster" style="grid-template-columns:255px repeat('+wins.length+',minmax(50px,1fr));align-items:center">';
+  h+='<span class="nmcorner">criteria ↓ · windows →</span>';
+  wins.forEach(function(w,wi){
+    var fails=0;w.forEach(function(t){if(t.gate==='fail')fails++;});
+    var cls=fails===0?'pass':(fails<=3?'incomplete':'fail');
+    var conf=w.some(function(t){return t.conflict;});
+    h+='<div class="nmh'+(navWin===wi?' sel':'')+'" onclick="selWin('+wi+')" title="traces '+w[0].id+' … '+w[w.length-1].id+' · '+fails+' gate-fails of '+w.length+'">'
+      +'<span class="hid">'+w[0].id+'–'+w[w.length-1].id+'</span>'
+      +'<span class="hgate '+cls+'">'+fails+'✗</span>'+(conf?'<span class="hconf">⚡</span>':'')
+      +'</div>';
+  });
+  ASTER.criteria.forEach(function(c){
+    h+='<span class="nml">'+c.id+' '+c.slug+'<i>'+(LSHORT[c.layer]||c.layer)+'</i></span>';
+    wins.forEach(function(w,wi){
+      var f=0,u=0;
+      w.forEach(function(tr){var st=ASTER.cellFor(c.id,tr);if(st==='fail')f++;else if(st!=='pass')u++;});
+      var rate=Math.round(100*(w.length-f-u)/w.length);
+      var cls=rate>=95?'pass':(rate>=80?'uncertain':'fail');
+      h+='<span class="nmc '+cls+(navWin===wi?' selc':'')+'" onclick="selWin('+wi+')" '
+        +'title="'+c.id+' × window '+(wi+1)+': '+f+' fail · '+u+' undecided of '+w.length+'" '
+        +'style="display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.82)">'
+        +(f?f+'✗':'')+'</span>';
+    });
+  });
+  h+='</div>';
+  return h;
+}
+function selWin(wi){persistNotes();navWin=wi;
+  var w=windowsOf(ASTER.traces)[wi];
+  if(w&&w.indexOf(traceById(openTrace))<0){openTrace=w[0].id;}
+  renderNav();renderTrace();updateProg();}
+function windowsOf(T){var w=[];var W=navWindowSize();for(var i=0;i<T.length;i+=W)w.push(T.slice(i,i+W));return w;}
+function traceById(id){var t=null;ASTER.traces.forEach(function(x){if(x.id===id)t=x;});return t;}
+
+function renderNav(){
+  var T=ASTER.traces,host=document.getElementById('navhost');
+  if(T.length<=CLUSTER_AT){host.innerHTML=matrixHtml(T);return;}
+  var wins=windowsOf(T);
+  if(navWin>=wins.length)navWin=0;
+  var h=clusterHtml(wins);
+  h+='<div class="h4s" style="margin-top:18px">Window '+(navWin+1)+' of '+wins.length+' — '+wins[navWin][0].id+' … '+wins[navWin][wins[navWin].length-1].id+' — pick a trace</div>';
+  h+=matrixHtml(wins[navWin]);
+  host.innerHTML=h;
+}
+
+/* ── trace panel ── */
+function vcardHtml(tid,six,vd,vix){
+  var key=vKey(tid,six,vix),lab=labels[key]||'',c=critOf(vd.crit);
+  return '<div class="vcard" data-component="mgt-verdict-card">'
+    +'<div class="vh"><span class="cid">'+vd.crit+' · '+(c?c.slug:'')+'</span>'
+    +'<span class="vpill '+vd.verdict+'">VERDICT: '+vd.verdict.toUpperCase()+'</span>'
+    +'<span class="ltag">layer: '+(c?c.layer:'')+'</span></div>'
+    +(c?'<div class="vsec"><div class="vlab">what it checks</div><div class="stmt">'+esc(c.statement)+'</div>'
+       +'<div class="defs"><b>passes:</b> '+esc(c.passDef)
+       +(c.failDef?' · <b>fails:</b> '+esc(c.failDef)
+                  :' · <b>fails:</b> no explicit fail condition is recorded for this criterion — a fail is the negation of the pass condition above')
+       +'</div></div>':'')
+    +'<div class="vsec"><div class="vlab">judge\'s reasoning · confidence .'+Math.round(vd.conf*100)+'</div>'
+    +'<div class="crit">'+esc(vd.critique)+'</div></div>'
+    +'<div class="vsec"><div class="vlab">evidence</div>'
+    +(vd.ref?'<div class="ref">'+vd.ref.obs+' · '+vd.ref.path+' = <b>"'+esc(vd.ref.value)+'"</b></div>'
+            :'<div class="ref" style="color:var(--warn)">'+(vd.verdict==='uncertain'
+                ?'abstained — no evidence could bind; the open question is recorded'
+                :'decided without a structured evidence ref — this verdict is UNGROUNDED, weigh it accordingly')+'</div>')+'</div>'
+    +'<div class="vsec"><div class="vlab">your ruling — this note becomes calibration ground truth</div><div class="arr">'
+    +'<b class="'+(lab==='agree'?'on-agree':'')+'" onclick="setLab(\''+key+'\',\'agree\')">Agree</b>'
+    +'<b class="'+(lab==='revise'?'on-revise':'')+'" onclick="setLab(\''+key+'\',\'revise\')">Revise</b>'
+    +'<b class="'+(lab==='refute'?'on-refute':'')+'" onclick="setLab(\''+key+'\',\'refute\')">Refute</b>'
+    +'<input placeholder="Explain your ruling" id="note-'+key+'"></div></div></div>';
+}
+function outHtml(s,refs){
+  var body=esc(s.output);
+  if(hl==='mark'){(refs||[]).forEach(function(r){if(r&&r.value){var ev=esc(r.value);body=body.split(ev).join('<mark>'+ev+'</mark>');}});
+    return '<div class="out">'+body+'</div>';}
+  var h='<div class="out">'+body;
+  (refs||[]).forEach(function(r){if(r&&r.value){h+='<span style="display:block;border-left:3px solid var(--pass);background:var(--pass-bg);padding:2px 7px;margin-top:4px;color:var(--fgS)">▸ cited: "'+esc(r.value)+'"</span>';}});
+  return h+'</div>';
+}
+function renderTrace(){
+  var tr=null,idx=-1;ASTER.traces.forEach(function(t,i){if(t.id===openTrace){tr=t;idx=i;}});
+  var host=document.getElementById('tracehost');if(!tr){host.innerHTML='';return;}
+  var total=traceVerdictCount(tr),done=traceReviewed(tr),tl=traceLabels[tr.id]||'';
+  var h='<div class="tpanel" data-component="mgt-trace-drill"><div class="tpanel-h" data-component="mgt-drill-header">'
+    +'<span class="tnav" onclick="navT(-1)">← prev</span><span class="tnav" onclick="navT(1)">next →</span>'
+    +'<span class="tid">'+tr.id+'</span><span class="chip">'+tr.scenario+'</span>'
+    +stripH(tr)
+    +(tr.gate==='pass'?'<span class="verd pass">GATE ✓</span>':tr.gate==='fail'?'<span class="verd fail">GATE ✗</span>':'<span class="verd inc">INC</span>')
+    +(tr.conflict?'<span class="confbadge">⚡</span>':'')
+    +'<span class="tprog">'+done+'/'+total+' reviewed</span>'
+    +'<span class="tracelabel">trace:'
+    +'<b class="'+(tl==='pass'?'on-pass':'')+'" onclick="setTrace(\''+tr.id+'\',\'pass\')">Pass·1</b>'
+    +'<b class="'+(tl==='fail'?'on-fail':'')+'" onclick="setTrace(\''+tr.id+'\',\'fail\')">Fail·2</b>'
+    +'<b class="'+(tl==='defer'?'on-defer':'')+'" onclick="setTrace(\''+tr.id+'\',\'defer\')">Defer·D</b></span>'
+    +'<span style="margin-left:auto;display:inline-flex;gap:7px;align-items:center">'
+    +'<span class="outpill '+tr.outcome.verdict+'">outcome '+tr.outcome.verdict.toUpperCase()+'</span>'
+    +'<span class="confpill">judge conf .'+Math.round(tr.judgeConf*100)+'</span></span>'
+    +'</div>';
+  h+='<div class="explain" style="margin:10px 13px"><b>'+tr.id+' — what happened:</b> '
+    +(tr.outcome.verdict==='pass'?'the session reached its expected exit ('+esc(tr.outcome.expected)+').':'expected '+esc(tr.outcome.expected)+' — actual: '+esc(tr.outcome.actual)+'.')
+    +(tr.divergence?' <b>First divergence:</b> '+esc(tr.divergence)+'.':'')
+    +(tr.gapKind?' <b>Context-gap kind:</b> '+tr.gapKind+'.':'')
+    +(tr.blockedBy?' <b>Open question:</b> '+esc(tr.blockedBy):'')+'</div>';
+  if(tr.conflict) h+='<div class="cbanner">⚡ '+esc(tr.conflictNote)+' — your Agree/Refute on '
+    +((tr.conflictCards&&tr.conflictCards.length)?('the '+tr.conflictCards.join(' and ')+' card'+(tr.conflictCards.length>1?'s':'')+' below'):'the verdict cards below')
+    +' IS the adjudication of this conflict.</div>';
+  if(tr.fidelity) h+='<div class="cbanner" style="border-color:var(--warn);background:var(--warn-bg)">◔ '+esc(tr.fidelity)+'</div>';
+  tr.steps.forEach(function(s,six){
+    var core='<span class="tool">'+s.tool+' <span class="args">'+esc(s.args)+'</span></span>';
+    (s.layers||[]).forEach(function(L){core+='<span class="ltag">'+L+'</span>';});
+    if(s.divergence) core+='<span class="divmark">◆ first divergence</span>';
+    core+=outHtml(s,(s.verdicts||[]).map(function(vd){return vd.ref;}));
+    var cards='';(s.verdicts||[]).forEach(function(vd,vix){cards+=vcardHtml(tr.id,six,vd,vix);});
+    if(place==='stack'){
+      h+='<div class="srow"><div class="step'+(s.divergence?' divg':'')+'"><span class="n">'+(six+1)+'</span><div class="body">'+core+cards+'</div></div></div>';
+    }else{
+      h+='<div class="srow vwrap"><div class="step'+(s.divergence?' divg':'')+'"><span class="n">'+(six+1)+'</span><div class="body">'+core+'</div></div>'
+        +'<div class="railcol">'+(cards||'<div style="font-family:var(--mono);font-size:11px;color:var(--dim);padding:6px 0">no judge verdicts bind at this step</div>')+'</div></div>';
+    }
+  });
+  h+='</div>';
+  host.innerHTML=h;restoreNotes();
+}
+function stripH(tr){
+  var h='<span class="lstrip">';
+  ['L0','L1','L2','L3','L4'].forEach(function(L){
+    var st=tr.layers[L]||'skip';var sym=st==='pass'?'✓':st==='fail'?'✗':st==='undecidable'?'?':st==='fired'?'⚑':'→';
+    h+='<u class="'+st+'">'+L+sym+'</u>';});
+  return h+'</span>';
+}
+/* ── tooltip ── */
+function showTip(e,id){
+  var tr=null;ASTER.traces.forEach(function(t){if(t.id===id)tr=t;});if(!tr)return;
+  var total=traceVerdictCount(tr),done=traceReviewed(tr);
+  var tip=document.getElementById('tip');
+  tip.innerHTML='<div class="t1">'+tr.id+' · '+tr.scenario+'</div>'
+    +'<div class="t2">'+(tr.outcome.verdict==='pass'?('reached expected exit: '+esc(tr.outcome.expected)):('expected '+esc(tr.outcome.expected)+' — actual: '+esc(tr.outcome.actual)))+'</div>'
+    +'<div class="t2">gate <b style="color:'+(tr.gate==='pass'?'var(--pass)':tr.gate==='fail'?'var(--fail)':'var(--warn)')+'">'+tr.gate.toUpperCase()+'</b>'
+    +(tr.conflict?' · <b style="color:var(--fail)">⚡ layer conflict</b>':'')
+    +' · '+done+'/'+total+' reviewed</div>'
+    +'<div class="t3">▸ click to open this trajectory</div>';
+  tip.style.display='block';moveTip(e);
+}
+function moveTip(e){var tip=document.getElementById('tip');
+  var x=e.clientX+14,y=e.clientY+14;
+  if(x+340>window.innerWidth)x=e.clientX-350;if(y+90>window.innerHeight)y=e.clientY-100;
+  tip.style.left=x+'px';tip.style.top=y+'px';}
+function hideTip(){document.getElementById('tip').style.display='none';}
+/* ── state ── */
+function openT(id){persistNotes();hideTip();openTrace=id;renderNav();renderTrace();updateProg();}
+function navT(d){var i=-1;ASTER.traces.forEach(function(t,k){if(t.id===openTrace)i=k;});
+  var n=(i+d+ASTER.traces.length)%ASTER.traces.length;openT(ASTER.traces[n].id);}
+function setLab(key,val){labels[key]=val;persistNotes();renderNav();renderTrace();updateProg();}
+function setTrace(tid,val){traceLabels[tid]=val;persistNotes();renderNav();renderTrace();updateProg();}
+function persistNotes(){document.querySelectorAll('input[id^=note-],input[id^=tnote-]').forEach(function(i){if(i.value)noteCache[i.id]=i.value;});}
+function restoreNotes(){for(var id in noteCache){var el=document.getElementById(id);if(el)el.value=noteCache[id];}}
+function updateProg(){
+  var total=0;ASTER.traces.forEach(function(tr){total+=traceVerdictCount(tr);});
+  var done=Object.keys(labels).length;
+  var hc=document.getElementById('herocount');if(hc)hc.textContent=ASTER.traces.length+' sessions · '+total+' judge verdicts to review';
+  var pc=document.getElementById('profcorpus');if(pc)pc.textContent=ASTER.traces.length+' traces';
+  document.getElementById('progtext').textContent=done+'/'+total+' verdicts · '+Object.keys(traceLabels).length+'/'+ASTER.traces.length+' traces';
+  document.getElementById('progfill').style.width=(total?Math.round(done*100/total):0)+'%';
+}
+function buildHandoffMd(){
+  persistNotes();
+  var agree=0,revise=0,refute=0;
+  for(var k in labels){if(labels[k]==='agree')agree++;else if(labels[k]==='revise')revise++;else refute++;}
+  var L=[];
+  L.push(ASTER.handoffHead||'# Calibration Handoff');
+  L.push('**Rulings:** '+Object.keys(labels).length+' verdict rulings ('+agree+' agree · '+revise+' revise · '+refute+' refute) · '
+    +Object.keys(traceLabels).length+'/'+ASTER.traces.length+' trace labels · '+Object.keys(noteCache).length+' notes');
+  L.push('');
+  L.push(ASTER.calibrationMd||'');
+  L.push('## Human ↔ judge disagreement ledger');
+  var any=false;
+  for(var k2 in labels){ if(labels[k2]!=='agree'){any=true; L.push('- `'+k2+'` — judge verdict stands ↔ human ruled **'+labels[k2]+'**'+(noteCache['note-'+k2]?' — "'+noteCache['note-'+k2]+'"':'')); } }
+  if(!any)L.push('- none — no reviewed verdict was revised or refuted in this session');
+  L.push('');
+  L.push('## Trace labels (ground truth for *validate)');
+  L.push('\u0060\u0060\u0060json');L.push(JSON.stringify(traceLabels,null,2));L.push('\u0060\u0060\u0060');
+  L.push('');
+  L.push('## Conflict adjudication');
+  var CF=ASTER.conflicts||[];
+  if(!CF.length)L.push('- none — no cross-layer conflict was detected on this corpus');
+  CF.forEach(function(cf){
+    L.push('- '+cf.trace+' ⚡ '+cf.note+' → '+(labels[cf.key]?('human ruled '+cf.crit+' '+labels[cf.key]):'UNADJUDICATED — re-open in next review'));
+  });
+  L.push('');
+  L.push('### Next steps (in order)');
+  L.push('1. Merge labels.json via mergeLabels → `*validate`');
+  L.push('2. Operator approves/rejects each CAL item above (nothing auto-applies)');
+  L.push('3. `*evaluate` rerun (pinned) — confirm deltas + the conflict ledger clears');
+  return L.join('\n');
+}
+function copyHandoff(){
+  var md=buildHandoffMd();var btn=document.getElementById('copyhandoff');
+  function ok(){btn.classList.add('done');btn.textContent='✓ handoff copied — paste into the session';
+    setTimeout(function(){btn.classList.remove('done');btn.textContent='Copy calibration handoff (markdown)';},2200);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(md).then(ok,function(){fbc(md);});}else{fbc(md);}
+  function fbc(t){var x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();
+    try{document.execCommand('copy');}catch(e){}document.body.removeChild(x);ok();}
+}
+function submitReview(){
+  persistNotes();
+  var agree=0,revise=0,refute=0;
+  for(var k in labels){if(labels[k]==='agree')agree++;else if(labels[k]==='revise')revise++;else refute++;}
+  var nL=Object.keys(labels).length,nT=Object.keys(traceLabels).length,nN=Object.keys(noteCache).length;
+  var rec=ASTER.feedbackRecord||null;
+  var cal=ASTER.calItems||[];
+  var CF=ASTER.conflicts||[];
+  var t=document.getElementById('trailbody');
+  var rows='';
+  /* the trail is an ORDERED sequence, so the step number is content, not chrome.
+     At the label's 11px a circled numeral measures 6.8px — a ring with an
+     unreadable digit (measured against a 6.6px tofu box, i.e. barely wider than
+     nothing). Rendered one size up it reads, and the sequence survives. */
+  function n(g){return '<span style="font-size:15px;vertical-align:-2px">'+g+'</span> ';}
+  /* an inline list of every item does not scale — six near-identical rows made the
+     queue unreadable on a 12-trace corpus. Cap it and DECLARE the cap; the full
+     list always lives in the handoff markdown. */
+  var CAP=4;
+  function capped(list,render){
+    var shown=list.slice(0,CAP).map(render).join(' · ');
+    return list.length>CAP?shown+' — <b>+'+(list.length-CAP)+' more</b> (showing first '+CAP+'; the full list is in the handoff markdown)':shown;
+  }
+  rows+='<div class="trow"><span class="tk">'+n('①')+'record receipt</span><div>'
+    +(rec?('<b>'+rec.id+'</b>'+(rec.store?' appended to '+rec.store+' (append-only)':'')+' — '):'<b>not yet written</b> — no append-only feedback store is configured for this run, so this session is held in the browser only; ')
+    +nL+' verdict rulings ('+agree+' agree · '+revise+' revise · '+refute+' refute) · '+nT+' trace labels · '+nN+' notes</div></div>';
+  rows+='<div class="trow"><span class="tk">'+n('②')+'validation delta</span><div>'
+    +(ASTER.validationDelta||'<b>not computed in this session</b> — TPR/TNR, Rogan-Gladen θ and the bootstrap CI are produced by <b>*validate</b> when it ingests these labels. No delta is shown because none exists yet.')
+    +'</div></div>';
+  rows+='<div class="trow"><span class="tk">'+n('③')+'calibration queue</span><div>'
+    +(cal.length?('<b>'+cal.length+' proposal(s) (operator-gated, nothing auto-applies):</b> '+capped(cal,function(c){return c.title;})):'<b>no calibration proposal is derivable from this run</b> — no abstain and no cross-layer conflict gave a trigger. Your rulings are still recorded.')
+    +'</div></div>';
+  var unadj=CF.filter(function(cf){return !labels[cf.key];}).length;
+  rows+='<div class="trow"><span class="tk">'+n('④')+'conflict adjudication</span><div>'
+    +(CF.length?('<b>'+CF.length+' conflict(s) · '+(CF.length-unadj)+' ruled · '+unadj+' unadjudicated:</b> '
+        +capped(CF,function(cf){return cf.trace+' ⚡ '+(labels[cf.key]?(cf.crit+' '+labels[cf.key]):'unadjudicated');})
+        +' — feeds the conflict ledger (humans resolve, code never does)')
+      :'no cross-layer conflict was detected on this corpus — nothing to adjudicate')
+    +'</div></div>';
+  rows+='<div class="trow"><span class="tk">'+n('⑤')+'exports</span><div><b>labels.json</b> (superset — mergeLabels-compatible → *validate) · <b>review.md</b> (session paste-back)'
+    +(rec&&rec.store?' — written beside the feedback store':'')+'</div></div>';
+  rows+='<div class="trow" style="border-bottom:0"><span class="tk">'+n('⑥')+'formal handoff</span><div>The structured human-vs-judge calibration task — the calibration agent completes it from this document alone.<br><button id="copyhandoff" onclick="copyHandoff()">Copy calibration handoff (markdown)</button></div></div>';
+  t.innerHTML=rows;
+  document.getElementById('trail').classList.add('show');
+  document.getElementById('trail').scrollIntoView({behavior:'smooth'});
+}
+document.addEventListener('keydown',function(e){
+  if(e.target && (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')) return;
+  if(e.key==='ArrowLeft')navT(-1); else if(e.key==='ArrowRight')navT(1);
+  else if(e.key==='1')setTrace(openTrace,'pass'); else if(e.key==='2')setTrace(openTrace,'fail');
+  else if(e.key==='d'||e.key==='D')setTrace(openTrace,'defer');
+});
+function setPlace(v,btn){persistNotes();place=v;vqOn(btn);renderTrace();}
+function setHl(v,btn){persistNotes();hl=v;vqOn(btn);renderTrace();}
+function vqOn(btn){btn.parentElement.querySelectorAll('button').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');}
+renderNav();renderTrace();updateProg();
+(function(){
+  var btn=document.getElementById('fbcopy'),ta=document.getElementById('fbtext');
+  if(!btn||!ta)return;
+  function buildMd(){
+    persistNotes();
+    var lines=['## Feedback — '+(ASTER.feedbackTitle||document.title),'','Artifact: `'+(ASTER.artifactPath||'review-report.html')+'`'];
+    lines.push('','### Review interaction state');
+    lines.push('- verdict rulings: '+Object.keys(labels).length+' set');
+    for(var k in labels){lines.push('  - '+k+' → '+labels[k]);}
+    lines.push('- trace labels: '+JSON.stringify(traceLabels));
+    var noted=false;
+    for(var id in noteCache){if(!noted){lines.push('- notes:');noted=true;}lines.push('  - '+id+': '+noteCache[id]);}
+    lines.push('','### Notes');
+    var note=ta.value.trim();lines.push(note.length?note:'_(no notes entered)_');
+    return lines.join('\n');
+  }
+  function done(){btn.classList.add('done');btn.textContent='Copied ✓';setTimeout(function(){btn.classList.remove('done');btn.textContent='Copy MD';},1800);}
+  btn.addEventListener('click',function(){
+    var md=buildMd();
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(md).then(done,function(){fb(md);});}else{fb(md);}
+    function fb(t){var x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();
+      try{document.execCommand('copy');}catch(e){}document.body.removeChild(x);done();}
+  });
+})();
+</script>
+</body></html>

@@ -4,12 +4,26 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.services.orchestrator import run_agent_workflow
+from app.services import pending_actions
 from app.services.telemetry import telemetry_manager
 
 scheduler = AsyncIOScheduler()
 
 async def execute_scheduled_agent(agent_id: str, user_id: str):
     """Callback for APScheduler to execute the agent."""
+    if pending_actions.has_pending_action(agent_id):
+        # A previous run of this same agent is still waiting on a human
+        # answer — starting a fresh run now would race it: both would try
+        # to create a pending_actions row for the same agent (the DB's
+        # unique index would reject the second one), and whichever answer
+        # arrives first would apply to whichever run is still live, with no
+        # way to tell which. Skip this tick; the next one will try again.
+        await telemetry_manager.send_log(
+            agent_id,
+            "Scheduled execution skipped — a previous run is still waiting on your input.",
+            level="warning",
+        )
+        return
     try:
         await telemetry_manager.send_log(agent_id, "Scheduled execution started.", level="info")
         await run_agent_workflow(agent_id, user_id)

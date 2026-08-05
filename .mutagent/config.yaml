@@ -1,0 +1,30 @@
+config_version: "0.3.0"
+
+global:
+  providers:
+    - name: google
+      credentials_ref: "GEMINI_API_KEY"
+
+  workspace:
+    repo: "SatyaViswas/Vox-Agent"
+    path: "."
+
+  models:
+    default: "gemini-2.5-flash"
+    judge_model: "gemini-2.5-flash"
+
+  targets:
+    - name: "vox-agent-repo"
+      platform: "local-claude"
+      subject: "agent"
+      artifact_format: "code"
+      mode: "local"
+      root: "."
+      apply:
+        kind: "code-pr"
+
+lifecycle:
+  evaluator:
+    judge_runtime: "in-house"
+  diagnostics:
+    apply: "code-pr"

@@ -2,10 +2,11 @@ import asyncio
 import json
 import logging
 import traceback
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Header, Query, BackgroundTasks, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, Literal
-from app.services.orchestrator import run_agent_workflow, resume_agent_workflow, has_paused_run
+from app.services.orchestrator import run_agent_workflow, resume_agent_workflow, reject_paused_run, has_paused_run
+from app.services import pending_actions
 from app.services.telemetry import telemetry_manager
 from app.services.composio_engine import generate_sample_trigger_payload
 from app.services import trigger_engine, telegram_client_engine
@@ -16,17 +17,25 @@ from app.database import supabase
 router = APIRouter(tags=["execution"])
 
 @router.get("/paused")
-async def get_paused_runs():
-    from app.services.orchestrator import _paused_runs
+async def get_paused_runs(x_user_id: Optional[str] = Header(default=None)):
+    # Scoped to the requesting user (via the X-User-Id header the frontend's
+    # api client already sends on every request) — previously this returned
+    # every user's pending items with no filtering at all. Omitting the
+    # header still lists everything, matching the old behavior for any
+    # caller that doesn't send it (e.g. a script/curl).
+    rows = pending_actions.list_pending_actions(user_id=x_user_id)
     return {
-        "status": "success", 
+        "status": "success",
         "paused_runs": {
-            k: {
-                "question": v["question"], 
-                "reconnect_app": v.get("reconnect_app"),
-                "missing_field": v.get("missing_field"),
-                "agent_id": k
-            } for k, v in _paused_runs.items()
+            row["agent_id"]: {
+                "id": row["id"],
+                "question": row["question"],
+                "input_type": row.get("input_type"),
+                "reconnect_app": (row.get("context_snapshot") or {}).get("reconnect_app"),
+                "missing_field": (row.get("context_snapshot") or {}).get("missing_field"),
+                "agent_id": row["agent_id"],
+            }
+            for row in rows
         }
     }
 
@@ -231,6 +240,34 @@ async def resume_agent(agent_id: str, request: ResumeRequest, background_tasks: 
         raise HTTPException(status_code=404, detail="No paused run found for this agent.")
     background_tasks.add_task(resume_agent_workflow, agent_id, request.answer)
     return {"status": "started", "agent_id": agent_id, "message": "Resuming with clarification"}
+
+
+class RejectRequest(BaseModel):
+    reason: Optional[str] = "Rejected by user"
+
+@router.post("/pending-actions/{pending_id}/approve")
+async def approve_pending_action(pending_id: str, background_tasks: BackgroundTasks):
+    """Distinct from the generic /resume — restricted to the sensitive-action
+    approval gate ("confirm" input_type) so approving/rejecting is a typed
+    action rather than a magic answer string piped through the same
+    free-text path (see MutAgent plan Part 3.2)."""
+    pending = pending_actions.get_by_id(pending_id)
+    if not pending or pending.get("status") != "pending":
+        raise HTTPException(status_code=404, detail="No pending action with that id.")
+    if pending.get("input_type") != "confirm":
+        raise HTTPException(status_code=400, detail="This pending action isn't an approval gate — use /resume instead.")
+    background_tasks.add_task(resume_agent_workflow, pending["agent_id"], "Approved")
+    return {"status": "started", "agent_id": pending["agent_id"], "message": "Approved — resuming"}
+
+@router.post("/pending-actions/{pending_id}/reject")
+async def reject_pending_action(pending_id: str, request: RejectRequest, background_tasks: BackgroundTasks):
+    pending = pending_actions.get_by_id(pending_id)
+    if not pending or pending.get("status") != "pending":
+        raise HTTPException(status_code=404, detail="No pending action with that id.")
+    if pending.get("input_type") != "confirm":
+        raise HTTPException(status_code=400, detail="This pending action isn't an approval gate — use /resume instead.")
+    background_tasks.add_task(reject_paused_run, pending["agent_id"], request.reason)
+    return {"status": "started", "agent_id": pending["agent_id"], "message": "Rejected"}
 
 
 class ScheduleUpdateRequest(BaseModel):

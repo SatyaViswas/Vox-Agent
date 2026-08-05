@@ -63,7 +63,10 @@ export default function Landing() {
           >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          <button className="rounded-full border border-slate-300/70 dark:border-white/15 px-4 py-2 text-sm font-medium hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors">
+          <button 
+            onClick={() => navigate("/auth")}
+            className="rounded-full border border-slate-300/70 dark:border-white/15 px-4 py-2 text-sm font-medium hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
+          >
             Sign In
           </button>
         </div>

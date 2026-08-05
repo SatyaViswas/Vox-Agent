@@ -24,6 +24,39 @@ class Settings(BaseSettings):
     # telemetry websocket, e.g. "http://localhost:5173,https://app.example.com".
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 
+    # MutAgent Phase 2 — off by default until validated; when False, every
+    # step runs exactly as it did before MutAgent existed (a single attempt,
+    # no retry). See backend/app/services/mutagent/controller.py.
+    MUTAGENT_ENABLED: bool = False
+    # Total attempts (including the first) for a step whose failure classifies
+    # as transient/rate-limited. 1 effectively disables retrying even if
+    # MUTAGENT_ENABLED is True.
+    MUTAGENT_MAX_RETRY_ATTEMPTS: int = 3
+
+    # MutAgent Phase 4 — the LLM-repair mutator has its own, independent
+    # gate (can stay off even with MUTAGENT_ENABLED=True) since it's the
+    # only mutator with real LLM cost. Uses Groq (already configured in
+    # this project) rather than Gemini, so self-healing's last line of
+    # defense doesn't share a single point of failure with the rest of
+    # the app's LLM calls.
+    MUTAGENT_LLM_REPAIR_ENABLED: bool = False
+    MUTAGENT_REPAIR_MODEL: str = "llama-3.3-70b-versatile"
+    # When True (the default), every mutator beyond plain retry (selector
+    # re-tries, LLM-proposed parameter fixes) only PROPOSES and logs what
+    # it would do, without actually applying it — the original
+    # failure/pause still surfaces normally. Flip to False only once
+    # you've watched shadow-mode logs and trust the proposals.
+    MUTAGENT_SHADOW_MODE: bool = True
+
+    # MutAgent Phase 7 — circuit breaker: after this many consecutive
+    # mutation-exhausted failures for the same (app, action), stop
+    # attempting retries/mutation_memory/selector/LLM-repair on it for
+    # MUTAGENT_CIRCUIT_BREAKER_COOLDOWN_MINUTES, escalating straight to a
+    # human instead of burning latency/LLM cost on a likely-broken
+    # integration every single run.
+    MUTAGENT_CIRCUIT_BREAKER_THRESHOLD: int = 5
+    MUTAGENT_CIRCUIT_BREAKER_COOLDOWN_MINUTES: int = 30
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @property

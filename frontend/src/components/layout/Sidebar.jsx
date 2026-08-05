@@ -1,8 +1,20 @@
-import { NavLink } from "react-router-dom";
-import { ChevronsLeft, ChevronsRight, Sparkles } from "lucide-react";
+import { NavLink, useNavigate } from "react-router-dom";
+import { ChevronsLeft, ChevronsRight, Sparkles, LogOut, LogIn } from "lucide-react";
 import { NAV_ITEMS } from "../../config/nav";
+import { useAuth } from "../../context/AuthContext";
 
 export default function Sidebar({ collapsed, onToggle }) {
+  const { isGuest, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleAuthAction = async () => {
+    if (isGuest) {
+      navigate("/auth");
+    } else {
+      await signOut();
+      navigate("/");
+    }
+  };
   return (
     <aside
       className={`hidden md:flex flex-col shrink-0 h-screen sticky top-0 glass border-r border-slate-200/70 dark:border-white/10 transition-[width] duration-200 ${
@@ -39,6 +51,15 @@ export default function Sidebar({ collapsed, onToggle }) {
           </NavLink>
         ))}
       </nav>
+
+      <button
+        onClick={handleAuthAction}
+        className="flex items-center gap-2 px-4 h-12 border-t border-slate-200/70 dark:border-white/10 text-slate-500 hover:text-brand-500 text-sm transition-colors shrink-0"
+        title={collapsed ? (isGuest ? "Sign In" : "Log Out") : undefined}
+      >
+        {isGuest ? <LogIn size={18} /> : <LogOut size={18} />}
+        {!collapsed && <span>{isGuest ? "Sign In" : "Log Out"}</span>}
+      </button>
 
       <button
         onClick={onToggle}

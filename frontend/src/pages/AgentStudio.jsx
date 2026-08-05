@@ -3,10 +3,20 @@ import { useLocation } from "react-router-dom";
 import { AlertCircle, Loader2, Mic, PlayCircle, Radio, SendHorizontal, Sparkles, Workflow } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
-import { createAgent, executeAgent, getAgentLogs, planWorkflow, resumeAgent, telemetrySocketUrl } from "../api/agents";
+import {
+  approvePendingAction,
+  createAgent,
+  executeAgent,
+  getAgentLogs,
+  getPausedRuns,
+  planWorkflow,
+  rejectPendingAction,
+  resumeAgent,
+  telemetrySocketUrl,
+} from "../api/agents";
 import BlueprintFlow from "../components/studio/BlueprintFlow";
 import DisambiguationPanel, { paramKey } from "../components/studio/DisambiguationPanel";
-import LiveClarificationPanel from "../components/studio/LiveClarificationPanel";
+import PendingActionCard from "../components/studio/PendingActionCard";
 import RequiredAppsGate from "../components/studio/RequiredAppsGate";
 import TelemetryPanel from "../components/studio/TelemetryPanel";
 
@@ -134,6 +144,31 @@ export default function AgentStudio() {
     [stopPolling, closeSocket]
   );
 
+  // Single source of truth for "what does this pause actually look like" —
+  // GET /paused (scoped to the current user, see execution.py) already has
+  // the pending action's real id and typed input_type; both the WS event
+  // and the poll fallback below just trigger this rather than each
+  // building their own partial liveClarification shape from whatever
+  // fields happened to be in their own payload.
+  const fetchAndSetLiveClarification = useCallback(async (id) => {
+    try {
+      const data = await getPausedRuns();
+      const entry = data?.paused_runs?.[id];
+      if (entry) {
+        setResumeError(null);
+        setLiveClarification({
+          id: entry.id,
+          question: entry.question,
+          reconnectApp: entry.reconnect_app,
+          inputType: entry.input_type,
+        });
+      }
+    } catch {
+      // Transient fetch error — whatever detection path triggered this call
+      // (WS event or poll) will likely fire again shortly.
+    }
+  }, []);
+
   const openSocket = useCallback(
     (id) => {
       try {
@@ -146,9 +181,23 @@ export default function AgentStudio() {
             const data = JSON.parse(event.data);
             appendLog({ level: data.level, message: data.message, screenshotUrl: data.screenshot_url });
             applyStatusFromMessage(data.message);
-            if (data.data?.type === "clarification_needed") {
-              setResumeError(null);
-              setLiveClarification({ step: data.data.step, question: data.data.question, reconnectApp: data.data.reconnect_app });
+            const eventType = data.data?.type;
+            if (eventType === "clarification_needed") {
+              fetchAndSetLiveClarification(id);
+            } else if (
+              eventType === "mutation_attempt" ||
+              eventType === "mutation_memory_applied" ||
+              eventType === "mutation_shadow"
+            ) {
+              // MutAgent retrying/mutating a step on its own (Phases 2-4) —
+              // show it distinctly from plain "Executing" so it's visible
+              // rather than silent; the next normal log line
+              // (Step N completed/failed/needs clarification) overwrites
+              // this via applyStatusFromMessage once it resolves.
+              const step = data.data?.step;
+              if (step != null) {
+                setStepStatuses((prev) => ({ ...prev, [step]: "mutating" }));
+              }
             }
           } catch {
             // ignore malformed frame
@@ -185,7 +234,7 @@ export default function AgentStudio() {
         // WebSocket unsupported/unreachable — REST polling is the fallback
       }
     },
-    [appendLog, applyStatusFromMessage]
+    [appendLog, applyStatusFromMessage, fetchAndSetLiveClarification]
   );
 
   const connectTelemetrySocket = useCallback(
@@ -220,12 +269,15 @@ export default function AgentStudio() {
           });
 
           if (latest.status === "needs_input") {
-            // The WS clarification_needed event already surfaces this — polling
-            // just needs to stop hammering the run so it doesn't get overwritten
-            // as "failed" while we're waiting on the user's answer.
-            const pausedEntry = (latest.log_messages || []).find((e) => e.result?.status === "needs_input");
+            // The WS clarification_needed event usually surfaces this first;
+            // either way, fetchAndSetLiveClarification pulls the
+            // authoritative, fully-typed pause from GET /paused rather than
+            // building a partial shape from this log row (which only ever
+            // has {status, question} — no id/input_type to drive
+            // PendingActionCard's typed rendering or the approve/reject
+            // endpoints).
             setRunStatus("needs_input");
-            setLiveClarification((prev) => prev || { step: pausedEntry?.step, question: pausedEntry?.result?.question });
+            fetchAndSetLiveClarification(id);
             stopPolling();
             return;
           }
@@ -244,7 +296,7 @@ export default function AgentStudio() {
         }
       }, POLL_INTERVAL_MS);
     },
-    [appendLog, stopPolling, closeSocket]
+    [appendLog, stopPolling, closeSocket, fetchAndSetLiveClarification]
   );
 
   const handleGenerate = useCallback(
@@ -408,6 +460,42 @@ export default function AgentStudio() {
     }
   };
 
+  // Approve/Reject are typed actions against the pending action's own id
+  // (POST /pending-actions/{id}/approve|reject) rather than free text piped
+  // through /resume — rejecting genuinely halts/skips the step server-side
+  // instead of being treated as if it were an answer.
+  const handleApprove = async () => {
+    if (!liveClarification?.id) return;
+    setResuming(true);
+    setResumeError(null);
+    try {
+      await approvePendingAction(liveClarification.id);
+      setLiveClarification(null);
+      setRunStatus("running");
+      startPolling(agentId);
+    } catch (err) {
+      setResumeError(err.message || "Failed to approve.");
+    } finally {
+      setResuming(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!liveClarification?.id) return;
+    setResuming(true);
+    setResumeError(null);
+    try {
+      await rejectPendingAction(liveClarification.id, "Rejected by user");
+      setLiveClarification(null);
+      setRunStatus("running");
+      startPolling(agentId);
+    } catch (err) {
+      setResumeError(err.message || "Failed to reject.");
+    } finally {
+      setResuming(false);
+    }
+  };
+
   const isRunning =
     runStatus === "saving" || runStatus === "starting" || runStatus === "running" || runStatus === "needs_input";
   const runButtonLabel =
@@ -497,12 +585,14 @@ export default function AgentStudio() {
       )}
 
       {liveClarification && (
-        <LiveClarificationPanel
+        <PendingActionCard
           question={liveClarification.question}
-          step={liveClarification.step}
+          inputType={liveClarification.inputType}
           reconnectApp={liveClarification.reconnectApp}
           onResume={handleResume}
-          resuming={resuming}
+          onApprove={handleApprove}
+          onReject={handleReject}
+          busy={resuming}
           error={resumeError}
         />
       )}

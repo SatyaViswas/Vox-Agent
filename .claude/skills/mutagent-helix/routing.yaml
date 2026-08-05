@@ -1,0 +1,461 @@
+# =============================================================================
+# MutagenT ADL Orchestrator — NL intent routing map
+# =============================================================================
+# Data-driven free-text → *command routing. Self-contained: this file is the
+# canonical map; each command in orchestrator.md ALSO carries its own `intents:`
+# as a fallback. Standalone — NO Architech coupling (no shortcut-resolver,
+# no @shortcut). The orchestrator reads this on activation (STEP 3).
+#
+# How routing works (see orchestrator.md → nl-routing.precedence):
+#   1. Exact *command (leading `*`): OWNED (stage/local) → fire; FORWARD-INTENT
+#      (see `forward_intents` below) → forward verbatim to the owning skill (gate first).
+#   2. Free text matches an utterance here (owned OR forward-intent) → route there.
+#   3. No match here → fall back to inline `intents:` on each command.
+#   4. Tie / ambiguous → ask the operator (parent session — interaction allowed).
+#   5. Nothing matches → show *help and ask for intent. Never guess a gated stage.
+# =============================================================================
+
+version: "0.1.0"
+match:
+  strategy: highest-confidence       # pick the command whose utterances best match the free text
+  case_sensitive: false
+  on_tie: ask-operator               # surface an AskUserQuestion-style choice on the parent session
+  on_no_match: show-help             # render the dashboard, ask for intent; never auto-fire a gated stage
+
+# -----------------------------------------------------------------------------
+# command → { route_target, stage, mode (interactive|batch), gated, visibility,
+#             utterances }
+#
+# `visibility` (§9.4.6, LOCKED 2026-06-24) is the SINGLE SOURCE OF TRUTH for the
+# dashboard roster. scripts/render-roster.ts GENERATES the roster from these
+# flags (like *sync generates the SYSTEM panel) and a test asserts
+# roster == routing-visibility, so `*spec`-style drift cannot recur:
+#   - shown    → rendered in the visible roster (intent-level lifecycle + setup).
+#   - glimpse  → rendered under "Evaluator (glimpse)" (evaluator branches, NOT
+#                standalone ADL stages).
+#   - internal → HIDDEN from the roster but STILL INVOCABLE by name (routing
+#                resolution is unaffected by visibility — display-only flag).
+# -----------------------------------------------------------------------------
+commands:
+
+  sync:
+    route_target: orchestrator-internal      # exploration + reads each <skill>/CLAUDE.md
+    stage: INDEX
+    mode: interactive
+    gated: false
+    visibility: shown
+    utterances:
+      - "sync"
+      - "index the system"
+      - "index skills"
+      - "index agents"
+      - "what skills do we have"
+      - "what agents do we have"
+      - "explore the topology"
+      - "map the system"
+      - "refresh the map"
+      - "scan the platform"
+      - "show me what's installed"
+      - "rebuild the index"
+
+  spec:
+    route_target: mutagent-agentspec
+    stage: "① SPEC"
+    mode: interactive                          # the *spec interview runs on the parent session (AskUserQuestion is parent-only)
+    gated: false                               # spec gathering is read/author-only — no apply
+    visibility: shown                          # ① SPEC — intent-level lifecycle entry (was 0× in the roster — the drift bug §9.4.6 fixes)
+    utterances:
+      - "spec"
+      - "specify the agent"
+      - "plan a new agent"
+      - "define an agent"
+      - "new agent spec"
+      - "design a new agent"
+      - "write an agent spec"
+
+  amend-spec:
+    route_target: mutagent-agentspec           # SPEC owns the spec ARTIFACT (create AND amend)
+    stage: "① SPEC (amend)"
+    mode: interactive                          # the *spec interview, starting from the EXISTING spec
+    gated: false                               # spec gathering is read/author-only (mirrors `spec`)
+    visibility: internal                       # not a lifecycle headline — invocable by name
+    utterances:
+      - "update the agent spec"
+      - "update the agent definition"
+      - "update the skill spec"
+      - "update the skill definition"
+      - "amend the agent spec"
+      - "amend the agent definition"
+      - "revise the agentspec"
+      - "change what this agent does"
+      - "change how this agent behaves"
+      - "the agent's definition needs to change"
+      - "the skill's spec needs to change"
+
+  build:
+    route_target: mutagent-builder
+    stage: "② BUILD"
+    mode: batch
+    gated: true
+    visibility: shown
+    utterances:
+      - "build"
+      - "implement the spec"
+      - "build the agent"
+      - "scaffold the agent"
+      - "turn this spec into code"
+      - "run the build stage"
+      - "generate the implementation"
+
+  sync-spec:
+    route_target: mutagent-agentspec             # SPEC owns the entry (moved from builder) — it owns the spec ARTIFACT
+    stage: "① SPEC (sync · delegates → ai-architect)"
+    mode: batch
+    gated: true
+    visibility: internal                       # not a lifecycle headline — a spec-lifecycle op, still invocable by name
+    # The canonical single spec-reconcile (fuses the former *spec-sync + *spec-from-impl). Cold
+    # (no spec → construct) AND warm (spec exists → reconcile drift) are ONE op — reverse-generate
+    # is just drift-from-nothing. AgentSpec owns the entry but NEVER reads code: it delegates the
+    # target-read to builder's ai-architect #sync-spec (Helix-mediated HandoverBundle, kind:agent),
+    # then *validate-spec-gates + owns the result.
+    utterances:
+      - "spec sync"
+      - "sync the spec"
+      - "resync agentspec"
+      - "code drifted from spec"
+      - "derive spec from code"
+      - "brownfield spec sync"
+      - "no agentspec exists"
+      - "spec from impl"                        # folded from the former *spec-from-impl
+      - "reverse-generate a spec"
+      - "adopt an existing agent"
+      - "spec an existing implementation"
+
+  evaluate:
+    route_target: mutagent-evaluator
+    stage: "③ EVALUATE"
+    mode: batch
+    gated: false
+    visibility: shown                          # ③ EVALUATE — headline path (most important)
+    utterances:
+      - "evaluate"
+      - "evaluate this skill"
+      - "evaluate the agent"
+      - "evaluate this agent"
+      - "run the evals"
+      - "run evaluation"
+      - "is it passing"
+      - "did it pass"
+      - "score this skill"
+      - "score this agent"
+      - "did the session reach its goal"
+      - "success or failure"
+      - "judge this"
+
+  audit:
+    route_target: mutagent-evaluator          # the evaluator's *audit surface — EXPLICIT-ONLY
+    # NEVER the default for a bare "evaluate skill/agent" ask — that is `evaluate` (the Judge). *audit
+    # is invoked by name, mainly for complex agents/skills that emit HTML artifacts (EV-039/040).
+    stage: "③ EVALUATE (audit sibling)"
+    mode: batch
+    gated: false
+    visibility: internal                       # data-leak/context-flow/UI audit — internal (was wrongly SHOWN in the Lifecycle; §9.4.6 moves it out). STILL invocable by name.
+    utterances:
+      - "audit"
+      - "audit this skill"
+      - "audit the agent"
+      - "check for data leaks"
+      - "data leak audit"
+      - "context-flow audit"
+      - "context flow check"
+      - "ui faithfulness check"
+      - "is anything computed but not rendered"
+      - "contract boundary check"
+      - "data correctness check"
+
+  diagnose:
+    route_target: mutagent-diagnostics
+    stage: "④ DIAGNOSE"
+    mode: batch
+    gated: true                                # the OPTIMIZE (apply) step downstream is gated
+    visibility: shown                          # ④ DIAGNOSE (⑤ OPTIMIZE = gated apply downstream, noted in the roster)
+    utterances:
+      - "diagnose"
+      - "diagnose the failures"
+      - "diagnose this"
+      - "root cause this"
+      - "root cause analysis"
+      - "why did it fail"
+      - "why is it failing"
+      - "rca"
+      - "causal chain"
+      - "causal chain breakdown"
+      - "what's the fix"
+      - "what are the remedies"
+
+  # ⑤ OPTIMIZE — the closed, bounded eval-driven optimize loop. SINGLE owner:
+  # mutagent-optimize (DC-6, resolves KP-O1's split-brain). optimize conducts the
+  # loop and owns the apply-gate; it DELEGATES the WRITE to ② builder, the JUDGE to
+  # ③ evaluator, the RCA to ④ diagnostics, and the TRANSPORT to `mutagent-cli apply`.
+  # Routing stage is Optimize (the two-enum split — DIFFERENT stage, its own owner).
+  # A draft needs no target; APPLY is gated (target floor + approval floor at apply).
+  # visibility:internal — the roster surfaces ⑤ OPTIMIZE via the gated-apply note under
+  # *diagnose; *optimize/*optimize STILL route when typed by name.
+  optimize:
+    route_target: mutagent-optimize
+    aliases: ["improve"]
+    stage: "⑤ OPTIMIZE"
+    mode: batch
+    gated: true                                # apply is approval-gated (draft gates at apply via the target floor)
+    visibility: internal                       # rendered via the ⑤ OPTIMIZE note under *diagnose; still invocable by name
+    utterances:
+      - "improve"
+      - "optimize"
+      - "optimize this agent"
+      - "optimize this skill"
+      - "run the improve loop"
+      - "run the optimize loop"
+      - "apply the fix"
+      - "apply the remedy"
+      - "ship the remedy"
+      - "make the change"
+      - "next iteration"
+      - "loop back to build"
+      - "make it better"
+      - "keep improving"
+
+  # ── ⑥ SHIP (ship PRD §1.4) — the gated ship stage. Owned by the FUTURE `mutagent-ship`
+  #    skill (scaffolded at P1); at the orchestrator layer `*ship` is an operator-only
+  #    ROUTE — INV-SHIP-1 makes a non-operator dispatch (a trigger, a chained stage-advance,
+  #    an agent, a script) structurally REFUSED (`invocation: operator-only`, enforced in
+  #    gate.ts). The spine (entry gate → manifest → PR → merge gate) lives in the skill;
+  #    the orchestrator does not deploy anything (INV-SHIP-2). `*ship-status` is a read;
+  #    `*rollback` is a gated act-on-recommendation (danger-zone, invocable by name only).
+  ship:
+    route_target: mutagent-ship                # FUTURE skill (P1 scaffold); orchestrator stays router-not-executor
+    stage: "⑥ SHIP"
+    mode: batch                                # BG ship-monitor; parent stays interactive for gates
+    invocation: operator-only                  # INV-SHIP-1 — router REFUSES any non-operator dispatch (no trigger/chain/agent may launch *ship)
+    gated: true                                # merge + refinement pushes are approval-floored
+    visibility: shown                          # ⑥ SHIP — a headline lifecycle stage
+    utterances:
+      - "ship"
+      - "ship it"
+      - "ship the agent"
+      - "open the ship pr"
+      - "release this skill"
+      - "deploy the agent"
+      - "take it to production"
+      - "merge and watch"
+  ship-status:
+    route_target: mutagent-ship
+    stage: "⑥ SHIP (read)"
+    mode: interactive
+    gated: false                               # pure read
+    visibility: internal                       # surfaced via the *ship continuation note; invocable by name
+    utterances:
+      - "ship status"
+      - "how's the ship"
+      - "is ci green"
+      - "watch window status"
+      - "did the deploy regress"
+      - "show the ship runs"
+  rollback:
+    route_target: mutagent-ship
+    stage: "⑥ SHIP (rollback · gated)"
+    mode: interactive                          # the gate IS the interaction
+    invocation: operator-only                  # INV-SHIP-1/INV-SHIP-5 — a destructive act, operator-only, never automatic
+    gated: true
+    visibility: internal                       # danger-zone command — invocable by name, never a roster headline
+    utterances:
+      - "rollback"
+      - "roll back the ship"
+      - "revert the deploy"
+      - "undo the ship"
+      - "act on the rollback recommendation"
+
+  status:
+    route_target: orchestrator-internal
+    stage: STATE
+    mode: interactive
+    gated: false
+    visibility: shown
+    utterances:
+      - "status"
+      - "where are we"
+      - "what's the current state"
+      - "current state"
+      - "show the lifecycle"
+      - "lifecycle state"
+      - "what's pending"
+      - "what is pending"
+      - "last verdict"
+      - "show state"
+
+  onboard:
+    route_target: orchestrator-internal        # + delegates each skill's minimal standalone onboarding
+    stage: SETUP
+    mode: interactive
+    gated: true                                # CLI install is always approval-gated
+    visibility: shown                          # rendered as "*onboard … (alias *config)"
+    aliases: ["config"]
+    utterances:
+      - "onboard"
+      - "onboarding"
+      - "config"
+      - "configure"
+      - "set up"
+      - "setup"
+      - "set me up"
+      - "pick my models"
+      - "choose models"
+      - "which eval framework"
+      - "set the source platform"
+      - "set observability"
+      - "credentials"
+      - "provider keys"
+
+  help:
+    route_target: orchestrator-internal
+    stage: META
+    mode: interactive
+    gated: false
+    visibility: shown
+    utterances:
+      - "help"
+      - "what can you do"
+      - "commands"
+      - "menu"
+      - "show the dashboard"
+      - "dashboard"
+      - "options"
+
+  # ── *dogfood — HIDDEN observe surface (maintainer-only). Live-monitors a DOGFOOD-TARGET
+  #    session (config.dogfood.source_dir — a SEPARATE project from where you build), vacuums
+  #    user feedback → actionable+rationale, and renders a live HTML status report (5m + on-drift).
+  #    Spawns the `dogfood-monitor` system agent. Internal: never in the roster, still invocable.
+  dogfood:
+    route_target: orchestrator-internal
+    stage: OBSERVE
+    mode: batch                                # spawns a BG monitor agent; the tail-loop runs off the parent context
+    gated: false                               # read-only observation of an EXISTING session — no apply
+    visibility: internal                       # maintainer-only — hidden from the roster, invocable by name
+    utterances:
+      - "dogfood"
+      - "dogfood the session"
+      - "watch the session"
+      - "collect feedback"
+      - "vacuum feedback"
+      - "live monitor feedback"
+  dogfood-stop:
+    route_target: orchestrator-internal
+    stage: OBSERVE
+    mode: interactive
+    gated: false
+    visibility: internal                       # terminator for a running *dogfood loop
+    utterances:
+      - "dogfood stop"
+      - "stop dogfood"
+      - "stop watching the session"
+      - "stop feedback collection"
+
+  # ── *monitor — the EXTERNAL Monitor (EXT-1). OUTWARD: arms a watch on the dormant
+  #    `config.triggers` (evaluate/diagnose rules). On a match → emits a HandoverBundle
+  #    to the target stage (via the orchestrator dispatch model, same as *discover) AND
+  #    posts a discrete Slack NOTIFICATION (monitor/slack-notify). Ships DISABLED — no
+  #    auto-fire until `triggers.<stage>.enabled:true`. Spawns the `monitor` system agent.
+  #    Internal: never in the roster, still invocable by name. Distinct from *dogfood
+  #    (inward self-observation of a live session).
+  monitor:
+    route_target: orchestrator-internal
+    stage: OBSERVE
+    mode: batch                                # spawns a BG monitor agent; the watch runs off the parent context
+    gated: false                               # arming a read-only watch — no apply (the routed stage gates separately)
+    visibility: internal                       # maintainer/system observe surface — hidden from the roster, invocable by name
+    utterances:
+      - "monitor"
+      - "arm the monitor"
+      - "watch the triggers"
+      - "external monitor"
+      - "start monitoring"
+      - "watch for new traces"
+      - "monitor the system"
+  monitor-stop:
+    route_target: orchestrator-internal
+    stage: OBSERVE
+    mode: interactive
+    gated: false
+    visibility: internal                       # terminator for a running *monitor watch
+    utterances:
+      - "monitor stop"
+      - "stop the monitor"
+      - "disarm the monitor"
+      - "stop monitoring"
+
+# -----------------------------------------------------------------------------
+# FORWARD-INTENTS — sub-commands OWNED BY A SKILL, not the orchestrator.
+# The orchestrator RECOGNIZES them, applies the inherited stage gate, then
+# FORWARDS the *command verbatim to the owning skill (which resolves it via its
+# own resolution contract). Router-not-executor: the orchestrator never runs the
+# inner work. Eval-derivation + dataset-extraction both ORIGINATE in
+# mutagent-evaluator, so they forward there — giving the operator ONE NL entry
+# surface (reach *discover etc. from the Helix dashboard, no skill pre-invoke).
+# -----------------------------------------------------------------------------
+forward_intents:
+  # ── owner: mutagent-evaluator — eval-derivation + dataset extraction ──────────
+  - owning_skill: mutagent-evaluator
+    inherits_gate_from: evaluate          # source-stage onboarding floor (these read traces)
+    stage: "③ EVALUATE (skill-internal)"
+    commands:
+      discover-evals:
+        visibility: glimpse                 # evaluator branch (routes to evaluator) — mine emergent criteria FROM the discovered traces
+        operationIntent: evals              # PURPOSED — builds a TraceQuery with operationIntent "evals" (fetch→select→classify curated handoff)
+        utterances: ["discover evals", "discover criteria", "mine criteria", "derive criteria", "extract evals", "what should we evaluate", "find the criteria"]
+      build-evals:
+        visibility: glimpse                 # evaluator branch — GUIDED HITL build (like build-dataset); `--auto` = direct build from spec + eval-platform. Do NOT mix modes (OPS-CHECK).
+        utterances: ["build evals", "build the evals", "build judges", "make a judge", "judge per criterion"]
+      validate:
+        visibility: internal                # hidden for now (still invocable by name)
+        utterances: ["validate", "validate the judge", "calibrate the judge", "tpr tnr", "is the judge trustworthy"]
+      review:
+        visibility: internal                # hidden for now (still invocable by name)
+        utterances: ["review", "label traces", "human label", "annotation ui", "open the review ui"]
+      build-dataset:
+        visibility: glimpse
+        utterances: ["build dataset", "build a dataset", "synthesize dataset", "synthesize cases", "generate test cases"]
+      discover-dataset:
+        visibility: glimpse                 # evaluator branch (routes to evaluator) — distill a scenario-balanced dataset FROM discovered traces (re-fronts derive-dataset)
+        operationIntent: dataset            # PURPOSED — builds a TraceQuery with operationIntent "dataset" (edge-cases first, scenario-balanced)
+        utterances: ["discover dataset", "dataset from traces", "derive dataset", "distill", "distill dataset", "regression set", "held-out set", "distill from traces"]
+
+  # ── owner: mutagent-simulatte — INTERNAL SimuLatte simulation suite (ADL v3, V3-4) ──
+  # *simulate runs a Strategic Loop / atom from the internal verification suite.
+  # visibility: internal — NEVER in the roster (the skill is never published),
+  # STILL invocable by name (routing resolution is unaffected by visibility).
+  - owning_skill: mutagent-simulatte
+    inherits_gate_from: evaluate          # sim loops consume staged trace fixtures → same source-stage onboarding floor as evaluate
+    stage: "SIM (internal system-integrity verification)"
+    commands:
+      simulate:
+        visibility: internal                # hidden from the roster; the internal-loop niche (goalify successor)
+        utterances: ["simulate", "simulatte", "run the simulation", "run the sim suite", "simulate SL-4", "run loop SL-4", "run an integrity loop", "verify system integrity", "run the simulation suite"]
+
+  # ── owner: discovery SYSTEM AGENT — intent-aware trace collection ──────────────
+  # *discover is a real DISPATCH route in scripts/dispatch.ts (route_target "discovery",
+  # a kind:agent subject at mutagent-orchestrator/assets/agents/discovery.md, indexed by
+  # *sync). It reads TraceQuery.operationIntent: `fetch` (DEFAULT — generic collect/list/
+  # monitor, no select/classify) | `evals`/`dataset` (fetch→select→classify→curated). The
+  # purposed handoffs feed *discover-evals / *discover-dataset (evaluator, above). TWO-ENUM
+  # SPLIT: the route carries the frozen routing AdlStage `diagnose` (default downstream
+  # consumer) — NOT a new "collect" enum member (see dispatch.ts). `*collect-traces` = alias.
+  - owning_skill: discovery
+    inherits_gate_from: diagnose          # collection reads a source → same onboarding floor as diagnose
+    stage: "④ trace collection (system agent)"
+    commands:
+      discover:
+        visibility: shown                   # the *discover headline — generic trace collection (fetch/list/monitor)
+        operationIntent: fetch              # GENERIC (DEFAULT) — builds a TraceQuery with operationIntent "fetch" (collect/list/monitor; NO select/classify, zero LLM)
+        utterances: ["discover", "discover traces", "fetch traces", "collect traces", "list traces", "grab traces", "how many traces", "traces in the last 24h", "monitor traces", "pull the traces"]
+      collect-traces:
+        visibility: internal                # internal ALIAS of *discover (dispatches the discovery agent). STILL invocable.
+        utterances: ["collect-traces", "gather traces", "pre-fetch traces", "fetch traces for diagnosis", "gather traces for evaluation"]

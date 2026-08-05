@@ -16,7 +16,15 @@ async def execute_http_webhook(url: str, method: str = "POST", headers: dict = N
                 data = response.json()
             except Exception:
                 data = response.text
-                
+
+            if response.status_code >= 400:
+                return {
+                    "status": "error",
+                    "response_code": response.status_code,
+                    "error": f"Webhook returned HTTP {response.status_code}",
+                    "data": data,
+                }
+
             return {
                 "status": "success",
                 "response_code": response.status_code,

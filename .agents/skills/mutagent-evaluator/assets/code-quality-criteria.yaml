@@ -1,0 +1,75 @@
+# code-quality-criteria.yaml — the CODE-QUALITY rubric (⑤ OPTIMIZE code-target BOTH-gate, W2I1)
+# ═══════════════════════════════════════════════════════════════════════════════
+# THIS FILE IS THE RUBRIC. Edit it to tune what "code quality-pass" means — no code
+# change, no release. `scripts/code-quality-verdict.ts` loads it at import time and
+# exports it as DEFAULT_CODE_QUALITY_CRITERIA.
+#
+# WHAT IT GATES: for a subject whose medium is `code`, "converged" = the subject's OWN
+# test suite green (deterministic) AND this rubric PASSes. Neither alone converges.
+# Prompt/markdown subjects never touch this file — they converge on evals alone.
+#
+# AGGREGATION (severity-gated): a `fail` OR `uncertain` on any `critical`/`high`
+# criterion BLOCKS the quality-pass. `medium` is advisory (recorded, never blocking).
+#
+# EDITING RULES:
+#   - `id` is a byte-identity key + report anchor. Changing an id breaks historical
+#     comparison — add a new criterion instead of renaming an old one.
+#   - Every criterion must be BINARY (decidable pass/fail), never a Likert score.
+#   - `severity` must be exactly one of: critical | high | medium.
+#   - Keep passDefinition/failDefinition CONCRETE — the judge must not have to guess.
+#   - Bump `version` on any change to this file.
+#
+# STATUS: the picks below are the conservative, subject-agnostic starting set
+# (FLAGGED-for-operator-sign-off, Wave-2 W2I1) — a default, not a final contract.
+
+version: 1
+
+criteria:
+  - id: Q1-spec-faithful
+    statement: The implementation realizes the agentspec definition the amend targeted.
+    passDefinition: >-
+      PASS: every spec-declared tool / job-to-be-done is present and the operative
+      system_prompt is unchanged except where the amend intended; the def→impl cascade held.
+    failDefinition: >-
+      FAIL: a spec-declared tool or JTBD is missing, or the system_prompt was altered
+      beyond the amend intent (the impl forked from the SSoT).
+    severity: critical
+
+  - id: Q2-addresses-diagnosis
+    statement: The change targets the diagnosed root-cause locus, not an adjacent symptom.
+    passDefinition: >-
+      PASS: the edit is at (or directly causes a fix at) the RCA-named locus / the
+      failing-case root.
+    failDefinition: >-
+      FAIL: the change edits an unrelated place or patches a symptom while the root
+      cause remains.
+    severity: high
+
+  - id: Q3-no-regression
+    statement: The change introduces no unrelated regression and stays in scope.
+    passDefinition: >-
+      PASS: only the remedy-named surface changed; no unrelated behavior was removed
+      or broken.
+    failDefinition: >-
+      FAIL: unrelated code was changed/removed, or a previously-working path was broken.
+    severity: high
+
+  - id: Q4-error-handling
+    statement: Failure paths are handled, not silently dropped.
+    passDefinition: >-
+      PASS: error/failure branches surface, recover, or log per the subject's contract;
+      no new silent drop.
+    failDefinition: >-
+      FAIL: a failure is swallowed with no recovery/notify/observability (a silent-drop
+      regression).
+    severity: high
+
+  - id: Q5-maintainable
+    statement: The code is readable, framework-idiomatic, and free of obvious footguns.
+    passDefinition: >-
+      PASS: clear structure, idiomatic to the target framework, no dead code /
+      copy-paste / obvious footgun introduced.
+    failDefinition: >-
+      FAIL: unreadable/duplicated/dead code or an obvious maintainability footgun was
+      introduced.
+    severity: medium

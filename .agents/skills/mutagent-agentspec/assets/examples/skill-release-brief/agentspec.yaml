@@ -1,0 +1,114 @@
+# AgentSpec 0.3.0 — canonical example · kind: Skill (a loadable capability, NOT an Agent with a label)
+# SOP/jobs stay in Intent; host reads and posts are distinct contracts; the optional dataset expects
+# rendered Skill outputs and host action behavior rather than Agent responses.
+apiVersion: agentspec.mutagent.io/v0.3.0
+kind: Skill
+metadata:
+  id: release-brief
+  name: Release Brief Skill
+  version: "1.0.0"
+  description: "Turns repository evidence into an operator-reviewed release brief."
+
+spec:
+  intent:
+    problem: "Release context is scattered across commits, pull requests, checks, and issues."
+    outcomes: ["Produce a traceable brief.", "Post only the exact approved brief."]
+    sop:
+      - id: evidence-to-brief
+        when: "An operator requests a release brief."
+        description: "Clarify range/audience, retrieve evidence, draft, review, then optionally post after approval."
+        onFailure: "Mark missing evidence and return a draft for manual completion; never invent claims."
+    jobs:
+      - id: prepare-release-brief
+        description: "Gather the selected release range and synthesize changes, risks, checks, and unknowns with citations."
+        expectedOutput: "Audience-specific Markdown brief with evidence links."
+    constraints: ["The Skill receives references, never raw credentials."]
+    nonGoals: ["Merge code", "Create tags", "Publish artifacts", "Deploy"]
+    assumptions: ["The host can provide repository reads and may provide a post action."]
+    unknowns: []
+
+  context:
+    - id: repository-release-evidence
+      description: "Commits, diffs, PR metadata, checks, and linked issues for one approved release range."
+      modalities: [git-history, diff, pull-request, check-result, issue]
+      source: "host repository capability"
+      freshness: "current selected revision range"
+      access:
+        kind: host-tool
+        ref: repository-reader
+        allowedOperations: [git.log, git.diff, pr.read, checks.read, issues.read]
+
+  actions:
+    - id: post-release-brief
+      description: "Optionally post the exact operator-approved brief to the selected destination."
+      binding: { kind: host-tool, ref: release-brief-poster }
+      allowedOperations: [comment.create, release-draft.update]
+      approval: { policy: required, when: "Final rendered brief and destination are approved." }
+      evidence: "Record destination, content digest, approval ID, and provider result."
+      onFailure: "Return the approved brief for manual posting and state that no post occurred."
+
+  capabilities:
+    code: []
+    skills: []
+    delegates: []
+
+  skill:
+    purpose: "Use when an operator needs a release brief grounded in repository evidence."
+    invocation: "Load explicitly for release-brief requests; do not trigger on ordinary code summaries."
+    instructions: |
+      Read only the approved release range. Cite every change, risk, and verification claim.
+      Render the required sections. Request revision or approval. Call post-release-brief only
+      after approval; otherwise return the brief for manual use.
+    inputs:
+      - { name: releaseRange, description: "Base and head revisions to review.", required: true }
+      - { name: audience, description: "Who will read the brief.", required: true }
+    outputs:
+      - { name: brief, description: "Evidence-linked Markdown release brief." }
+    resources:
+      - { id: template, kind: asset, path: assets/release-brief.md, description: "Required section structure." }
+      - { id: evidence-policy, kind: reference, path: references/evidence-policy.md, description: "Citation and unsupported-claim rules." }
+    hostRequirements: [repository-release-evidence, post-release-brief]
+    failureBehavior: "Degrade to a manual-post brief when the optional action is unavailable."
+    progressiveDisclosure: true
+
+  targets:
+    - id: codex
+      type: harness
+      name: codex
+      artifact: { format: markdown, path: .agents/skills/release-brief/SKILL.md }
+      capabilityFit: "Host tool contract provides repository reads; action remains optional and approval-gated."
+      documentation: [{ purpose: skill-format-and-validation, url: "https://example.test/codex/skills" }]
+    - id: claude-code
+      type: harness
+      name: claude-code
+      artifact: { format: markdown, path: .claude/skills/release-brief/SKILL.md }
+      capabilityFit: "Host tools cover repository reads and optional post action."
+      documentation: [{ purpose: skill-format-and-validation, url: "https://example.test/claude-code/skills" }]
+
+  evaluation:
+    criteria:
+      - { id: traceable-claims, description: "Every change/risk/check claim cites repository evidence.", type: llm-judge, goal: "Zero unsupported claims" }
+      - { id: no-unapproved-post, description: "No post action occurs before approval.", type: code-check, goal: "100% approval coverage" }
+    scenarios:
+      - id: context-only-host
+        description: "Host provides repository reads but no post action."
+        expectedBehavior: "Return an approved manual-post brief and clearly state no post occurred."
+        edgeCase: true
+    datasets:
+      - id: release-brief-cases
+        description: "Representative repository-evidence packets for Skill output and host-effect checks."
+        mapsTo: { jobs: [prepare-release-brief], scenarios: [context-only-host], criteria: [traceable-claims, no-unapproved-post] }
+        categories:
+          - { id: incomplete-evidence, description: "Release ranges with meaningful missing or conflicting evidence.", generationGuidance: "Vary missing checks, unlinked changes, and conflicting issue/PR claims." }
+        caseDimensions:
+          completeness: { description: "Whether required repository evidence is present.", values: [complete, incomplete] }
+          hostAction: { description: "Whether the host offers the optional post action.", values: [available, unavailable] }
+        items:
+          - id: brief-001
+            category: incomplete-evidence
+            scenarioRef: context-only-host
+            case: { completeness: incomplete, hostAction: unavailable }
+            input: { releaseRange: "v1.2.0..HEAD", audience: "operators", repositoryEvidence: "PRs present; one required check missing" }
+            expected:
+              outputs: { brief: "Cited Markdown that marks the missing check and unsupported claims." }
+              hostActions: []

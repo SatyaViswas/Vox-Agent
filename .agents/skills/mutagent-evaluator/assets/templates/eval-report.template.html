@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>@@TITLE@@</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a12;--surf:#14141d;--surf2:#1a1a25;--surf3:#22222f;--border:rgba(255,255,255,.09);--borderS:rgba(255,255,255,.16);
+--fg:#d6dbe6;--fgS:#eef1f6;--muted:#8a8698;--dim:#5a5667;--primary:#7E47D7;--primarySoft:#b794f4;--cyan:#45b8cc;
+--pass:#43c39a;--fail:#e06666;--warn:#e8a64d;--pass-bg:rgba(67,195,154,.16);--fail-bg:rgba(224,102,102,.16);--warn-bg:rgba(232,166,77,.16);
+--hm-pass:rgba(67,195,154,.38);--hm-fail:rgba(224,102,102,.42);--hm-indet:rgba(232,166,77,.40);--hm-skip:#22222f;
+--font:'Space Grotesk',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace}
+*{box-sizing:border-box;border-radius:0}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.55;padding-bottom:110px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 40px}
+.hdr{position:sticky;top:0;z-index:30;background:rgba(10,10,18,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:12px 22px;display:flex;align-items:center;gap:12px}
+.wm{font-weight:700;font-size:18px;letter-spacing:.5px}
+.wm b{background:linear-gradient(90deg,var(--primarySoft),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+.mockbadge{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--warn);border:1px solid var(--warn);padding:2px 8px}
+.panel{border:1px solid var(--border);background:var(--surf);margin-top:14px}
+.panel-h{display:flex;align-items:center;gap:8px;padding:9px 15px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--primarySoft);background:var(--surf2)}
+.panel-h .r{margin-left:auto;color:var(--muted);text-transform:none}
+.panel-b{padding:13px 15px}
+.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg);flex-wrap:wrap}
+.tabs s{font-family:var(--mono);font-size:11px;padding:8px 13px;border-right:1px solid var(--border);color:var(--muted);cursor:pointer;text-decoration:none}
+.tabs s.on{color:var(--primarySoft);border-bottom:2px solid var(--primary);background:var(--surf)}
+.sec{display:none}.sec.show{display:block}
+.h4s{margin:20px 0 8px;font-size:15px;color:var(--fgS);font-weight:600;border-bottom:1px solid var(--border);padding-bottom:5px;max-width:88ch}
+.intro{margin:0 0 14px}
+.intro h4{margin:0 0 6px;font-size:16px;color:var(--fgS);font-weight:600}
+.intro p{margin:0 0 6px;font-size:14px;color:var(--muted);max-width:86ch;line-height:1.6}
+.intro p b{color:var(--fg)}
+.kpi{display:flex;gap:7px;flex-wrap:wrap}
+.kpi i{font-family:var(--mono);font-size:12px;font-style:normal;padding:4px 10px;border:1px solid var(--border);color:var(--muted)}
+.kpi i b{color:var(--fgS)} .kpi i.pass b{color:var(--pass)} .kpi i.fail b{color:var(--fail)} .kpi i.warn b{color:var(--warn)} .kpi i.p b{color:var(--primarySoft)}
+.verd{font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 9px;border:1px solid}
+.verd.pass{color:var(--pass);border-color:var(--pass)} .verd.fail{color:var(--fail);border-color:var(--fail)} .verd.inc{color:var(--warn);border-color:var(--warn)}
+.sev{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 7px}
+.sev.CRIT{color:var(--fail);background:var(--fail-bg)} .sev.HIGH{color:var(--warn);background:var(--warn-bg)} .sev.MED{color:var(--cyan);background:rgba(69,184,204,.10)} .sev.LOW{color:var(--muted);background:var(--surf3)}
+.chip{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--border);padding:1px 6px}
+.lstrip{display:inline-flex;gap:3px;vertical-align:middle}
+.lstrip u{font-family:var(--mono);font-size:11px;text-decoration:none;padding:1px 5px;border:1px solid var(--border);color:var(--dim)}
+.lstrip u.pass{color:var(--pass);border-color:var(--pass)} .lstrip u.fail{color:var(--fail);border-color:var(--fail)}
+.lstrip u.undecidable{color:var(--warn);border-color:var(--warn)} .lstrip u.skip{color:var(--dim);border-style:dashed}
+.lstrip u.fired{color:var(--cyan);border-color:var(--cyan)} .hm .cell.fired{background:rgba(69,184,204,.30)}
+.lstrip u.no-fires{color:var(--pass);border-color:var(--pass)} .hm .cell.no-fires{background:rgba(67,195,154,.22)}
+/* VQ */
+.vq{border:1px dashed var(--cyan);background:rgba(69,184,204,.05);padding:8px 11px;margin:12px 0}
+.vq .q{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);margin-bottom:5px}
+.vq .opts{display:flex;gap:6px;flex-wrap:wrap}
+.vq .opts button{font-family:var(--mono);font-size:11px;padding:3px 11px;background:var(--surf2);border:1px solid var(--border);color:var(--muted);cursor:pointer}
+.vq .opts button.on{border-color:var(--cyan);color:var(--cyan);background:rgba(69,184,204,.12)}
+/* ledger */
+.ledger{width:100%;border-collapse:collapse;font-size:14px}
+.ledger th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;padding:7px 9px;border-bottom:1px solid var(--borderS)}
+.ledger td{padding:10px 10px;border-bottom:1px solid var(--borderS);color:var(--fg);cursor:pointer;font-size:14px}
+.ledger tr:hover td{background:var(--surf2)}
+.ledger td b{color:var(--fgS);font-size:14.5px}
+.confbadge{font-family:var(--mono);font-size:11px;color:var(--fail);border:1px solid var(--fail);padding:1px 6px}
+/* two-lane walk (faithful to render-eval-report §2) */
+.walk{border:1px solid var(--borderS);background:var(--bg);margin:0}
+.walk-h{position:sticky;top:49px;z-index:10;display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:8px 13px;background:var(--surf2);border-bottom:1px solid var(--borderS)}
+.walk-h .tid{font-family:var(--mono);font-weight:600;color:var(--fgS);font-size:15px}
+.tnav{font-family:var(--mono);font-size:11px;padding:3px 12px;background:rgba(126,71,215,.12);border:1px solid var(--primary);color:var(--primarySoft);cursor:pointer;font-weight:600}
+.tnav:hover{color:var(--fgS);background:rgba(126,71,215,.25)}
+.lanehdr{display:grid;grid-template-columns:1fr 34px 1fr;background:var(--surf2)}
+.lanehdr div{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:6px 10px;border-bottom:1px solid var(--borderS)}
+.lanehdr .a{color:var(--fgS)} .lanehdr .x{text-align:center;color:var(--dim)} .lanehdr .j{color:var(--primarySoft)}
+.band{display:grid;grid-template-columns:1fr 34px 1fr;border-bottom:1px solid var(--border)}
+.band .lane-a{padding:9px 12px}
+.band .lane-x{display:flex;align-items:center;justify-content:center;color:var(--dim);font-family:var(--mono);font-size:11px}
+.band .lane-j{padding:9px 12px;border-left:1px solid var(--border);background:var(--surf)}
+.band.divg .lane-a{border-left:3px solid var(--fail)}
+.tool{font-family:var(--mono);font-size:13px;color:var(--cyan)}
+.tool .args{color:var(--dim)}
+.ltag{font-family:var(--mono);font-size:11px;color:var(--primarySoft);border:1px solid rgba(126,71,215,.5);padding:0 4px;margin-left:6px}
+.divmark{font-family:var(--mono);font-size:11px;color:var(--fail);margin-left:8px}
+.out{font-family:var(--mono);font-size:13px;color:var(--muted);background:var(--surf);border:1px solid var(--border);padding:5px 9px;margin-top:5px;overflow-wrap:anywhere;line-height:1.5}
+.out mark{background:rgba(67,195,154,.25);color:var(--fgS);padding:0 2px}
+/* walk criteria context (VQ-E6 variants) */
+.critband{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:6px;padding:9px 12px;background:var(--surf);border-bottom:1px solid var(--borderS)}
+.critband .cc{border:1px solid var(--border);background:var(--surf2);padding:9px 11px 10px;font-size:13px;line-height:1.45;cursor:pointer;position:relative;min-height:118px;display:flex;flex-direction:column}
+.critband .cc .cc-title{display:flex;gap:8px;align-items:center;margin-bottom:3px}
+.critband .cc .cc-title .sev{margin-left:auto}
+.critband .cc .cc-title b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.critband .cc.open{border-color:var(--primary);box-shadow:0 0 0 1px rgba(126,71,215,.5)}
+.critband .ccdetail{grid-column:1/-1;border:1px solid var(--border);border-left:3px solid var(--primary);background:var(--bg);padding:11px 13px;font-size:13.5px;line-height:1.65;color:var(--fg);max-height:340px;overflow-y:auto;overscroll-behavior:contain}
+.critband .ccdetail b{color:var(--fgS)}
+.critband .cc:hover{border-color:var(--primarySoft);background:var(--surf3);box-shadow:0 0 0 1px rgba(126,71,215,.35)}
+.critband .cc.bound{border-color:rgba(126,71,215,.6)}
+.critband .cc.dim{opacity:.45}
+.critband .cc b{color:var(--fgS);font-family:var(--mono);font-size:13px}
+.critband .cc .st{color:var(--muted);display:block;margin-top:2px}
+.critband .cc .tag{float:right;font-family:var(--mono);font-size:10.5px;color:var(--primarySoft);line-height:20px}
+.critband .cc .pol{display:none;margin-top:7px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--primary);color:var(--fg);font-size:13.5px;line-height:1.6}
+.critband .cc .pol b{font-family:var(--font);font-size:13.5px;color:var(--fgS)}
+.critband .cc.open .pol{display:block}
+.critband .cc .hint{font-family:var(--mono);font-size:11px;color:var(--primarySoft);border:1px solid rgba(126,71,215,.5);padding:1px 7px;display:inline-block;margin-top:auto;align-self:flex-start}
+.critband .cc .st{padding-bottom:10px}
+.critband .cc .hint::before{content:'click to expand policy ▸'}
+.critband .cc.open .hint::before{content:'click to collapse ▾ (details below)'}
+/* uniform badge/label heights */
+.sev,.chip,.cchip,.verd,.toolb,.idc{display:inline-flex;align-items:center;height:20px;line-height:1;box-sizing:border-box}
+.idc{font-family:var(--mono);font-size:12px;padding:0 8px;border:1px solid;margin:5px 4px 0 0}
+.idc.k{color:var(--primarySoft);border-color:rgba(126,71,215,.6)}
+.idc.m{color:var(--cyan);border-color:rgba(69,184,204,.6)}
+.idc.f{color:var(--warn);border-color:rgba(232,166,77,.6)}
+.cchip{font-family:var(--mono);font-size:11px;padding:1px 8px;border:1px solid var(--border);color:var(--dim);margin-left:6px;cursor:default}
+.cchip.bound{color:var(--primarySoft);border-color:rgba(126,71,215,.6)}
+/* judge micro-steps */
+.jstep{border:1px solid var(--border);background:var(--surf2);padding:6px 9px;margin:4px 0;font-size:13.5px;color:var(--muted);line-height:1.5}
+.jstep b{color:var(--fg)}
+.kind{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;margin-right:6px}
+.kind.gather{color:var(--cyan);background:rgba(69,184,204,.12)} .kind.expect{color:var(--primarySoft);background:rgba(126,71,215,.14)}
+.kind.examine{color:var(--muted);background:var(--surf3)} .kind.bind{color:#5aa6d6;background:rgba(90,166,214,.12)}
+.kind.ground{color:var(--pass);background:var(--pass-bg)} .kind.critique{color:var(--primarySoft);background:rgba(126,71,215,.14)}
+.kind.decide-pass{color:var(--pass);background:var(--pass-bg)} .kind.decide-fail{color:var(--fail);background:var(--fail-bg)} .kind.decide-uncertain{color:var(--warn);background:var(--warn-bg)}
+.kind.localize{color:var(--fail);background:var(--fail-bg)}
+.jref{font-family:var(--mono);font-size:12px;color:var(--fg);background:var(--bg);border:1px solid var(--border);padding:2px 7px;margin-top:4px;display:inline-block}
+.jref b{color:var(--pass)}
+.locband{border-top:1px solid var(--fail);background:var(--fail-bg);padding:8px 13px;font-size:14px;color:var(--fg)}
+.gband{background:rgba(69,184,204,.04);border-bottom:1px solid var(--border)}
+/* scorecard metrics tiles (UI-5) */
+.sc-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:10px 0 4px}
+.scm{border:1px solid var(--border);background:var(--surf2);padding:10px 12px}
+.scm-v{font-size:24px;font-weight:700;color:var(--fgS)}
+.scm.ok .scm-v{color:var(--pass)} .scm.bad .scm-v{color:var(--fail)} .scm.mid .scm-v{color:var(--warn)}
+.scm-l{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:2px}
+.scm-n{font-size:12.5px;color:var(--dim);margin-top:3px}
+/* heatmap */
+.hm{display:grid;gap:3px;font-family:var(--mono);font-size:12px}
+.hm .lab{color:var(--fg);opacity:.88;text-align:right;padding-right:6px;line-height:18px;white-space:nowrap}
+.hm .lab i{font-style:normal;color:var(--muted)}
+.hm .cell{height:18px;border:1px solid rgba(0,0,0,.35)}
+.hm .cell.pass{background:var(--hm-pass)} .hm .cell.fail{background:var(--hm-fail)} .hm .cell.uncertain{background:var(--hm-indet)} .hm .cell.skip{background:var(--hm-skip)}
+.hm .colh{font-size:11px;color:var(--dim);writing-mode:vertical-rl;text-orientation:mixed;height:76px}
+.subc{border:1px solid var(--border);background:var(--surf2);margin-top:10px}
+.subc-h{display:flex;gap:9px;align-items:center;padding:8px 11px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.nest{border:1px solid var(--border);background:var(--surf);margin:7px 11px;padding:7px 10px;font-family:var(--mono);font-size:13px;color:var(--muted);line-height:1.55}
+.nest b{color:var(--fg)} .nest .ok{color:var(--pass)} .nest .w{color:var(--warn)}
+.nest-h{font-family:var(--mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:-7px -10px 6px;padding:5px 10px;border-bottom:1px solid var(--border)}
+/* finding + selfeval cards */
+.fcard{border:1px solid var(--border);background:var(--surf2);margin:12px 0}
+.fcard-h{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--border)}
+.fcard-h b{color:var(--fgS);font-size:14.5px}
+.fcard-b{padding:10px 13px;font-size:14px;color:var(--muted);line-height:1.6}
+.fcard-b b{color:var(--fg)}
+.tlink{font-family:var(--mono);font-size:12.5px;color:var(--cyan);border:1px solid var(--cyan);padding:2px 9px;cursor:pointer;margin-right:6px;display:inline-block}
+.tlink:hover{background:rgba(69,184,204,.15)}
+.toolb{font-family:var(--mono);font-size:12px;padding:2px 8px;border:1px solid;margin:2px 4px 2px 0;display:inline-block}
+.toolb.read{color:var(--cyan);border-color:rgba(69,184,204,.6)}
+.toolb.act{color:var(--warn);border-color:rgba(232,166,77,.6)}
+/* judge-block style variants (VQ-E5) */
+.tlwrap{border-left:2px solid rgba(126,71,215,.4);padding-left:14px;margin:2px 0}
+.tl{position:relative;margin:7px 0;font-size:13.5px;color:var(--muted);line-height:1.5}
+.tl .dot{position:absolute;left:-19px;top:5px;width:9px;height:9px;background:var(--dim)}
+.tl .dot.gather{background:var(--cyan)} .tl .dot.expect{background:var(--primarySoft)} .tl .dot.examine{background:var(--dim)}
+.tl .dot.bind{background:#5aa6d6} .tl .dot.ground{background:var(--pass)} .tl .dot.critique{background:var(--primarySoft)}
+.tl .dot.decide-pass{background:var(--pass)} .tl .dot.decide-fail{background:var(--fail)} .tl .dot.decide-uncertain{background:var(--warn)}
+.tl b{color:var(--fg)}
+.gv{border:1px solid var(--border);background:var(--surf2);margin:6px 0}
+.gv-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--border);background:var(--surf3)}
+.gv-h .cid{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--fgS)}
+.gv-h .chain{display:inline-flex;gap:4px}
+.gv-b{padding:7px 10px;font-size:13.5px;color:var(--muted);line-height:1.55}
+.gv-b b{color:var(--fg)}
+.gv-ref{font-family:var(--mono);font-size:12px;color:var(--fg);background:var(--bg);border:1px solid var(--border);padding:2px 7px;margin-top:5px;display:inline-block}
+.gv-ref b{color:var(--pass)}
+.handoffbtn{background:var(--surf2);border:1px solid var(--pass);color:var(--pass);font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:none;padding:4px 12px;cursor:pointer;margin-left:auto}
+.handoffbtn.done{background:var(--pass-bg)}
+.hero{padding:26px 0 10px;border-bottom:1px solid var(--border);margin-bottom:6px}
+.hero .who{font-family:var(--mono);font-size:11.5px;color:var(--cyan);text-transform:uppercase;letter-spacing:.14em;margin-bottom:7px}
+.hero h1{font-size:clamp(24px,3.4vw,32px);margin:0 0 8px;color:var(--fgS);letter-spacing:-.01em;font-weight:700}
+.hero p{font-size:15.5px;color:var(--muted);max-width:88ch;margin:0 0 8px;line-height:1.65}
+.hero p b{color:var(--fg)}
+.foot{margin-top:32px;color:var(--dim);font-size:11px;border-top:1px solid var(--border);padding-top:12px;font-family:var(--mono)}
+#fbpanel{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,18,.97);border-top:1px solid var(--primary);padding:9px 22px 11px;z-index:50}
+#fbpanel .frow{max-width:1180px;margin:0 auto;display:flex;gap:12px;align-items:flex-end}
+#fbpanel label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--primarySoft);display:block;margin-bottom:4px}
+#fbtext{flex:1;background:var(--surf2);border:1px solid var(--border);color:var(--fg);font-family:var(--font);font-size:13px;padding:7px 10px;min-height:40px;max-height:110px;resize:vertical}
+#fbcopy{background:var(--surf2);border:1px solid var(--primary);color:var(--primarySoft);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:10px 16px;cursor:pointer;white-space:nowrap}
+#fbcopy.done{border-color:var(--pass);color:var(--pass)}
+/* profile variants */
+.profgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:0;border:1px solid var(--border);background:var(--surf2)}
+.profgrid>div{padding:11px 14px;border-right:1px solid var(--border)}
+.profstrip{display:flex;gap:8px;flex-wrap:wrap;align-items:center;border:1px solid var(--border);background:var(--surf2);padding:10px 13px}
+.proftwo{display:grid;grid-template-columns:1fr 1.2fr;gap:0;border:1px solid var(--border);background:var(--surf2)}
+.proftwo>div{padding:11px 14px}
+.proftwo>div:last-child{border-left:1px solid var(--border)}
+.pk{font-family:var(--mono);font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.pv{font-size:14px;color:var(--muted);line-height:1.55}
+.pv b{color:var(--fg)}
+</style></head><body>
+<div class="hdr"><div class="wm">MUTAGENT<b>/evaluator</b> · Evaluation Report</div>
+  @@RUN_BADGE@@</div>
+<div class="wrap">
+
+  <div class="hero" data-component="mgt-report-hero">
+    <div class="who">Automated judgment · layered evidence</div>
+    <h1>@@HERO_TITLE@@</h1>
+    <p>@@HERO_LEDE@@</p>
+  </div>
+
+  <div class="panel"><div class="panel-b" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    @@IDENTITY_STRIP@@
+  </div></div>
+
+  <div class="panel" id="report">
+    <div class="tabs">
+      <s class="on" onclick="tab(0)">① Overview</s><s onclick="tab(1)">② Trajectory ‖ Judge</s>
+      <s onclick="tab(2)">③ Eval Scorecard</s><s onclick="tab(3)">④ Findings</s><s onclick="tab(4)">⑤ Self-Eval</s>
+    </div>
+
+    <!-- ① OVERVIEW -->
+    <div class="sec show" data-page="overview"><div class="panel-h">① Overview</div><div class="panel-b">
+      <div class="h4s" style="margin-top:4px">Who was judged</div>
+      <div id="profhost" data-component="mgt-subject-profile"></div>
+
+      <div class="h4s">The scores</div>
+      <div class="sc-metrics" data-component="mgt-metrics-tiles">
+        @@METRICS_TILES@@
+      </div>
+
+      <div class="h4s">The eval suite — what we checked</div>
+      <p style="font-size:14px;color:var(--muted);margin:4px 0 8px;max-width:86ch">@@SUITE_LEDE@@</p>
+      <div id="suitehost" data-component="mgt-suite-summary"></div>
+
+      <div class="h4s">The corpus — every ingested trace</div>
+      @@TRACE_LIST@@
+
+      <div class="h4s">Bottom line — what this run tells you</div>
+      <p style="font-size:14px;color:var(--muted);max-width:86ch;line-height:1.65">@@BOTTOM_LINE@@</p>
+    </div></div>
+
+    <!-- ② TRAJECTORY ‖ JUDGE -->
+    <div class="sec" data-page="trajectory-judge"><div class="panel-h">② Trajectory ‖ Judge <span class="r">agent lane LEFT · judge's anchored reasoning RIGHT</span></div><div class="panel-b">
+      <div class="intro">
+        <h4>The Target-Agent trajectory ‖ Judge trajectory, side by side</h4>
+        <p>Click a row to drill in. The agent's steps render on the <b>left lane</b>; the judge's reasoning walk — anchored to each
+        step — on the <b>right</b>: its gathered understanding, the trajectory it EXPECTED before looking, every examine/bind/
+        ground/critique/decide micro-step with quoted evidence, and the root localization when something went wrong.</p>
+      </div>
+
+
+      <div class="h4s" style="margin-top:6px">Legend — the judge's micro-steps (right lane)</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13.5px;color:var(--muted);margin:6px 0 12px;line-height:2">
+        <span><span class="kind gather">gather</span>understand the agent + classify the scenario</span>
+        <span><span class="kind expect">expect</span>predict the correct path BEFORE looking</span>
+        <span><span class="kind examine">examine</span>compare a step against the expected path</span>
+        <span><span class="kind bind">bind</span>a criterion's terms attach to this step</span>
+        <span><span class="kind ground">ground</span>quote the exact evidence string</span>
+        <span><span class="kind critique">critique</span>reason it out IN WRITING before deciding</span>
+        <span><span class="kind decide-pass">decide</span>the binary verdict + confidence note</span>
+        <span><span class="kind localize">localize</span>name the FIRST thing that went wrong</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--cyan);margin:2px 0 6px">▸ click any row — the two-lane walk expands IN PLACE · ⚡ = layer conflict (VQ-E3 locked: badge)</div>
+      <table class="ledger" id="ledger" data-component="mgt-trace-ledger"><thead><tr>
+        <th>trajectory</th><th>scenario</th><th>layers L0–L4</th><th>outcome</th><th>gate</th><th>conf</th><th>run</th>
+      </tr></thead><tbody></tbody></table>
+    </div></div>
+
+    <!-- ③ SCORECARD -->
+    <div class="sec" data-page="scorecard"><div class="panel-h">③ Eval Scorecard <span class="r">scores · layer matrix · criteria matrix · calibration</span></div><div class="panel-b">
+
+      <div class="h4s" style="margin-top:2px">The scores</div>
+      <div class="sc-metrics" data-component="mgt-metrics-tiles">
+        @@SCORECARD_SCORES@@
+      </div>
+
+      <div class="h4s">How each evidence layer judged each trace</div>
+      <p style="font-size:13.5px;color:var(--muted);margin:2px 0 8px;max-width:86ch">One row per layer of the judge's walk, one column per trace. → means the layer was skipped because the outcome check already settled everything.</p>
+      <div id="hmlayers" data-component="mgt-layer-matrix"></div>
+
+      <div class="h4s">How each criterion verdicted — with its score</div>
+      <p style="font-size:13.5px;color:var(--muted);margin:2px 0 8px;max-width:86ch">The gating surface: every user-defined check with its pass count over the applicable trajectories.</p>
+      <div id="hmcrit" data-component="mgt-criteria-matrix"></div>
+
+      @@CRITERION_DETAILS@@
+
+      @@CONFLICTS@@
+    </div></div>
+
+    <!-- ④ FINDINGS -->
+    <div class="sec" data-page="findings"><div class="panel-h">④ Findings <span class="r">judge-only → routed to diagnostics (EV-051)</span><button class="handoffbtn" id="fhbtn" onclick="copyFindingsHandoff()">Copy findings handoff (markdown)</button></div><div class="panel-b">
+      <div class="intro"><h4>What the judge found — and where each finding went</h4>
+        <p>Findings are auditable: verbatim evidence, the judge's reasoning, and a route. The evaluator never fixes — failures go
+        to diagnostics; open questions go to your calibration queue.</p></div>
+
+      @@FINDINGS_CARDS@@
+    </div></div>
+
+    <!-- ⑤ SELF-EVAL -->
+    <div class="sec" data-page="self-eval"><div class="panel-h">⑤ Self-Eval · Methodology <span class="r">internal — stripped on publish</span></div><div class="panel-b">
+      <div class="intro"><h4>The judge grading its own run</h4>
+        <p>Before you trust the verdicts above, these are the checks the pipeline ran on ITSELF — completeness, reproducibility,
+        economy, and independent verification. Advisory only: they never change a subject's gate.</p></div>
+
+      @@SELFEVAL_CARDS@@
+    </div></div>
+  </div>
+
+  <div class="foot">@@FOOT@@</div>
+</div>
+
+<div id="fbpanel" data-component="mgt-feedback-bar"><div class="frow">
+  <div style="flex:1"><label for="fbtext">@@FEEDBACK_LABEL@@</label>
+  <textarea id="fbtext" placeholder="e.g. 'profile variant C but move suite table left' …"></textarea></div>
+  <button id="fbcopy" type="button">Copy&nbsp;MD</button>
+</div></div>
+
+<script>window.ASTER=@@DATA_JSON@@;
+window.__OPEN_TRACE__=window.ASTER.openTrace;
+window.ASTER.cellFor=function(id,tr){return ((tr.cells||{})[id])||'skip';};</script>
+<script>
+function tab(i){var t=document.querySelectorAll('#report>.tabs s'),s=document.querySelectorAll('#report>.sec');
+  t.forEach(function(x,k){x.classList.toggle('on',k===i)});s.forEach(function(x,k){x.classList.toggle('show',k===i)});}
+var LAYERS=['L0','L1','L2','L3','L4'];
+var LNAMES={L0:'code checks',L1:'outcome',L2:'trajectory',L3:'tool outputs',L4:'context'};
+var profStyle='grid', openTrace=window.__OPEN_TRACE__||null;
+function esc(s){return String(s).split('&').join('&amp;').split('<').join('&lt;');}
+
+/* ── ① subject profile variants ── */
+function renderProf(){
+  var host=document.getElementById('profhost'),h='';
+  var facts=ASTER.profile;
+  if(profStyle==='grid'){
+    var genB='',opB='';
+    facts.gen.split(' · ').forEach(function(t){genB+='<span class="toolb read">'+t+'</span>';});
+    facts.op.split(' · ').forEach(function(t){opB+='<span class="toolb act">'+t+'</span>';});
+    h='<div class="profgrid">'
+     +'<div><div class="pk">identity</div><div class="pv"><b>'+esc(facts.name)+'</b> — '+esc(facts.desc)+'<br>'+(facts.chips||[]).map(function(c,i){return '<span class="idc '+(['k','m','f'][i%3])+'">'+esc(c)+'</span>';}).join('')+'</div></div>'
+     +'<div><div class="pk">'+esc(facts.toolsHeading)+'</div><div class="pv">'
+     +'<div style="margin-bottom:5px"><span style="color:var(--cyan);font-size:12.5px">reads data:</span><br>'+genB+'</div>'
+     +'<div><span style="color:var(--warn);font-size:12.5px">acts on the world:</span><br>'+opB+'</div>'
+     +'<div style="font-size:12.5px;color:var(--dim);margin-top:5px">acting tools are the high-stakes ones — that is what the guards protect</div></div></div>'
+     +'<div><div class="pk">what was judged</div><div class="pv"><b>'+facts.corpus+'</b><br>'+facts.split+'<br><span style="font-size:12.5px;color:var(--dim)">judge: host model · pinned · temperature 0</span></div></div></div>';
+  }else if(profStyle==='strip'){
+    h='<div class="profstrip"><b style="font-size:15px;color:var(--fgS)">'+esc(facts.name)+'</b>'
+     +'<span class="idc k">agent</span><span class="idc m">code-based</span><span class="idc f">mastra</span><span class="chip">8 tools (3 read · 5 operational)</span>'
+     +'<span class="chip">12 traces · 3 scenarios</span><span class="chip">Jul 20–23</span><span class="chip">judge pinned · temp 0</span>'
+     +'<span style="flex-basis:100%;font-size:13.5px;color:var(--muted)">'+facts.desc+'</span></div>';
+  }else{
+    h='<div class="proftwo">'
+     +'<div><div class="pk">the subject</div><div class="pv"><b>'+esc(facts.name)+'</b> — '+facts.desc+'<br><br><b style="color:var(--cyan)">reads:</b> '+facts.gen+'<br><b style="color:var(--warn)">acts:</b> '+facts.op+'</div></div>'
+     +'<div><div class="pk">this evaluation</div><div class="pv"><b>'+facts.corpus+'</b> ('+facts.split+')<br>Suite: living-suite v2 — 6 binary criteria mined from Aster\'s own sessions.<br>Judge: host-runtime, pinned model, temperature 0 → byte-identical reruns.<br>Gate: fires on any CRIT/HIGH criterion failing.</div></div></div>';
+  }
+  host.innerHTML=h;
+}
+/* ── ① suite summary ── */
+function renderSuite(){
+  var h='<table class="ledger"><thead><tr><th>id</th><th>the check (plain language)</th><th>layer</th><th>kind</th><th>severity</th><th>score</th></tr></thead><tbody>';
+  var scores=ASTER.scores;
+  ASTER.criteria.forEach(function(c){
+    h+='<tr style="cursor:default"><td><b>'+c.id+'</b> '+c.slug+'</td><td>'+esc(c.statement)+'</td><td>'+c.layer+'</td><td>'+c.cls+'</td>'
+      +'<td><span class="sev '+c.sev+'">'+c.sev+'</span></td><td style="font-family:var(--mono)">'+scores[c.id]+' pass</td></tr>';
+  });
+  document.getElementById('suitehost').innerHTML=h+'</tbody></table>';
+}
+
+/* ── ② ledger + two-lane walk ── */
+function stripHtml(tr){
+  var h='<span class="lstrip">';
+  LAYERS.forEach(function(L){var st=tr.layers[L]||'skip';var sym=st==='pass'?'✓':st==='fail'?'✗':st==='undecidable'?'?':st==='fired'?'⚑':'→';
+    h+='<u class="'+st+'">'+L+sym+'</u>';});
+  return h+'</span>';
+}
+var PAGE=25, ledgerPage=0;
+function renderLedger(){
+  var tb=document.querySelector('#ledger tbody'),h='';
+  var T=ASTER.traces, paged=T.length>PAGE;
+  var pages=paged?Math.ceil(T.length/PAGE):1;
+  if(ledgerPage>=pages)ledgerPage=0;
+  var view=paged?T.slice(ledgerPage*PAGE,(ledgerPage+1)*PAGE):T;
+  if(paged){
+    h+='<tr style="cursor:default"><td colspan="7" data-component="mgt-ledger-pager" style="background:var(--surf2)">'
+      +'<span class="tnav" onclick="event.stopPropagation();ledgerPage=Math.max(0,ledgerPage-1);renderLedger();renderWalk()">← page</span> '
+      +'<span class="tnav" onclick="event.stopPropagation();ledgerPage=Math.min('+(pages-1)+',ledgerPage+1);renderLedger();renderWalk()">page →</span> '
+      +'<span style="font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-left:8px">page '+(ledgerPage+1)+' of '+pages+' · showing '+view[0].id+' … '+view[view.length-1].id+' of '+T.length+' trajectories</span></td></tr>';
+  }
+  view.forEach(function(tr){
+    var gv=tr.gate==='pass'?'<span class="verd pass">pass</span>':tr.gate==='fail'?'<span class="verd fail">fail</span>':'<span class="verd inc">incomplete</span>';
+    var extra=tr.earlyExit==='L1'?'<span class="chip">early-exit@outcome</span>':(tr.earlyExit==='fidelity'?'<span class="chip" style="color:var(--warn)">truncated</span>':'');
+    var isOpen=openTrace===tr.id;
+    h+='<tr onclick="openFeed(\''+tr.id+'\')"'+(isOpen?' style="background:var(--surf2)"':'')+'><td><b>'+tr.id+'</b>'+(tr.conflict?' <span class="confbadge">⚡1</span>':'')+'</td><td>'+tr.scenario+'</td><td>'+stripHtml(tr)+'</td>'
+      +'<td>'+tr.outcome.verdict+'</td><td>'+gv+' '+extra+'</td><td style="font-family:var(--mono)">'+tr.judgeConf.toFixed(2)+'</td>'
+      +'<td style="white-space:nowrap"><span class="tnav" style="display:inline-block;white-space:nowrap">'+(isOpen?'▾ close':'▸ view')+'</span></td></tr>';
+    if(isOpen){h+='<tr><td colspan="7" id="feedcell" style="padding:0;background:var(--bg);cursor:default"></td></tr>';}
+  });
+  tb.innerHTML=h;
+}
+function openFeed(id){openTrace=(openTrace===id?null:id);renderLedger();renderWalk();}
+function navWalk(d){var i=-1;ASTER.traces.forEach(function(t,k){if(t.id===openTrace)i=k;});
+  if(i<0)i=0;var n=(i+d+ASTER.traces.length)%ASTER.traces.length;openTrace=ASTER.traces[n].id;renderLedger();renderWalk();
+  var el=document.getElementById('feedcell');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});}
+function markOut(s,refs){
+  var body=esc(s.output);
+  (refs||[]).forEach(function(r){if(r&&r.value){var ev=esc(r.value);body=body.split(ev).join('<mark>'+ev+'</mark>');}});
+  return '<div class="out">'+body+'</div>';
+}
+var jstyle='cards', wcStyle='band';
+function setWc(v,btn){wcStyle=v;vqOn(btn);renderWalk();}
+function critsBound(tr){
+  var set={};tr.steps.forEach(function(s){(s.verdicts||[]).forEach(function(vd){set[vd.crit]=true;});});
+  return set;
+}
+function critBandHtml(tr){
+  var bound=critsBound(tr),h='<div class="critband" data-component="mgt-walk-criteria">';
+  ASTER.criteria.forEach(function(c,ci){
+    var isB=!!bound[c.id];
+    h+='<div class="cc '+(isB?'bound':'dim')+'" onclick="ccToggle(this,'+ci+')">'
+      +'<div class="cc-title"><b>'+c.id+' · '+c.slug+'</b><span class="sev '+c.sev+'" style="font-size:11px">'+c.sev+'</span></div>'
+      +'<span class="st">'+esc(c.statement)+'</span>'
+      +'<span class="hint"></span>'
+      +'</div>';
+  });
+  return h+'</div>';
+}
+var openCrit=null;
+function ccToggle(el,ci){
+  var band=el.parentElement;
+  var old=band.querySelector('.ccdetail');if(old)old.remove();
+  band.querySelectorAll('.cc').forEach(function(x){x.classList.remove('open');});
+  if(openCrit===ci){openCrit=null;return;}
+  openCrit=ci;el.classList.add('open');
+  var c=ASTER.criteria[ci];
+  var d=document.createElement('div');d.className='ccdetail';
+  d.innerHTML='<b>'+esc(c.id)+' · '+esc(c.slug)+' — the full check (the policy being enforced)</b><br>'+esc(c.policy||c.statement)
+    +'<br><br><b>Passes:</b> '+esc(c.passDef)+(c.failDef?' · <b>Fails:</b> '+esc(c.failDef):'');
+  band.appendChild(d);
+}
+function critChipsHtml(tr){
+  var bound=critsBound(tr),h='';
+  ASTER.criteria.forEach(function(c){
+    h+='<span class="cchip '+(!!bound[c.id]?'bound':'')+'" title="'+esc(c.statement)+' — passes: '+esc(c.passDef)+' · fails: '+esc(c.failDef)+'">'+c.id+'</span>';
+  });
+  return h;
+}
+function judgeLane(s){
+  var vs=s.verdicts||[];
+  if(jstyle==='cards'){
+    if(vs.length===0)return '<div class="jstep"><span class="kind examine">examine</span>step matches the expected path — nothing binds here.</div>';
+    var r='';
+    vs.forEach(function(vd){
+      var cdef=null;ASTER.criteria.forEach(function(c){if(c.id===vd.crit)cdef=c;});
+      r+='<div class="jstep"><span class="kind bind">bind</span><b>'+vd.crit+(cdef?' · '+cdef.slug:'')+'</b> binds to this step'
+        +(wcStyle==='inline'&&cdef?' — <i style="font-style:normal;color:var(--fg)">"'+esc(cdef.statement)+'"</i>':' — its terms resolve in this situation.')+'</div>';
+      if(vd.ref){r+='<div class="jstep"><span class="kind ground">ground</span>evidence: <span class="jref">'+vd.ref.obs+' · '+vd.ref.path+' = <b>"'+esc(vd.ref.value)+'"</b></span></div>';}
+      r+='<div class="jstep"><span class="kind critique">critique</span>'+esc(vd.critique)+'</div>';
+      r+='<div class="jstep"><span class="kind decide-'+vd.verdict+'">decide</span><b>'+vd.crit+' → '+vd.verdict.toUpperCase()+'</b> · confidence .'+Math.round(vd.conf*100)
+        +(vd.ref?'':' · abstain — no evidence bound')+'</div>';
+    });
+    return r;
+  }
+  if(jstyle==='timeline'){
+    if(vs.length===0)return '<div class="tlwrap"><div class="tl"><span class="dot examine"></span>examine — matches the expected path.</div></div>';
+    var t='<div class="tlwrap">';
+    vs.forEach(function(vd){
+      t+='<div class="tl"><span class="dot bind"></span><b>'+vd.crit+'</b> binds here</div>';
+      if(vd.ref)t+='<div class="tl"><span class="dot ground"></span>"'+esc(vd.ref.value)+'" <span style="color:var(--dim)">('+vd.ref.obs+' · '+vd.ref.path+')</span></div>';
+      t+='<div class="tl"><span class="dot critique"></span>'+esc(vd.critique)+'</div>';
+      t+='<div class="tl"><span class="dot decide-'+vd.verdict+'"></span><b>'+vd.verdict.toUpperCase()+'</b> · conf .'+Math.round(vd.conf*100)+'</div>';
+    });
+    return t+'</div>';
+  }
+  /* grouped — one compact card per verdict, chain shown as chips */
+  if(vs.length===0)return '<div style="font-family:var(--mono);font-size:12px;color:var(--dim);padding:4px 0">examine — on expected path, nothing binds</div>';
+  var g='';
+  vs.forEach(function(vd){
+    g+='<div class="gv"><div class="gv-h"><span class="cid">'+vd.crit+'</span>'
+      +'<span class="kind decide-'+vd.verdict+'">'+vd.verdict.toUpperCase()+' · .'+Math.round(vd.conf*100)+'</span>'
+      +'<span class="chain"><span class="kind bind">bind</span><span class="kind ground">'+(vd.ref?'ground ✓':'no evidence')+'</span></span></div>'
+      +'<div class="gv-b">'+esc(vd.critique)
+      +(vd.ref?'<br><span class="gv-ref">'+vd.ref.obs+' · '+vd.ref.path+' = <b>"'+esc(vd.ref.value)+'"</b></span>':'')
+      +'</div></div>';
+  });
+  return g;
+}
+function setJs(v,btn){jstyle=v;vqOn(btn);renderWalk();}
+function renderWalk(){
+  var tr=null;ASTER.traces.forEach(function(t){if(t.id===openTrace)tr=t;});
+  var host=document.getElementById('feedcell');if(!host)return;if(!tr){host.innerHTML='';return;}
+  var h='<div class="walk"><div class="walk-h">'
+    +'<span class="tnav" onclick="event.stopPropagation();navWalk(-1)">← prev</span><span class="tnav" onclick="event.stopPropagation();navWalk(1)">next →</span>'
+    +'<span class="tid">'+tr.id+'</span><span class="chip">'+tr.scenario+'</span>'+stripHtml(tr)
+    +'<span class="chip">outcome '+tr.outcome.verdict+'</span>'
+    +(tr.gate==='pass'?'<span class="verd pass">GATE ✓</span>':tr.gate==='fail'?'<span class="verd fail">GATE ✗</span>':'<span class="verd inc">INC</span>')
+    +'<span class="chip">judge conf '+tr.judgeConf.toFixed(2)+'</span>'+(tr.conflict?'<span class="confbadge">⚡ conflict</span>':'')+'</div>';
+  if(wcStyle==='inline'){h+='<div style="padding:6px 13px;background:var(--surf);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;color:var(--muted)">checks in play:'+critChipsHtml(tr)+'</div>';}
+  if(wcStyle==='band') h+=critBandHtml(tr);
+  h+='<div class="lanehdr"><div class="a">TARGET AGENT — what it did</div><div class="x">‖</div><div class="j">JUDGE — anchored reasoning walk'+(wcStyle==='chips'?critChipsHtml(tr):'')+'</div></div>';
+  /* gather + expected band */
+  h+='<div class="band gband"><div class="lane-a" style="color:var(--dim);font-size:13px">— session start —</div><div class="lane-x">◦</div><div class="lane-j">'
+    +'<div class="jstep"><span class="kind gather">gather</span><b>Understanding:</b> '+esc(tr.understanding||('scenario classified as '+tr.scenario))+'</div>'
+    +'<div class="jstep"><span class="kind expect">expect</span><b>Expected trajectory before looking:</b> '+esc(tr.expectedLine||tr.outcome.expected)+'</div>'
+    +'</div></div>';
+  if(tr.fidelity) h+='<div class="locband" style="border-color:var(--warn);background:var(--warn-bg)">◔ '+esc(tr.fidelity)+'</div>';
+  tr.steps.forEach(function(s,ix){
+    var refs=(s.verdicts||[]).map(function(vd){return vd.ref;});
+    var left='<span class="tool">'+s.tool+' <span class="args">'+esc(s.args)+'</span></span>';
+    (s.layers||[]).forEach(function(L){left+='<span class="ltag">'+L+'</span>';});
+    if(s.divergence)left+='<span class="divmark">◆ first divergence</span>';
+    left+=markOut(s,refs);
+    h+='<div class="band'+(s.divergence?' divg':'')+'"><div class="lane-a"><span style="font-family:var(--mono);font-size:11px;color:var(--dim)">'+tr.id+' · obs-'+(ix+1)+'</span><br>'+left+'</div><div class="lane-x">‣</div><div class="lane-j">'+judgeLane(s)+'</div></div>';
+  });
+  if(tr.divergence) h+='<div class="locband"><span class="kind localize">localize</span><b>Root, not symptom:</b> '+esc(tr.divergence)+'</div>';
+  if(tr.conflict) h+='<div class="locband"><span class="kind localize">conflict</span>'+esc(tr.conflictNote)+' — queued for human adjudication.</div>';
+  h+='</div>';
+  host.innerHTML=h;
+}
+
+/* ── ③ heatmaps — per-trace when small; WINDOWED pass-rate cells at scale (production ehm idiom) ── */
+var HM_WINDOW_AT=36;
+function hmWindowSize(){return Math.max(10,Math.ceil(ASTER.traces.length/20));}
+function renderHm(){
+  var T=ASTER.traces;
+  var scores=ASTER.scores;
+  if(T.length<=HM_WINDOW_AT){
+    var cellsFor=function(getter){var h='';T.forEach(function(tr){var st=getter(tr);h+='<span class="cell '+(st==='undecidable'?'uncertain':st)+'" title="'+tr.id+'"></span>';});return h;};
+    var colh='<span></span>';T.forEach(function(tr){colh+='<span class="colh">'+tr.id+'</span>';});
+    var grid='grid-template-columns:230px repeat('+T.length+',1fr)';
+    var h='<div class="hm" style="'+grid+'">'+colh;
+    LAYERS.forEach(function(L){h+='<span class="lab" style="color:var(--primarySoft)">'+LNAMES[L]+' ('+L+')</span>'+cellsFor(function(tr){return tr.layers[L]||'skip';});});
+    document.getElementById('hmlayers').innerHTML=h+'</div>';
+    var h2='<div class="hm" style="'+grid+'">'+colh;
+    ASTER.criteria.forEach(function(c){h2+='<span class="lab">'+c.id+' '+c.slug+' <i>· '+scores[c.id]+'</i></span>'+cellsFor(function(tr){return ASTER.cellFor(c.id,tr);});});
+    document.getElementById('hmcrit').innerHTML=h2+'</div>';
+    return;
+  }
+  /* windowed: one column per window of 25; cell = pass-rate % (colour) — mgt-windowed-matrix */
+  var wins=[];var W=hmWindowSize();for(var i=0;i<T.length;i+=W)wins.push(T.slice(i,i+W));
+  var note='<div class="explain" style="margin:0 0 8px"><b>Large corpus ('+T.length+' traces):</b> columns are windows of '+hmWindowSize()+' — each cell shows the pass-rate % over that window (green ≥95 · amber ≥80 · red &lt;80). Per-trace drill lives in tab ②.</div>';
+  var colh='<span></span>';wins.forEach(function(w){colh+='<span class="colh">'+w[0].id+'–'+w[w.length-1].id+'</span>';});
+  var grid='grid-template-columns:230px repeat('+wins.length+',minmax(34px,1fr))';
+  function winCells(getter){
+    var h='';
+    wins.forEach(function(w){
+      var pass=0,tot=0;
+      w.forEach(function(tr){var st=getter(tr);if(st==='skip')return;tot++;if(st==='pass')pass++;});
+      if(tot===0){h+='<span class="cell skip" style="height:20px"></span>';return;}
+      var r=Math.round(100*pass/tot);
+      var cls=r>=95?'pass':(r>=80?'uncertain':'fail');
+      h+='<span class="cell '+cls+'" style="height:20px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.85)" title="'+pass+'/'+tot+' pass in this window">'+r+'</span>';
+    });
+    return h;
+  }
+  var h='<div class="hm" data-component="mgt-windowed-matrix" style="'+grid+'">'+colh;
+  LAYERS.forEach(function(L){h+='<span class="lab" style="color:var(--primarySoft)">'+LNAMES[L]+' ('+L+')</span>'+winCells(function(tr){return tr.layers[L]||'skip';});});
+  document.getElementById('hmlayers').innerHTML=note+h+'</div>';
+  var h2='<div class="hm" data-component="mgt-windowed-matrix" style="'+grid+'">'+colh;
+  ASTER.criteria.forEach(function(c){h2+='<span class="lab">'+c.id+' '+c.slug+'</span>'+winCells(function(tr){return ASTER.cellFor(c.id,tr);});});
+  document.getElementById('hmcrit').innerHTML=h2+'</div>';
+}
+
+function copyFindingsHandoff(){
+  var md=ASTER.handoffMd||'';var btn=document.getElementById('fhbtn');
+  function ok(){btn.classList.add('done');btn.textContent='✓ copied';setTimeout(function(){btn.classList.remove('done');btn.textContent='Copy findings handoff (markdown)';},2000);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(md).then(ok,function(){fbc(md);});}else{fbc(md);}
+  function fbc(t){var x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();
+    try{document.execCommand('copy');}catch(e){}document.body.removeChild(x);ok();}
+}
+function gotoTrace(id){
+  tab(1);openTrace=id;renderLedger();renderWalk();
+  var el=document.getElementById('feedcell');
+  if(el)el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+renderProf();renderSuite();renderLedger();renderWalk();renderHm();
+/* deep-link: eval-report-mock.html#tr-005 opens that trace's walk (used by discovery peek) */
+if(location.hash&&location.hash.indexOf('#tr-')===0){gotoTrace(location.hash.slice(1));}
+function setProf(v,btn){profStyle=v;vqOn(btn);renderProf();}
+function vqOn(btn){btn.parentElement.querySelectorAll('button').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');}
+(function(){
+  var btn=document.getElementById('fbcopy'),ta=document.getElementById('fbtext');
+  if(!btn||!ta)return;
+  function buildMd(){
+    var lines=['## Feedback — '+(ASTER.feedbackTitle||document.title),'','Artifact: `'+(ASTER.artifactPath||'evaluation-report.html')+'`'];
+    document.querySelectorAll('.vq').forEach(function(vq){
+      var on=vq.querySelector('button.on');
+      lines.push('- **'+vq.getAttribute('data-vq')+'**: '+(on?on.getAttribute('data-v'):'(none)'));
+    });
+    lines.push('','### Notes');
+    var note=ta.value.trim();lines.push(note.length?note:'_(no notes entered)_');
+    return lines.join('\n');
+  }
+  function done(){btn.classList.add('done');btn.textContent='Copied ✓';setTimeout(function(){btn.classList.remove('done');btn.textContent='Copy MD';},1800);}
+  btn.addEventListener('click',function(){
+    var md=buildMd();
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(md).then(done,function(){fb(md);});}else{fb(md);}
+    function fb(t){var x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();
+      try{document.execCommand('copy');}catch(e){}document.body.removeChild(x);done();}
+  });
+})();
+</script>
+</body></html>

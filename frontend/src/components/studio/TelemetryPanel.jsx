@@ -1,11 +1,16 @@
 import { useEffect, useRef } from "react";
-import { AlertCircle, CheckCircle2, Circle, ImageIcon, Loader2, Radio } from "lucide-react";
+import { AlertCircle, CheckCircle2, Circle, HelpCircle, ImageIcon, Loader2, Radio } from "lucide-react";
 
 const RUN_STATUS_CONFIG = {
   idle: { label: "Idle", icon: Circle, classes: "text-slate-400" },
   saving: { label: "Saving Agent…", icon: Loader2, classes: "text-brand-400", spin: true },
   starting: { label: "Starting…", icon: Loader2, classes: "text-brand-400", spin: true },
   running: { label: "Executing", icon: Loader2, classes: "text-brand-400 animate-pulse", spin: true },
+  // Previously fell through to the "idle" entry below (no matching key
+  // existed here), so the header pill showed "Idle" styling during a live
+  // pause even though the rest of the page correctly showed the amber
+  // pending-action card and the step's "Needs Input" ring.
+  needs_input: { label: "Needs Your Input", icon: HelpCircle, classes: "text-amber-400" },
   listening: { label: "Listening for events", icon: Radio, classes: "text-emerald-400 animate-pulse" },
   success: { label: "Complete", icon: CheckCircle2, classes: "text-emerald-400" },
   failed: { label: "Failed", icon: AlertCircle, classes: "text-red-400" },

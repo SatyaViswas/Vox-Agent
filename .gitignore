@@ -34,3 +34,31 @@ pnpm-debug.log*
 # Lock & Temp files
 *.tmp
 *.bak
+
+# Node (the .claude/.agents/.codex skill scripts are Node/Bun/TS-based;
+# frontend/ has its own node_modules rule, this covers any other subtree)
+node_modules/
+
+# MutagenT/Helix local CLI account pointer (org/workspace id — machine-local,
+# not portable project config; mirrors .npmrc auth discipline)
+.mutagentrc.json
+
+# MutagenT ADL generated run artifacts under .mutagent/ — traces, reports,
+# run/session history, caches, live status pages. NOT ignored (these are
+# committed, durable project artifacts): .mutagent/config.yaml,
+# .mutagent/specs/ (agentspec.yaml Definitions), .mutagent/memory/
+# (AutoMemory, committed by design), .mutagent/index.md, .mutagent/feedback.md.
+.mutagent/traces/
+.mutagent/evaluator/runs/
+.mutagent/evaluator/reports/
+.mutagent/evaluator/agent-logs/
+.mutagent/diagnostics/reports/
+.mutagent/diagnostics/diagnostics-history/
+.mutagent/diagnostics/cache/
+.mutagent/diagnostics/self-diagnostics/
+.mutagent/optimize/runs/
+.mutagent/ship/runs/
+.mutagent/dogfood/
+.mutagent/monitor/
+.mutagent/apply/
+.mutagent/slack-inbox.jsonl
