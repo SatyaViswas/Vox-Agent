@@ -51,14 +51,28 @@ export default function DisambiguationPanel({
                   {param.label}{" "}
                   <span className="text-slate-400 dark:text-slate-500 font-normal">— Step {param.step_number}</span>
                 </label>
-                <input
-                  id={key}
-                  type={param.suggested_type === "number" ? "number" : "text"}
-                  placeholder={param.description}
-                  value={values[key] || ""}
-                  onChange={(e) => onChange(key, e.target.value)}
-                  className="rounded-lg border border-amber-400/40 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400/50"
-                />
+                {param.suggested_type === "select" && param.options ? (
+                  <select
+                    id={key}
+                    value={values[key] || ""}
+                    onChange={(e) => onChange(key, e.target.value)}
+                    className="rounded-lg border border-amber-400/40 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400/50 appearance-none"
+                  >
+                    <option value="" disabled>Select an option...</option>
+                    {param.options.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id={key}
+                    type={param.suggested_type === "number" ? "number" : "text"}
+                    placeholder={param.description}
+                    value={values[key] || ""}
+                    onChange={(e) => onChange(key, e.target.value)}
+                    className="rounded-lg border border-amber-400/40 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400/50"
+                  />
+                )}
               </div>
             );
           })}

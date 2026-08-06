@@ -1,0 +1,615 @@
+[
+  {
+    "trace_id": "msh-01",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Applicability gate: this criterion is conditioned on \"whenever missing_parameters is populated\". I positively checked both gating fields on this blueprint: needs_clarification is the literal boolean false and missing_parameters is the empty array []. With no clarification entries in existence, the criterion has no entry whose parameter_key/label could be scrutinized for opaque-ID phrasing \u2014 the subject term is unbound here. Marked n/a (grounded by the positive field check on both fields, not inferred from silence) rather than pass, since a vacuous pass would inflate the criterion's denominator with a trace it never actually exercised.",
+        "refs": [
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.needs_clarification",
+            "value": "false"
+          },
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.missing_parameters",
+            "value": "[]"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "The prompt names two endpoints explicitly \u2014 \"acme/api-server\" (GitHub) and \"the #eng-standup Slack channel\" \u2014 and asks for a fetch-then-post, with no text generation, no raw URL, no portal, and no mention of Telegram. Rule-by-rule against the systemPrompt's route table: Step 1 is route \"composio_api\" with app \"GitHub\", action \"GITHUB_LIST_PULL_REQUESTS\" \u2014 GitHub is named verbatim in the Rules' composio_api example list (\"Gmail, Slack, GitHub, Google Sheets, Notion, Trello\") and has a public API, so composio_api is the mandated route; the action also follows the required uppercase {APPNAME}_{VERB}_{OBJECT} convention. Step 2 is route \"composio_api\" with app \"Slack\", action \"SLACK_SEND_MESSAGE\" \u2014 Slack is likewise a named cataloged SaaS app, so composio_api is correct. Checking the negative cases as positive field checks rather than by assumption: I scanned both steps' route values and neither is \"browser_agent\" (correct \u2014 neither GitHub nor Slack is a no-API portal), neither is \"http_webhook\" (correct \u2014 the prompt contains no raw URL/REST endpoint), neither is \"telegram_client\" (correct \u2014 Telegram is never mentioned, and the personal-vs-bot distinction never arises), and neither is \"ai_generate\" (correct \u2014 \"post it\" forwards the fetched list verbatim via the {step_1_result} placeholder in step 2's text; no drafting/summarizing/rewriting was requested, so an ai_generate step would have been a spurious insertion). Both steps' routes match their Rule-defined classification and no step is mis-routed.",
+        "refs": [
+          {
+            "obs": "msh-01",
+            "path": "input.prompt",
+            "value": "get the list of open pull requests in acme/api-server and post it to the #eng-standup Slack channel"
+          },
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.steps.0.app",
+            "value": "GitHub"
+          },
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.steps.0.action",
+            "value": "GITHUB_LIST_PULL_REQUESTS"
+          },
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.steps.1.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.steps.1.app",
+            "value": "Slack"
+          },
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.steps.1.action",
+            "value": "SLACK_SEND_MESSAGE"
+          },
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.steps.1.parameters.text",
+            "value": "Open Pull Requests for acme/api-server: {step_1_result}"
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.96,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Applicability gate (BIND, L1): this criterion's subject term is \"a browser_agent step\". I positively checked the route field of every step in this trace's blueprint and found 2 step(s), none of which carries route == \"browser_agent\" (the routes present are cited in refs). The criterion is valid but has NO referent in this situation, so there is nothing to score \u2014 this is a not-applicable, not a defect of the trajectory and not a fail. Marked n/a per the dispatch's applicability rule rather than uncertain, because the absence is grounded by a positive field check over every step's route, not inferred from silence.",
+        "refs": [
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "msh-01",
+            "path": "output.blueprint.steps.1.route",
+            "value": "composio_api"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "msh-02",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Applicability gate: the criterion fires only when missing_parameters is populated. Positive field check on this blueprint: needs_clarification is false and missing_parameters is []. No clarification entry exists, so no parameter_key/label can be examined for opaque-ID phrasing \u2014 the criterion's subject term is unbound in this situation. Marked n/a on grounded absence (both gating fields read directly), not uncertain and not a vacuous pass.",
+        "refs": [
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.needs_clarification",
+            "value": "false"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.missing_parameters",
+            "value": "[]"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "This is a three-link chain that deliberately crosses three different routes, and each hop is routed per the Rules. Step 1: the prompt supplies a literal raw endpoint \u2014 \"Hit our status endpoint at https://api.acme.io/v1/health\" \u2014 and the blueprint routes it \"http_webhook\" with parameters.url == \"https://api.acme.io/v1/health\". The Rules reserve http_webhook \"For custom URLs, REST endpoints, or triggering other external software\", which is exactly this; the app label \"Acme API\" is a free-text descriptor on the webhook route, not a catalog claim, so it does not make this a composio_api case. Step 2: \"summarize whatever it returns in plain English\" is pure text work with no external app connection, and the blueprint routes it \"ai_generate\" with app \"VoxAgent AI\" and action \"GENERATE_TEXT\" \u2014 precisely the shape the Rules mandate (\"summarize\" is one of the enumerated ai_generate verbs), and it correctly avoids the explicitly-forbidden anti-pattern of composio_api with an OpenAI/Gemini/Anthropic app. Step 3: \"send that summary to my Telegram Saved Messages\" is the user's OWN account \u2014 the Telegram rule says default to telegram_client with app \"Telegram Personal Account\" for phrases like \"my telegram\"/\"saved messages\", and to use composio_api + app \"Telegram\" (bot) ONLY when the user explicitly says \"bot\". Positive check of the absence: I searched the prompt string for the token \"bot\" and it does not occur, so the bot identity is correctly not selected; the blueprint's step 3 is route \"telegram_client\", app \"Telegram Personal Account\", with target \"me\" (the Rules' designated value for Saved Messages). Negative checks: no step carries route \"browser_agent\" (correct \u2014 no no-API portal is involved). Every step's route matches its Rule-defined classification.",
+        "refs": [
+          {
+            "obs": "msh-02",
+            "path": "input.prompt",
+            "value": "Hit our status endpoint at https://api.acme.io/v1/health, summarize whatever it returns in plain English, and send that summary to my Telegram Saved Messages"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.0.route",
+            "value": "http_webhook"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.0.parameters.url",
+            "value": "https://api.acme.io/v1/health"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.1.route",
+            "value": "ai_generate"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.1.app",
+            "value": "VoxAgent AI"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.1.action",
+            "value": "GENERATE_TEXT"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.2.route",
+            "value": "telegram_client"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.2.app",
+            "value": "Telegram Personal Account"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.2.parameters.target",
+            "value": "me"
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Applicability gate (BIND, L1): this criterion's subject term is \"a browser_agent step\". I positively checked the route field of every step in this trace's blueprint and found 3 step(s), none of which carries route == \"browser_agent\" (the routes present are cited in refs). The criterion is valid but has NO referent in this situation, so there is nothing to score \u2014 this is a not-applicable, not a defect of the trajectory and not a fail. Marked n/a per the dispatch's applicability rule rather than uncertain, because the absence is grounded by a positive field check over every step's route, not inferred from silence.",
+        "refs": [
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.0.route",
+            "value": "http_webhook"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.1.route",
+            "value": "ai_generate"
+          },
+          {
+            "obs": "msh-02",
+            "path": "output.blueprint.steps.2.route",
+            "value": "telegram_client"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "msh-03",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Applicability gate: missing_parameters must be populated for this criterion to bind. Positive field check: needs_clarification is false and missing_parameters is []. No clarification entry exists to inspect, so the criterion has no referent here. Noted for the record but explicitly NOT scored under this criterion: step 3's Notion parameter uses the key \"database_name\" with the human-friendly value \"Vendor Requests\" rather than a database_id \u2014 that is the same anti-opaque-ID spirit, but it is a step parameter, not a missing_parameters entry, and this criterion is scoped to what the planner ASKS the user for. Marked n/a on grounded absence.",
+        "refs": [
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.needs_clarification",
+            "value": "false"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.missing_parameters",
+            "value": "[]"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.2.parameters.database_name",
+            "value": "Vendor Requests"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "A voice-transcript three-step chain whose middle step is only implied. Step 1: \"find the latest email from billing@vendorco.com\" targets Gmail, routed \"composio_api\" with app \"Gmail\" and action \"GMAIL_GET_LATEST_EMAIL\" \u2014 Gmail is the first app named in the Rules' composio_api example list, so composio_api is the mandated route and the slug follows the {APPNAME}_{VERB}_{OBJECT} convention. Step 2 is the interesting one: \"work out what they're actually asking for\" is an unlabeled summarization/analysis of text the user never calls an AI step. The blueprint routes it \"ai_generate\" with app \"VoxAgent AI\" / action \"GENERATE_TEXT\" \u2014 correct on both halves of the Rule: it IS pure text work with no external app connection required, and it correctly avoids the explicitly-prohibited alternative of composio_api with an AI/LLM app. It is also not silently dropped (which would have collapsed the chain), and it is not mis-routed to browser_agent or http_webhook. Step 3: \"add that as a new page in my Notion database\" is routed \"composio_api\" with app \"Notion\", action \"NOTION_CREATE_PAGE\" \u2014 Notion is named verbatim in the Rules' cataloged-app list, so composio_api is correct. Grounded negative checks across all three steps' route fields: no \"browser_agent\" (neither Gmail nor Notion is a no-API portal), no \"http_webhook\" (the prompt contains no raw URL), and no \"telegram_client\" (Telegram is never mentioned in the prompt, so the personal/bot distinction never arises). Every step's route matches its Rule-defined classification.",
+        "refs": [
+          {
+            "obs": "msh-03",
+            "path": "input.prompt",
+            "value": "okay so uh can you find the latest email from billing@vendorco.com, work out what they're actually asking for, and then add that as a new page in my Notion database called Vendor Requests"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.0.app",
+            "value": "Gmail"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.0.action",
+            "value": "GMAIL_GET_LATEST_EMAIL"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.1.route",
+            "value": "ai_generate"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.1.app",
+            "value": "VoxAgent AI"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.1.parameters.prompt",
+            "value": "Analyze the following email content and summarize the request clearly: {step_1_result}"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.2.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.2.app",
+            "value": "Notion"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.2.action",
+            "value": "NOTION_CREATE_PAGE"
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Applicability gate (BIND, L1): this criterion's subject term is \"a browser_agent step\". I positively checked the route field of every step in this trace's blueprint and found 3 step(s), none of which carries route == \"browser_agent\" (the routes present are cited in refs). The criterion is valid but has NO referent in this situation, so there is nothing to score \u2014 this is a not-applicable, not a defect of the trajectory and not a fail. Marked n/a per the dispatch's applicability rule rather than uncertain, because the absence is grounded by a positive field check over every step's route, not inferred from silence.",
+        "refs": [
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.1.route",
+            "value": "ai_generate"
+          },
+          {
+            "obs": "msh-03",
+            "path": "output.blueprint.steps.2.route",
+            "value": "composio_api"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "fan-01",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "This criterion BINDS here: needs_clarification is true and missing_parameters holds exactly one entry, so there is a real ask to scrutinize. The single entry is parameter_key \"table_name\", label \"Table Name\", description \"The name of the table in your Airtable base to add the records to.\", suggested_type \"string\". Every surface the user actually sees asks for a human-friendly NAME: the key is *_name (not *_id), the label is the plain-English \"Table Name\", and the description reinforces \"The name of the table\". The Rule-2 prohibition names spreadsheet ID, channel ID, database ID, file ID \"or similar opaque identifier\" \u2014 an Airtable table_id (the opaque \"tbl...\" handle) would be exactly that class, and it is positively absent: I checked the entry's parameter_key, label and description strings and none contains \"id\"/\"ID\" as an identifier request. The clarification_question the user is shown is likewise name-shaped \u2014 \"Please specify the name of the table within your 'Content Calendar' Airtable base where these records should be added.\" \u2014 and never asks for a base_id either, even though base_name \"Content Calendar\" was resolvable from the prompt and left as a literal. This is the exact behaviour the Rule prescribes: ask for the name and let the execution engine resolve the real ID at run time. Every populated missing_parameters entry (n=1) is human-friendly, so the criterion holds for this trace.",
+        "refs": [
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.needs_clarification",
+            "value": "true"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.missing_parameters.0.parameter_key",
+            "value": "table_name"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.missing_parameters.0.label",
+            "value": "Table Name"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.missing_parameters.0.description",
+            "value": "The name of the table in your Airtable base to add the records to."
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.missing_parameters.0.suggested_type",
+            "value": "string"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.clarification_question",
+            "value": "Please specify the name of the table within your 'Content Calendar' Airtable base where these records should be added."
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.steps.1.parameters.base_name",
+            "value": "Content Calendar"
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.96,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Two steps, both routed per the Rules. Step 1: \"generate 8 blog post title ideas about remote employee onboarding\" is pure content generation with no external app connection, and it is routed \"ai_generate\" with the mandated app \"VoxAgent AI\" and action \"GENERATE_TEXT\" \u2014 matching the Rule verbatim, and correctly NOT routed to composio_api with an OpenAI/Gemini app (the explicitly forbidden anti-pattern). Step 2: \"add each one as its own record in my Airtable base Content Calendar\" targets Airtable, routed \"composio_api\" with app \"Airtable\" and action \"AIRTABLE_CREATE_RECORD\", whose slug follows the required uppercase {APPNAME}_{VERB}_{OBJECT} convention. Airtable is a public-API SaaS product, which is the Rule's own definition of the composio_api route (\"any of the 1000+ SaaS apps with a public API via Composio\"); the enumerated examples are explicitly non-exhaustive (\"...\"). The decision does not actually rest on catalog membership: browser_agent is excluded because Airtable is not an API-less portal, http_webhook because the prompt supplies no raw URL, telegram_client because Telegram is never mentioned, and ai_generate because step 2 performs a storage side effect rather than text generation \u2014 composio_api is the only remaining legal route, so the classification holds under either reading. Positive negative-check: I read both steps' route fields and neither is browser_agent, http_webhook, or telegram_client.",
+        "refs": [
+          {
+            "obs": "fan-01",
+            "path": "input.prompt",
+            "value": "generate 8 blog post title ideas about remote employee onboarding and add each one as its own record in my Airtable base Content Calendar"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.steps.0.route",
+            "value": "ai_generate"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.steps.0.app",
+            "value": "VoxAgent AI"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.steps.0.action",
+            "value": "GENERATE_TEXT"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.steps.1.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.steps.1.app",
+            "value": "Airtable"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.steps.1.action",
+            "value": "AIRTABLE_CREATE_RECORD"
+          }
+        ],
+        "assumptions": [
+          {
+            "text": "Airtable is present in Composio's live tool catalog (the trace shows only the planner's output; catalog membership is verified by the execution engine at run time, not observable here).",
+            "kind": "factual-intent",
+            "status": "hypothesis"
+          }
+        ],
+        "result": "pass",
+        "confidence": 0.93,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Applicability gate (BIND, L1): this criterion's subject term is \"a browser_agent step\". I positively checked the route field of every step in this trace's blueprint and found 2 step(s), none of which carries route == \"browser_agent\" (the routes present are cited in refs). The criterion is valid but has NO referent in this situation, so there is nothing to score \u2014 this is a not-applicable, not a defect of the trajectory and not a fail. Marked n/a per the dispatch's applicability rule rather than uncertain, because the absence is grounded by a positive field check over every step's route, not inferred from silence.",
+        "refs": [
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.steps.0.route",
+            "value": "ai_generate"
+          },
+          {
+            "obs": "fan-01",
+            "path": "output.blueprint.steps.1.route",
+            "value": "composio_api"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "fan-02",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Applicability gate: the criterion is conditioned on a populated missing_parameters. Positive field check: needs_clarification is false and missing_parameters is []. The prompt fully specified the recipient (\"send each one to me at priya@northwind.co\"), so nothing needed asking and no clarification entry exists to inspect for opaque-ID phrasing. Marked n/a on grounded absence, not inferred from silence.",
+        "refs": [
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.needs_clarification",
+            "value": "false"
+          },
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.missing_parameters",
+            "value": "[]"
+          },
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.steps.1.parameters.to",
+            "value": "priya@northwind.co"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Two steps, both correctly classified. Step 1: \"Write 3 different cold outreach email drafts for our new pricing page\" is pure text drafting with no external app connection \u2014 the Rules' ai_generate case names \"draft a reply\"/\"write a caption\" as canonical examples \u2014 and the blueprint routes it \"ai_generate\" with the mandated app \"VoxAgent AI\" and action \"GENERATE_TEXT\". Critically it does NOT route the drafting to composio_api with an OpenAI/Anthropic app, which the Rules explicitly forbid. Step 2: \"send each one to me at priya@northwind.co as a separate email\" is a Gmail send, routed \"composio_api\" with app \"Gmail\" and action \"GMAIL_SEND_EMAIL\" \u2014 Gmail is named verbatim in the Rules' cataloged-app list and the slug is exactly the convention's example form. The email send is correctly NOT collapsed into the ai_generate step and NOT routed to http_webhook (no raw URL appears in the prompt). Grounded negative checks over both steps' route fields: no \"browser_agent\" value present (no API-less portal is involved) and no \"telegram_client\" value present (Telegram is absent from the prompt entirely). Every step's route matches its Rule-defined classification.",
+        "refs": [
+          {
+            "obs": "fan-02",
+            "path": "input.prompt",
+            "value": "Write 3 different cold outreach email drafts for our new pricing page and send each one to me at priya@northwind.co as a separate email so I can compare them"
+          },
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.steps.0.route",
+            "value": "ai_generate"
+          },
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.steps.0.app",
+            "value": "VoxAgent AI"
+          },
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.steps.0.action",
+            "value": "GENERATE_TEXT"
+          },
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.steps.1.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.steps.1.app",
+            "value": "Gmail"
+          },
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.steps.1.action",
+            "value": "GMAIL_SEND_EMAIL"
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.96,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Applicability gate (BIND, L1): this criterion's subject term is \"a browser_agent step\". I positively checked the route field of every step in this trace's blueprint and found 2 step(s), none of which carries route == \"browser_agent\" (the routes present are cited in refs). The criterion is valid but has NO referent in this situation, so there is nothing to score \u2014 this is a not-applicable, not a defect of the trajectory and not a fail. Marked n/a per the dispatch's applicability rule rather than uncertain, because the absence is grounded by a positive field check over every step's route, not inferred from silence.",
+        "refs": [
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.steps.0.route",
+            "value": "ai_generate"
+          },
+          {
+            "obs": "fan-02",
+            "path": "output.blueprint.steps.1.route",
+            "value": "composio_api"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "fan-03",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Applicability gate: needs_clarification is false and missing_parameters is [] on this blueprint (both read directly as a positive field check). The prompt named its destination (\"my telegram saved messages\"), so no clarification was raised and there is no entry whose parameter_key/label could ask for an opaque ID. The criterion's subject term is unbound here \u2014 marked n/a rather than a vacuous pass.",
+        "refs": [
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.needs_clarification",
+            "value": "false"
+          },
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.missing_parameters",
+            "value": "[]"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "A voice-transcript fan-out onto the Telegram personal account; both steps are routed per the Rules. Step 1: \"I need like ten short motivational quotes for my fitness page\" is pure content generation with no external app connection, routed \"ai_generate\" with the mandated app \"VoxAgent AI\" and action \"GENERATE_TEXT\" \u2014 correct, and correctly not sent to composio_api with an AI/LLM app. Step 2 is the discriminating one: \"send each one as a separate message to my telegram saved messages\" hits two of the Telegram rule's exact trigger phrases \u2014 \"my telegram\" and \"saved messages\" \u2014 which the Rules say must default to route \"telegram_client\" with app \"Telegram Personal Account\". The blueprint does precisely that, and sets parameters.target to \"me\", the Rules' designated value for Saved Messages. The bot identity is correctly avoided, and I ground that as a positive check rather than an inference: the token \"bot\" does not occur anywhere in the prompt string, and the Rules gate composio_api + app \"Telegram\" on the user EXPLICITLY saying \"bot\" \u2014 so the composio_api bot route would have been a violation here. Correspondingly the step's route field reads \"telegram_client\", not \"composio_api\", and required_apps lists \"Telegram Personal Account\" rather than \"Telegram\", consistent with the personal-account identity. Neither step is browser_agent or http_webhook (no portal and no raw URL in the prompt). Every step's route matches its Rule-defined classification.",
+        "refs": [
+          {
+            "obs": "fan-03",
+            "path": "input.prompt",
+            "value": "so I need like ten short motivational quotes for my fitness page and um send each one as a separate message to my telegram saved messages"
+          },
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.steps.0.route",
+            "value": "ai_generate"
+          },
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.steps.0.app",
+            "value": "VoxAgent AI"
+          },
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.steps.0.action",
+            "value": "GENERATE_TEXT"
+          },
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.steps.1.route",
+            "value": "telegram_client"
+          },
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.steps.1.app",
+            "value": "Telegram Personal Account"
+          },
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.steps.1.action",
+            "value": "SEND_MESSAGE"
+          },
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.steps.1.parameters.target",
+            "value": "me"
+          },
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.required_apps.0",
+            "value": "Telegram Personal Account"
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.96,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Applicability gate (BIND, L1): this criterion's subject term is \"a browser_agent step\". I positively checked the route field of every step in this trace's blueprint and found 2 step(s), none of which carries route == \"browser_agent\" (the routes present are cited in refs). The criterion is valid but has NO referent in this situation, so there is nothing to score \u2014 this is a not-applicable, not a defect of the trajectory and not a fail. Marked n/a per the dispatch's applicability rule rather than uncertain, because the absence is grounded by a positive field check over every step's route, not inferred from silence.",
+        "refs": [
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.steps.0.route",
+            "value": "ai_generate"
+          },
+          {
+            "obs": "fan-03",
+            "path": "output.blueprint.steps.1.route",
+            "value": "telegram_client"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  }
+]

@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import supabase
 from app.config import settings
-from app.routers import planner, engines, vault, execution
+from app.routers import planner, engines, vault, execution, knowledge
 from app.routers.execution import arm_event_trigger
 from app.services.scheduler import scheduler, add_or_update_job
 
@@ -45,6 +45,42 @@ app.include_router(planner.router, prefix="/api/v1")
 app.include_router(engines.router, prefix="/api/v1")
 app.include_router(vault.router, prefix="/api/v1")
 app.include_router(execution.router, prefix="/api/v1")
+app.include_router(knowledge.router, prefix="/api/v1")
+
+import asyncio
+
+async def _watchdog_loop():
+    from app.services.telegram_client_engine import _live_clients
+    from app.services.trigger_engine import _subscription
+    while True:
+        try:
+            await asyncio.sleep(60)
+            
+            # 1. Reconnect Telethon if dead
+            for user_id, client in list(_live_clients.items()):
+                if not client.is_connected():
+                    print(f"[Watchdog] Telethon client for {user_id} disconnected! Reconnecting...")
+                    try:
+                        await client.connect()
+                    except Exception as e:
+                        print(f"[Watchdog] Failed to reconnect Telethon: {e}")
+                        
+            # 2. Reconnect Composio if dead
+            if _subscription is not None:
+                if hasattr(_subscription, "is_alive") and not _subscription.is_alive():
+                    print("[Watchdog] Composio subscription died! Restarting...")
+                    try:
+                        if hasattr(_subscription, "restart"):
+                            _subscription.restart()
+                        elif hasattr(_subscription, "_pusher") and hasattr(_subscription._pusher, "connect"):
+                            _subscription._pusher.connect()
+                    except Exception as e:
+                        print(f"[Watchdog] Failed to restart Composio: {e}")
+                        
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[Watchdog] Error: {e}")
 
 @app.on_event("startup")
 async def _rearm_event_trigger_agents():
@@ -75,6 +111,19 @@ async def _rearm_event_trigger_agents():
                 add_or_update_job(agent["id"], agent.get("user_id"), cron)
     except Exception:
         traceback.print_exc()
+
+    asyncio.create_task(_watchdog_loop())
+
+@app.on_event("shutdown")
+async def _shutdown_handler():
+    from app.services.telegram_client_engine import _live_clients
+    for client_key, client in list(_live_clients.items()):
+        try:
+            if client.is_connected():
+                print(f"[Shutdown] Disconnecting Telethon client {client_key}...")
+                await client.disconnect()
+        except Exception as e:
+            print(f"[Shutdown] Error disconnecting Telethon client {client_key}: {e}")
 
 @app.get("/health")
 def health_check():

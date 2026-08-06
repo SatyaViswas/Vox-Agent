@@ -15,3 +15,7 @@ langchain-google-genai
 uv
 telethon
 apscheduler
+PyMuPDF
+pandas
+beautifulsoup4
+python-multipart

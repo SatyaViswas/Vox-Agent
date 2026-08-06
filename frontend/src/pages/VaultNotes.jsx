@@ -10,12 +10,59 @@ import {
   List,
   Loader2,
   Search,
+  X,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { getVaultNotes } from "../api/vault";
 import { downloadFile, normalizeNote, notesToCsv, notesToJson } from "../lib/vaultNotes";
 
-function NoteCard({ note, selected, onToggleSelect, view }) {
+function ViewNoteModal({ note, onClose }) {
+  if (!note) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      <div className="glass-panel w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between p-4 border-b border-slate-300/70 dark:border-white/10 bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold truncate">{note.title}</h2>
+            <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
+              <FileText size={13} className="text-brand-500" />
+              {note.source}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 -mr-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 text-sm font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed select-text">
+          {note.contentText}
+        </div>
+        <div className="p-4 border-t border-slate-300/70 dark:border-white/10 flex items-center justify-between text-xs text-slate-400 bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="flex items-center gap-2">
+            <span>Agent: {note.agentName}</span>
+            {note.createdAt && (
+              <>
+                <span>·</span>
+                <span>{new Date(note.createdAt).toLocaleString()}</span>
+              </>
+            )}
+          </div>
+          <button
+            onClick={() => navigator.clipboard.writeText(note.contentText)}
+            className="flex items-center gap-1.5 hover:text-brand-500 transition-colors"
+          >
+            <Clipboard size={14} /> Copy
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NoteCard({ note, selected, onToggleSelect, onView, view }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -25,7 +72,7 @@ function NoteCard({ note, selected, onToggleSelect, view }) {
   };
 
   return (
-    <div className={`glass-panel p-4 flex flex-col gap-2 ${view === "list" ? "sm:flex-row sm:items-start sm:gap-4" : ""}`}>
+    <div className={`glass-panel p-4 flex flex-col gap-2 group hover:border-brand-400/30 transition-all duration-200 ${view === "list" ? "sm:flex-row sm:items-start sm:gap-4" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <label className="flex items-center gap-2 min-w-0 cursor-pointer">
           <input
@@ -48,8 +95,8 @@ function NoteCard({ note, selected, onToggleSelect, view }) {
         </button>
       </div>
 
-      <div className="flex-1 min-w-0">
-        <h3 className="font-medium text-sm">{note.title}</h3>
+      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onView(note)}>
+        <h3 className="font-medium text-sm group-hover:text-brand-500 transition-colors">{note.title}</h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-3 mt-1 font-mono">{note.contentText}</p>
         <div className="flex items-center gap-2 mt-2 text-[11px] text-slate-400 dark:text-slate-500">
           <span>{note.agentName}</span>
@@ -76,6 +123,7 @@ export default function VaultNotes() {
   const [dateTo, setDateTo] = useState("");
   const [view, setView] = useState("grid");
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [viewingNote, setViewingNote] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -224,10 +272,12 @@ export default function VaultNotes() {
       ) : (
         <div className={view === "grid" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" : "flex flex-col gap-3"}>
           {filtered.map((note) => (
-            <NoteCard key={note.id} note={note} view={view} selected={selectedIds.has(note.id)} onToggleSelect={toggleSelect} />
+            <NoteCard key={note.id} note={note} view={view} selected={selectedIds.has(note.id)} onToggleSelect={toggleSelect} onView={setViewingNote} />
           ))}
         </div>
       )}
+
+      {viewingNote && <ViewNoteModal note={viewingNote} onClose={() => setViewingNote(null)} />}
     </div>
   );
 }

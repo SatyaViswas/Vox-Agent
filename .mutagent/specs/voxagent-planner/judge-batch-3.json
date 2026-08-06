@@ -1,0 +1,315 @@
+[
+  {
+    "trace_id": "rct-01",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Criterion precondition is not met in this trace: it applies only when missing_parameters is populated. Positive field check confirms absence rather than inference from silence — output.blueprint.needs_clarification is false and output.blueprint.missing_parameters is the empty array (length 0), and output.blueprint.clarification_question is null. With zero clarification entries there is no parameter_key/label to inspect for opaque-ID phrasing, so the criterion is not-applicable here rather than passing vacuously. Noted for completeness (not scored here): the one place an ID could have leaked into this blueprint is steps[0].parameters.channel, whose value is the human-friendly \"payments\" and not a Slack channel ID like C0123ABC — but that is a step parameter, not a clarification request, and is outside this criterion's stated scope ('every entry's parameter_key/label').",
+        "refs": [
+          { "obs": "rct-01", "path": "output.blueprint.needs_clarification", "value": "false" },
+          { "obs": "rct-01", "path": "output.blueprint.missing_parameters.length", "value": "0" },
+          { "obs": "rct-01", "path": "output.blueprint.clarification_question", "value": "null" },
+          { "obs": "rct-01", "path": "output.blueprint.steps.0.parameters.channel", "value": "payments" }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 0.97,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "The blueprint contains exactly one step (steps.length = 1, steps[0].step_number = 1), so route classification is decided by that single row. The user's request is 'post the subject line in my #payments Slack channel' — the destination is Slack, which the system prompt names explicitly as a cataloged Composio SaaS app ('e.g. Gmail, Slack, GitHub, Google Sheets, Notion, Trello'). steps[0].route is 'composio_api', steps[0].app is 'Slack', and steps[0].action is 'SLACK_SEND_MESSAGE' — which also matches the prescribed uppercase {APPNAME}_{VERB}_{OBJECT} slug convention (SLACK_SEND_MESSAGE is literally the example given in the Rules). Every competing route is positively excluded: Slack has a public API so browser_agent is wrong, no raw URL/REST endpoint is named so http_webhook is wrong, no personal-Telegram identity is involved so telegram_client is wrong, and the step performs an external app send rather than pure text generation so ai_generate is wrong. The watched-side app (Gmail) is modeled as trigger.event_app rather than as a step, so it correctly contributes no route to classify. No other step exists to misroute — grounded by the positive length check, not by silence.",
+        "refs": [
+          { "obs": "rct-01", "path": "input.prompt", "value": "whenever I get an email from noreply@stripe.com, post the subject line in my #payments Slack channel" },
+          { "obs": "rct-01", "path": "output.blueprint.steps.length", "value": "1" },
+          { "obs": "rct-01", "path": "output.blueprint.steps.0.route", "value": "composio_api" },
+          { "obs": "rct-01", "path": "output.blueprint.steps.0.app", "value": "Slack" },
+          { "obs": "rct-01", "path": "output.blueprint.steps.0.action", "value": "SLACK_SEND_MESSAGE" },
+          { "obs": "rct-01", "path": "output.blueprint.trigger.event_app", "value": "Gmail" },
+          { "obs": "agentspec.yaml", "path": "spec.agent.systemPrompt", "value": "'composio_api': For any of the 1000+ SaaS apps with a public API via Composio (e.g. Gmail, Slack, GitHub, Google Sheets, Notion, Trello, ...)" }
+        ],
+        "assumptions": [
+          { "text": "Slack is present in Composio's live tool catalog at run time (the Rules name it as a catalog example; the catalog itself is not visible in this trace).", "kind": "factual-intent", "status": "grounded-by-spec-text" }
+        ],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Criterion precondition is not met: it applies only to a trace containing at least one step with route 'browser_agent'. Positive enumeration of every route field in the blueprint (not inference from silence): steps.length = 1 and steps[0].route = 'composio_api'. There is no browser_agent step to assess for concrete site/field/element detail, so this criterion is not-applicable rather than passing vacuously.",
+        "refs": [
+          { "obs": "rct-01", "path": "output.blueprint.steps.length", "value": "1" },
+          { "obs": "rct-01", "path": "output.blueprint.steps.0.route", "value": "composio_api" },
+          { "obs": "rct-01", "path": "output.blueprint.required_apps.0", "value": "Gmail" },
+          { "obs": "rct-01", "path": "output.blueprint.required_apps.1", "value": "Slack" }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 0.98,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "rct-02",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Criterion precondition is not met. Positive field check: output.blueprint.needs_clarification is false, output.blueprint.missing_parameters is the empty array (length 0), and output.blueprint.clarification_question is null — so there are zero clarification entries whose parameter_key/label could ask for an opaque ID. Worth recording as context (outside this criterion's scope): the Telegram destination is expressed as steps[1].parameters.target = 'me' (the Saved Messages convention from the Rules) rather than a numeric Telegram chat ID, so no opaque identifier leaked into the step parameters either — but this criterion is scoped to missing_parameters entries, which are absent here.",
+        "refs": [
+          { "obs": "rct-02", "path": "output.blueprint.needs_clarification", "value": "false" },
+          { "obs": "rct-02", "path": "output.blueprint.missing_parameters.length", "value": "0" },
+          { "obs": "rct-02", "path": "output.blueprint.clarification_question", "value": "null" },
+          { "obs": "rct-02", "path": "output.blueprint.steps.1.parameters.target", "value": "me" }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 0.97,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Two steps, both must classify correctly. STEP 1: route 'ai_generate', app 'VoxAgent AI', action 'GENERATE_TEXT', parameters.prompt = 'Format the following GitHub issue data into a concise notification message for Telegram: {trigger_result}. Include the issue title and the username of the person who opened it.' The Rules define ai_generate as 'a step whose job is purely to generate, draft, summarize, translate, or rewrite text/content with AI ... with NO external app connection required', and mandate exactly this triple (app 'VoxAgent AI', action 'GENERATE_TEXT', parameters {'prompt': ...}). Formatting captured event text into a notification message is a rewrite/summarize job needing no connected account, and the step contacts no external app, so ai_generate is the correct route — the anti-pattern the Rules forbid (routing text generation to composio_api with an OpenAI/Gemini app) was avoided. STEP 2: route 'telegram_client', app 'Telegram Personal Account', action 'SEND_MESSAGE', parameters.target 'me'. The user wrote 'I want a message in my Telegram Saved Messages' — 'my ... Saved Messages' is precisely the phrasing the Telegram rule lists for the personal-account identity ('my telegram', 'saved messages'). The bot identity is correctly NOT used: positive check confirms the prompt contains no 'bot' token, and the Rules gate composio_api+'Telegram' behind the user EXPLICITLY saying 'bot'. app 'Telegram Personal Account' and action 'SEND_MESSAGE' with target/text match the Rules verbatim. The watched app (GitHub) is modeled as trigger.event_app = 'GitHub', not as a step, so it contributes no route to classify. Both routes match their Rule-defined classification. Scope note: whether step 1 was NECESSARY at all (the Telegram text could have carried {trigger_result} directly) is a step-shape question, not a route question — this criterion asks only whether each step's route matches the Rules for what that step does, and it does.",
+        "refs": [
+          { "obs": "rct-02", "path": "input.prompt", "value": "Every time someone opens a new issue on my GitHub repo acme/mobile-app, I want a message in my Telegram Saved Messages with the issue title and who opened it" },
+          { "obs": "rct-02", "path": "output.blueprint.steps.length", "value": "2" },
+          { "obs": "rct-02", "path": "output.blueprint.steps.0.route", "value": "ai_generate" },
+          { "obs": "rct-02", "path": "output.blueprint.steps.0.app", "value": "VoxAgent AI" },
+          { "obs": "rct-02", "path": "output.blueprint.steps.0.action", "value": "GENERATE_TEXT" },
+          { "obs": "rct-02", "path": "output.blueprint.steps.0.parameters.prompt", "value": "Format the following GitHub issue data into a concise notification message for Telegram: {trigger_result}. Include the issue title and the username of the person who opened it." },
+          { "obs": "rct-02", "path": "output.blueprint.steps.1.route", "value": "telegram_client" },
+          { "obs": "rct-02", "path": "output.blueprint.steps.1.app", "value": "Telegram Personal Account" },
+          { "obs": "rct-02", "path": "output.blueprint.steps.1.action", "value": "SEND_MESSAGE" },
+          { "obs": "rct-02", "path": "output.blueprint.trigger.event_app", "value": "GitHub" },
+          { "obs": "agentspec.yaml", "path": "spec.agent.systemPrompt", "value": "Only use 'composio_api' with `app` \"Telegram\" (a separate bot identity, e.g. TELEGRAM_SEND_MESSAGE with `chat_id`/`text`) when the user EXPLICITLY says \"bot\"" }
+        ],
+        "assumptions": [
+          { "text": "This criterion judges route-per-step correctness only; the necessity/count of steps is governed by other criteria (step-handoff-placeholder, event-trigger-modeling) and is deliberately not folded into this verdict.", "kind": "scope", "status": "grounded-by-criterion-text" }
+        ],
+        "result": "pass",
+        "confidence": 0.92,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Criterion precondition is not met. Positive enumeration of every route field: steps.length = 2, steps[0].route = 'ai_generate', steps[1].route = 'telegram_client'. Neither is 'browser_agent', so there is no browser step whose concrete detail could be assessed — not-applicable, not a vacuous pass.",
+        "refs": [
+          { "obs": "rct-02", "path": "output.blueprint.steps.length", "value": "2" },
+          { "obs": "rct-02", "path": "output.blueprint.steps.0.route", "value": "ai_generate" },
+          { "obs": "rct-02", "path": "output.blueprint.steps.1.route", "value": "telegram_client" }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 0.98,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "rct-03",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Criterion precondition is not met. Positive field check: output.blueprint.needs_clarification is false, output.blueprint.missing_parameters has length 0, and output.blueprint.clarification_question is null — zero clarification entries exist, so there is no parameter_key/label to inspect. Context only (out of scope for this criterion): the watched Slack channel is carried as trigger.event_target = '#support', a human-readable channel name rather than a Slack channel ID, and the email recipient steps[0].parameters.to = 'me@acme.io' came verbatim from the user — so no opaque identifier was requested or invented anywhere, but the criterion itself does not fire without missing_parameters.",
+        "refs": [
+          { "obs": "rct-03", "path": "output.blueprint.needs_clarification", "value": "false" },
+          { "obs": "rct-03", "path": "output.blueprint.missing_parameters.length", "value": "0" },
+          { "obs": "rct-03", "path": "output.blueprint.clarification_question", "value": "null" },
+          { "obs": "rct-03", "path": "output.blueprint.trigger.event_target", "value": "#support" }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 0.97,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Exactly one step exists (steps.length = 1, steps[0].step_number = 1), so the whole classification rests on it. The user's reaction request is 'send me an email at me@acme.io with what they said' — the destination app is email, and the blueprint routes it as steps[0].route = 'composio_api' with app 'Gmail' and action 'GMAIL_SEND_EMAIL'. Gmail is named explicitly in the Rules as a cataloged Composio SaaS app, and GMAIL_SEND_EMAIL is the exact slug the Rules give as an example of the {APPNAME}_{VERB}_{OBJECT} convention. Competing routes are positively excluded: Gmail has a public API (not browser_agent); the user named no raw URL or REST endpoint (not http_webhook); no personal Telegram identity is involved (not telegram_client); the step performs an external send rather than pure text generation (not ai_generate). The watched Slack side is correctly modeled as trigger.event_app = 'Slack' with event_target '#support' rather than as a step, so it contributes no route — notably the 'keep watching' phrasing in the prompt did NOT produce a listener step that would have needed a route at all (grounded by the positive steps.length = 1 check plus the single route value, not by silence). One step, correct route.",
+        "refs": [
+          { "obs": "rct-03", "path": "input.prompt", "value": "hey so um I want you to keep watching my Slack #support channel, and whenever someone posts a message with the word urgent in it, uh, send me an email at me@acme.io with what they said" },
+          { "obs": "rct-03", "path": "output.blueprint.steps.length", "value": "1" },
+          { "obs": "rct-03", "path": "output.blueprint.steps.0.route", "value": "composio_api" },
+          { "obs": "rct-03", "path": "output.blueprint.steps.0.app", "value": "Gmail" },
+          { "obs": "rct-03", "path": "output.blueprint.steps.0.action", "value": "GMAIL_SEND_EMAIL" },
+          { "obs": "rct-03", "path": "output.blueprint.steps.0.parameters.to", "value": "me@acme.io" },
+          { "obs": "rct-03", "path": "output.blueprint.trigger.event_app", "value": "Slack" }
+        ],
+        "assumptions": [
+          { "text": "Gmail is present in Composio's live tool catalog at run time (named as a catalog example in the Rules; the catalog is not observable in this trace).", "kind": "factual-intent", "status": "grounded-by-spec-text" }
+        ],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Criterion precondition is not met. Positive enumeration of every route field present: steps.length = 1 and steps[0].route = 'composio_api'. No step carries route 'browser_agent', so there is nothing to assess for site/field/element specificity — not-applicable rather than a vacuous pass.",
+        "refs": [
+          { "obs": "rct-03", "path": "output.blueprint.steps.length", "value": "1" },
+          { "obs": "rct-03", "path": "output.blueprint.steps.0.route", "value": "composio_api" },
+          { "obs": "rct-03", "path": "output.blueprint.required_apps.0", "value": "Slack" }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 0.98,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "bpt-01",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Criterion precondition is not met. Positive field check: output.blueprint.needs_clarification is false, output.blueprint.missing_parameters has length 0, and output.blueprint.clarification_question is null — no clarification entry exists to inspect for opaque-ID phrasing. This is the correct posture for this prompt (the user supplied both the exact group name and the exact message text), but on this criterion specifically the verdict is not-applicable, not pass.",
+        "refs": [
+          { "obs": "bpt-01", "path": "output.blueprint.needs_clarification", "value": "false" },
+          { "obs": "bpt-01", "path": "output.blueprint.missing_parameters.length", "value": "0" },
+          { "obs": "bpt-01", "path": "output.blueprint.clarification_question", "value": "null" }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 0.97,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Single step (steps.length = 1). The user wrote 'open WhatsApp Web and send ... to the group chat named Weekend Trek'. The blueprint sets steps[0].route = 'browser_agent' with app 'WhatsApp Web'. The Rules define browser_agent as 'For websites/portals without public APIs (e.g., college ERPs, WhatsApp Web, Canva, Instagram)' — WhatsApp Web is a verbatim listed example, so this is the textbook-correct classification. Two plausible traps were both avoided, checked positively rather than assumed: (a) the step is NOT composio_api (steps[0].route reads 'browser_agent', so WhatsApp was not treated as a cataloged SaaS app), and (b) it is NOT telegram_client by messaging-app association (route field again, plus app = 'WhatsApp Web', not 'Telegram Personal Account'; the prompt contains no Telegram reference at all). http_webhook is excluded because the user named a web UI to drive, not a REST endpoint; ai_generate is excluded because the step sends via an external surface rather than generating text. Route matches its Rule-defined classification.",
+        "refs": [
+          { "obs": "bpt-01", "path": "input.prompt", "value": "open WhatsApp Web and send 'Running 15 mins late, start without me' to the group chat named Weekend Trek" },
+          { "obs": "bpt-01", "path": "output.blueprint.steps.length", "value": "1" },
+          { "obs": "bpt-01", "path": "output.blueprint.steps.0.route", "value": "browser_agent" },
+          { "obs": "bpt-01", "path": "output.blueprint.steps.0.app", "value": "WhatsApp Web" },
+          { "obs": "bpt-01", "path": "output.blueprint.required_apps.0", "value": "WhatsApp Web" },
+          { "obs": "agentspec.yaml", "path": "spec.agent.systemPrompt", "value": "'browser_agent': For websites/portals without public APIs (e.g., college ERPs, WhatsApp Web, Canva, Instagram)." }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.97,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "The criterion fires: steps[0].route = 'browser_agent'. Assessing whether the acting browser agent has a fair chance rather than being left to guess at the page, against the three sub-parts of the criterion. (1) SPECIFIC SITE/PORTAL: steps[0].app = 'WhatsApp Web' — an unambiguous, single-destination surface (web.whatsapp.com); no URL literal is present, but 'WhatsApp Web' identifies exactly one portal and no disambiguation is possible or needed. (2) SPECIFIC FIELD VALUES: both values the task turns on are carried verbatim and losslessly from the prompt — parameters.group_name = 'Weekend Trek' (exactly the user's 'the group chat named Weekend Trek') and parameters.message = 'Running 15 mins late, start without me' (byte-identical to the quoted message text, including the leading capital and the comma). Nothing was compressed to a generic 'send a message about being late'. (3) TARGET ELEMENTS IN PLAIN LANGUAGE: the parameter key 'group_name' plus action 'SEND_MESSAGE' describe the target in the page's own domain vocabulary — a browser agent on WhatsApp Web can search the chat list for a group titled 'Weekend Trek', open it, type the message and send. No brittle CSS/XPath selector is smuggled in, which is what the criterion's plain-language framing asks for. The criterion's stated goal is 'No browser_agent step judged under-specified RELATIVE TO WHAT THE USER ACTUALLY DESCRIBED' — the user described a site, a named group and a message, and all three survive into the step with zero loss and zero invention. Residual, deliberately not held against the step: the plan does not spell out sub-actions (search box, chat row click, compose box, send) — but the acting browser agent is an agent, and the criterion asks for sufficient detail, not a click-by-click script.",
+        "refs": [
+          { "obs": "bpt-01", "path": "input.prompt", "value": "open WhatsApp Web and send 'Running 15 mins late, start without me' to the group chat named Weekend Trek" },
+          { "obs": "bpt-01", "path": "output.blueprint.steps.0.route", "value": "browser_agent" },
+          { "obs": "bpt-01", "path": "output.blueprint.steps.0.app", "value": "WhatsApp Web" },
+          { "obs": "bpt-01", "path": "output.blueprint.steps.0.action", "value": "SEND_MESSAGE" },
+          { "obs": "bpt-01", "path": "output.blueprint.steps.0.parameters.group_name", "value": "Weekend Trek" },
+          { "obs": "bpt-01", "path": "output.blueprint.steps.0.parameters.message", "value": "Running 15 mins late, start without me" },
+          { "obs": "agentspec.yaml", "path": "spec.evaluation.criteria.browser-context-sufficiency.goal", "value": "No browser_agent step judged under-specified relative to what the user actually described." }
+        ],
+        "assumptions": [
+          { "text": "The acting browser agent can reach an already-authenticated WhatsApp Web session; session/auth state is not planner-time information (spec.intent.nonGoals: auth is handled at execution time), so its absence from the step is not counted as missing context.", "kind": "scope", "status": "grounded-by-spec-text" }
+        ],
+        "result": "pass",
+        "confidence": 0.9,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "bpt-02",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "The criterion fires: output.blueprint.needs_clarification = true with two populated missing_parameters entries. Inspecting every entry's parameter_key/label as the criterion requires. ENTRY 0: parameter_key 'username', label 'Username', description 'The username for the college portal.' ENTRY 1: parameter_key 'password', label 'Password', description 'The password for the college portal.' Neither is an internal/opaque identifier. The criterion enumerates the prohibited class as 'an internal/opaque ID (spreadsheet ID, channel ID, database ID, file ID)', and the spec constraint gives the same closed class plus the reason it is prohibited — those are machine-side identifiers 'a normal user has no way to know or easily find', which the execution engine is supposed to resolve from a human-friendly name at run time. A portal username and password are the opposite case on both tests: the user knows them by definition (they are the user's own credentials, held only by the user), and no engine-side name-to-ID resolution exists or is expected for them. Positive absence check on the leak shape this criterion targets: no entry has a parameter_key ending in '_id' or containing 'id' as an identifier token — the two keys are exactly 'username' and 'password', and the labels are the plain words 'Username' and 'Password'. Verdict is pass. Recorded but explicitly NOT scored here: whether the planner should be soliciting credentials at plan time at all is arguably in tension with spec.intent.nonGoals ('Resolving auth/credential issues — handled at execution time, not plan time'), and asking for a raw password in a clarification_question is a security-shaped concern — but this criterion asks only whether an asked-for value is an opaque ID versus a human-friendly name, and on that question the answer is unambiguous. That separate concern belongs to a criterion that does not yet exist in the suite; flagging it, not folding it into this verdict.",
+        "refs": [
+          { "obs": "bpt-02", "path": "output.blueprint.needs_clarification", "value": "true" },
+          { "obs": "bpt-02", "path": "output.blueprint.missing_parameters.length", "value": "2" },
+          { "obs": "bpt-02", "path": "output.blueprint.missing_parameters.0.parameter_key", "value": "username" },
+          { "obs": "bpt-02", "path": "output.blueprint.missing_parameters.0.label", "value": "Username" },
+          { "obs": "bpt-02", "path": "output.blueprint.missing_parameters.1.parameter_key", "value": "password" },
+          { "obs": "bpt-02", "path": "output.blueprint.missing_parameters.1.label", "value": "Password" },
+          { "obs": "bpt-02", "path": "output.blueprint.clarification_question", "value": "I need your login credentials to access the portal. Please provide your username and password for portal.vitap.ac.in." },
+          { "obs": "agentspec.yaml", "path": "spec.intent.constraints.0", "value": "Never guess or invent an opaque internal ID (spreadsheet ID, channel ID, database ID, file ID) the user didn't provide." },
+          { "obs": "agentspec.yaml", "path": "spec.agent.systemPrompt", "value": "NEVER ask the user for an internal ID (a spreadsheet ID, channel ID, database ID, file ID, or similar opaque identifier) — a normal user has no way to know or easily find one." }
+        ],
+        "assumptions": [
+          { "text": "A user's own portal username/password fall outside the criterion's 'internal/opaque ID' class — grounded by the class's enumerated members (all resource identifiers) and by its stated rationale (values the user cannot know and the engine resolves from a name), neither of which covers self-held credentials.", "kind": "scope", "status": "grounded-by-spec-text" }
+        ],
+        "result": "pass",
+        "confidence": 0.88,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Three steps, all must classify correctly; each is checked individually against its route field rather than assumed uniform. The user's target is 'my college portal at portal.vitap.ac.in' — a college ERP, which the Rules name verbatim as the first browser_agent example ('For websites/portals without public APIs (e.g., college ERPs, WhatsApp Web, Canva, Instagram)'). STEP 1: route 'browser_agent', app 'College Portal', action 'NAVIGATE_AND_LOGIN' — driving a login form in a web UI, correct. STEP 2: route 'browser_agent', app 'College Portal', action 'CLICK_ELEMENT' — clicking a nav link inside that same portal, correct. STEP 3: route 'browser_agent', app 'College Portal', action 'REGISTER_FOR_EXAM' — completing a form flow in that portal, correct. Every alternative is positively excluded for all three: a private university ERP is not in Composio's SaaS catalog (not composio_api); although a URL literal is present at steps[0].parameters.url, the task is interactive UI navigation and form submission behind a login, not calling a REST endpoint, so http_webhook is wrong (http_webhook is for 'custom URLs, REST endpoints, or triggering other external software', not for driving a rendered portal); no Telegram identity appears anywhere (not telegram_client); no step generates text (not ai_generate). Also correctly, no step was split off to a different engine mid-flow — a browser session is stateful, and all three hops stay on browser_agent, which the route values confirm directly.",
+        "refs": [
+          { "obs": "bpt-02", "path": "input.prompt", "value": "Log in to my college portal at portal.vitap.ac.in, go to the Exam Registration page, and register me for the Data Structures re-exam" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.length", "value": "3" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.0.route", "value": "browser_agent" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.1.route", "value": "browser_agent" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.2.route", "value": "browser_agent" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.0.app", "value": "College Portal" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.0.parameters.url", "value": "https://portal.vitap.ac.in" },
+          { "obs": "agentspec.yaml", "path": "spec.agent.systemPrompt", "value": "'browser_agent': For websites/portals without public APIs (e.g., college ERPs, WhatsApp Web, Canva, Instagram)." }
+        ],
+        "assumptions": [
+          { "text": "portal.vitap.ac.in exposes no public/cataloged API (the trace contains no catalog probe); grounded by the Rules naming college ERPs as the canonical no-API browser_agent case and by the user's own framing 'my college portal'.", "kind": "factual-intent", "status": "grounded-by-spec-text" }
+        ],
+        "result": "pass",
+        "confidence": 0.94,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "The criterion fires on all three steps (every route field reads 'browser_agent'). Judged against the criterion's own yardstick — enough concrete detail that the acting browser agent has a fair chance, measured relative to what the user actually described. The user gave exactly three specifics: a URL (portal.vitap.ac.in), a named page (Exam Registration), and a named course/exam (Data Structures re-exam). All three survive into the plan without compression, which is precisely the failure this scenario was built to catch. (1) SITE: steps[0].parameters.url = 'https://portal.vitap.ac.in' — the concrete portal, normalized to a navigable absolute URL rather than a vague 'the college portal'. (2) NAMED PAGE: steps[1].action = 'CLICK_ELEMENT' with parameters.element_text = 'Exam Registration' — the target element is described by its visible link text in plain language, exactly the form the criterion asks for, and not as a brittle CSS/XPath selector. (3) NAMED EXAM: steps[2].parameters.exam_name = 'Data Structures re-exam' — the user's own wording preserved verbatim, including the 're-exam' qualifier that distinguishes it from the regular sitting. Nothing collapsed into 'register for exam on the portal'. On the login step: parameters.username_field = 'username' and password_field = 'password' name the two form fields in conventional plain language, and their VALUES are legitimately absent because the planner routed them to missing_parameters (needs_clarification = true, entries for 'username' and 'password') rather than inventing them — a correctly-deferred value is not missing browser context, it is the disambiguation gate working, and the criterion measures under-specification relative to what the user described (the user described no credentials). Residuals I weighed and did not fail on: 'username'/'password' are generic field guesses that may not match the real DOM, and step 3's REGISTER_FOR_EXAM does not spell out the sub-flow (locate the course row, click Register, confirm). Both are real-world DOM fragility — but the criterion explicitly frames itself as 'a proxy for real DOM/selector fragility, since a planner-level eval can't execute a live browser', i.e. it grades the plain-language sufficiency of the plan, not selector accuracy against a page nobody can load here. Every specific the user gave is present and concrete, so the step set is not under-specified relative to the request. Pass — at moderated confidence, because step 3 is the thinnest of the three and a stricter reading of 'specific target elements' could weigh its single parameter differently.",
+        "refs": [
+          { "obs": "bpt-02", "path": "input.prompt", "value": "Log in to my college portal at portal.vitap.ac.in, go to the Exam Registration page, and register me for the Data Structures re-exam" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.0.parameters.url", "value": "https://portal.vitap.ac.in" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.0.parameters.username_field", "value": "username" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.0.parameters.password_field", "value": "password" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.1.action", "value": "CLICK_ELEMENT" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.1.parameters.element_text", "value": "Exam Registration" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.2.action", "value": "REGISTER_FOR_EXAM" },
+          { "obs": "bpt-02", "path": "output.blueprint.steps.2.parameters.exam_name", "value": "Data Structures re-exam" },
+          { "obs": "bpt-02", "path": "output.blueprint.needs_clarification", "value": "true" },
+          { "obs": "agentspec.yaml", "path": "spec.evaluation.criteria.browser-context-sufficiency.description", "value": "a proxy for real DOM/selector fragility, since a planner-level eval can't execute a live browser" }
+        ],
+        "assumptions": [
+          { "text": "The portal's Exam Registration entry point is reachable by its visible link text 'Exam Registration' after login (the live DOM is not observable from a planner trace); the criterion's own proxy framing makes plain-language element description the standard rather than verified selector accuracy.", "kind": "scope", "status": "grounded-by-criterion-text" }
+        ],
+        "result": "pass",
+        "confidence": 0.72,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "hpp-01",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Criterion precondition is not met, and correctly so for a control case. Positive field check: output.blueprint.needs_clarification = false, output.blueprint.missing_parameters has length 0, output.blueprint.clarification_question = null. There is no clarification entry whose parameter_key/label could ask for an opaque ID. This is the expected posture — the prompt supplied recipient, subject and body explicitly, and all three appear verbatim in steps[0].parameters, so nothing was left to ask for. On this criterion the verdict is not-applicable rather than pass: scoring a vacuous pass here would inflate the criterion's apparent coverage on a trace that never exercised it.",
+        "refs": [
+          { "obs": "hpp-01", "path": "output.blueprint.needs_clarification", "value": "false" },
+          { "obs": "hpp-01", "path": "output.blueprint.missing_parameters.length", "value": "0" },
+          { "obs": "hpp-01", "path": "output.blueprint.clarification_question", "value": "null" },
+          { "obs": "hpp-01", "path": "output.blueprint.steps.0.parameters.to", "value": "david@northwind.co" }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 0.97,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Single step (steps.length = 1). The user asked 'Can you email david@northwind.co with the subject ... and the body ...' — an email send to a named recipient. The blueprint sets steps[0].route = 'composio_api' with app 'Gmail' and action 'GMAIL_SEND_EMAIL'. Gmail is a cataloged Composio SaaS app named explicitly in the Rules, and GMAIL_SEND_EMAIL is the exact slug the Rules give as a convention example, so both the route and the app/action pairing match the Rule-defined classification. Alternatives positively excluded: Gmail has a public API so browser_agent would be wrong; no raw URL or REST endpoint appears in the prompt or in parameters (the only fields are to/subject/body) so http_webhook is wrong; the prompt contains no Telegram reference so telegram_client is wrong; and although the message text is prose, it was supplied verbatim by the user rather than generated, so ai_generate is wrong — the step's job is delivery, not drafting, which the literal (non-placeholder) body value confirms. The step also carries no fabricated content: parameters.subject and parameters.body are byte-identical to the user's quoted strings. Route matches.",
+        "refs": [
+          { "obs": "hpp-01", "path": "input.prompt", "value": "Can you email david@northwind.co with the subject 'Invoice 4471 - due April 15' and the body 'Hi David, invoice 4471 for March is ready. Payment is due April 15. Thanks, Priya.'" },
+          { "obs": "hpp-01", "path": "output.blueprint.steps.length", "value": "1" },
+          { "obs": "hpp-01", "path": "output.blueprint.steps.0.route", "value": "composio_api" },
+          { "obs": "hpp-01", "path": "output.blueprint.steps.0.app", "value": "Gmail" },
+          { "obs": "hpp-01", "path": "output.blueprint.steps.0.action", "value": "GMAIL_SEND_EMAIL" },
+          { "obs": "hpp-01", "path": "output.blueprint.steps.0.parameters.subject", "value": "Invoice 4471 - due April 15" },
+          { "obs": "hpp-01", "path": "output.blueprint.steps.0.parameters.body", "value": "Hi David, invoice 4471 for March is ready. Payment is due April 15. Thanks, Priya." },
+          { "obs": "agentspec.yaml", "path": "spec.agent.systemPrompt", "value": "\"GMAIL_SEND_EMAIL\"" }
+        ],
+        "assumptions": [
+          { "text": "Gmail is present in Composio's live tool catalog at run time (named as a catalog example in the Rules; not observable in this trace).", "kind": "factual-intent", "status": "grounded-by-spec-text" }
+        ],
+        "result": "pass",
+        "confidence": 0.96,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Criterion precondition is not met. Positive enumeration of every route field in the blueprint: steps.length = 1, steps[0].route = 'composio_api'. No browser_agent step exists, so there is no step whose site/field/element detail could be assessed — not-applicable, not a vacuous pass.",
+        "refs": [
+          { "obs": "hpp-01", "path": "output.blueprint.steps.length", "value": "1" },
+          { "obs": "hpp-01", "path": "output.blueprint.steps.0.route", "value": "composio_api" },
+          { "obs": "hpp-01", "path": "output.blueprint.required_apps.0", "value": "Gmail" }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 0.98,
+        "blockedBy": null
+      }
+    }
+  }
+]

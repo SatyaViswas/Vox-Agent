@@ -10,7 +10,7 @@ from app.services import pending_actions
 from app.services.telemetry import telemetry_manager
 from app.services.composio_engine import generate_sample_trigger_payload
 from app.services import trigger_engine, telegram_client_engine
-from app.services.telegram_client_engine import TELEGRAM_PERSONAL_APP_NAME
+from app.services.telegram_client_engine import TELEGRAM_PERSONAL_APP_NAME, TELEGRAM_BOT_APP_NAME
 from app.services.scheduler import add_or_update_job, remove_job
 from app.database import supabase
 
@@ -49,7 +49,7 @@ TriggerType = Literal["on_demand", "scheduled", "event_trigger"]
 # of trigger_engine (Composio's push-based triggers, which the bot-based
 # Telegram integration would use if Composio ever adds a trigger for it).
 TELEGRAM_PERSONAL_SLUG = "".join(ch for ch in TELEGRAM_PERSONAL_APP_NAME.lower() if ch.isalnum())
-
+TELEGRAM_BOT_SLUG = "".join(ch for ch in TELEGRAM_BOT_APP_NAME.lower() if ch.isalnum())
 
 def _to_public_agent(row: Dict[str, Any]) -> Dict[str, Any]:
     """The agents table stores an `is_active` boolean, but the frontend's
@@ -96,21 +96,28 @@ async def arm_event_trigger(agent_id: str, user_id: str, blueprint: Dict[str, An
     slug = _slugify_app(target["app"])
     intent_description = (blueprint.get("trigger") or {}).get("details")
     try:
-        if slug == TELEGRAM_PERSONAL_SLUG:
-            await telegram_client_engine.start_event_trigger(agent_id, user_id, target.get("target"))
+        if slug in (TELEGRAM_PERSONAL_SLUG, TELEGRAM_BOT_SLUG):
+            await telegram_client_engine.start_event_trigger(agent_id, user_id, target.get("target"), app_name=target["app"])
         else:
             loop = asyncio.get_running_loop()
-            trigger_config = None
+            
+            # The blueprint may have already populated trigger_config (e.g., via missing_parameters in the UI)
+            blueprint_trigger_config = blueprint.get("trigger", {}).get("trigger_config") or {}
+            trigger_config = {**blueprint_trigger_config} if blueprint_trigger_config else None
+            
             if target.get("app") == "Google Sheets" and target.get("target"):
-                trigger_config = {"spreadsheet_id": target["target"]}
+                if trigger_config is None:
+                    trigger_config = {}
+                trigger_config["spreadsheet_id"] = target["target"]
+                
                 from app.services.composio_engine import composio, resolve_connected_user_id, _find_search_tool, _search_tool_query_param, _extract_named_id
                 entity_id = resolve_connected_user_id(user_id, "Google Sheets")
                 search_tool = _find_search_tool("googlesheets")
                 if search_tool:
                     query_param = _search_tool_query_param(search_tool)
                     try:
-                        result = await asyncio.to_thread(
-                            composio.tools.execute,
+                        from app.services.composio_engine import _execute_composio_with_timeout
+                        result = await _execute_composio_with_timeout(
                             slug=search_tool.slug,
                             arguments={query_param: target["target"]} if query_param else {},
                             user_id=entity_id,
@@ -118,7 +125,7 @@ async def arm_event_trigger(agent_id: str, user_id: str, blueprint: Dict[str, An
                         )
                         s_id = _extract_named_id(result, target["target"])
                         if s_id:
-                            trigger_config = {"spreadsheet_id": s_id}
+                            trigger_config["spreadsheet_id"] = s_id
                     except Exception as ex:
                         print(f"Warning: Auto-resolve for spreadsheet_id failed: {ex}")
 
@@ -133,7 +140,7 @@ async def arm_event_trigger(agent_id: str, user_id: str, blueprint: Dict[str, An
     except Exception as e:
         traceback.print_exc()
         reason = str(e)
-        if slug == TELEGRAM_PERSONAL_SLUG:
+        if slug in (TELEGRAM_PERSONAL_SLUG, TELEGRAM_BOT_SLUG):
             telegram_client_engine.set_last_error(agent_id, reason)
         else:
             trigger_engine.set_last_error(agent_id, reason)
@@ -264,8 +271,6 @@ async def reject_pending_action(pending_id: str, request: RejectRequest, backgro
     pending = pending_actions.get_by_id(pending_id)
     if not pending or pending.get("status") != "pending":
         raise HTTPException(status_code=404, detail="No pending action with that id.")
-    if pending.get("input_type") != "confirm":
-        raise HTTPException(status_code=400, detail="This pending action isn't an approval gate — use /resume instead.")
     background_tasks.add_task(reject_paused_run, pending["agent_id"], request.reason)
     return {"status": "started", "agent_id": pending["agent_id"], "message": "Rejected"}
 

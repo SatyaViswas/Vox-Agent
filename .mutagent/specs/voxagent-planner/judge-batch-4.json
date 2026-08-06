@@ -1,0 +1,261 @@
+[
+  {
+    "trace_id": "hpp-02",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Criterion is conditional on missing_parameters being populated. Positive field check: output.blueprint.needs_clarification is the literal boolean false and output.blueprint.missing_parameters is the empty array [], with clarification_question null. With no clarification entry in existence there is no parameter_key/label to inspect for opaque-ID phrasing, so the criterion has no referent in this trajectory. Not-applicable by the criterion's own precondition, not a pass earned by behaviour.",
+        "refs": [
+          {"obs": "hpp-02", "path": "output.blueprint.needs_clarification", "value": "false"},
+          {"obs": "hpp-02", "path": "output.blueprint.missing_parameters", "value": "[]"},
+          {"obs": "hpp-02", "path": "output.blueprint.clarification_question", "value": "null"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step to judge. The prompt is 'drop a message in my telegram saved messages' — a first-person reference to the user's OWN Telegram account, with no occurrence of the word 'bot' anywhere in input.prompt (positive check: the prompt string reads '...in my telegram saved messages saying renew northwind dot co domain...' and contains no bot mention). The Telegram rule states telegram_client with app 'Telegram Personal Account' is the default whenever the request is about the user's own account ('my telegram', 'saved messages' are both named as trigger phrases), and composio_api + app 'Telegram' is reserved for an EXPLICIT bot mention. Step 1 sets route 'telegram_client', app 'Telegram Personal Account', action 'SEND_MESSAGE', and parameters.target 'me' — exactly the Saved-Messages form the rule prescribes. The route matches the Rules for the only step present; the voice-transcript noise ('um', 'dot co') did not push the classification off-path.",
+        "refs": [
+          {"obs": "hpp-02", "path": "input.prompt", "value": "hey um can you just drop a message in my telegram saved messages saying renew northwind dot co domain before september twelfth"},
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.route", "value": "telegram_client"},
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.app", "value": "Telegram Personal Account"},
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.parameters.target", "value": "me"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Criterion is conditional on at least one step with route 'browser_agent'. Positive field check over the whole steps array: steps has exactly one entry and steps.0.route is the literal 'telegram_client'. No browser_agent step exists to assess for context sufficiency, so the criterion has no referent here. Not-applicable by precondition.",
+        "refs": [
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.route", "value": "telegram_client"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "hpp-03",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Conditional criterion, precondition falsified. Positive field check: output.blueprint.needs_clarification is false, output.blueprint.missing_parameters is [], clarification_question is null. The request supplied the URL and the full JSON body, so nothing was asked for and there is no parameter_key/label to inspect. Not-applicable, not an earned pass.",
+        "refs": [
+          {"obs": "hpp-03", "path": "output.blueprint.needs_clarification", "value": "false"},
+          {"obs": "hpp-03", "path": "output.blueprint.missing_parameters", "value": "[]"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step to judge. The prompt names a raw endpoint verbatim — 'POST to https://hooks.acme.io/deploy-notify with the JSON body {...}'. The Rules assign http_webhook to 'custom URLs, REST endpoints, or triggering other external software'. Step 1 sets route 'http_webhook' with parameters.url 'https://hooks.acme.io/deploy-notify' and the body preserved as a structured object. The competing misroute this control case probes for is composio_api: a positive check on steps.0.route shows the literal 'http_webhook', and required_apps is the empty array [], i.e. no cataloged SaaS app was invented to carry the call. hooks.acme.io is a bare host, not a name in Composio's SaaS catalog, so http_webhook is the correct Rule-defined classification for the only step present.",
+        "refs": [
+          {"obs": "hpp-03", "path": "input.prompt", "value": "POST to https://hooks.acme.io/deploy-notify with the JSON body {\"env\": \"staging\", \"status\": \"deployed\", \"version\": \"2.4.1\"}"},
+          {"obs": "hpp-03", "path": "output.blueprint.steps.0.route", "value": "http_webhook"},
+          {"obs": "hpp-03", "path": "output.blueprint.steps.0.parameters.url", "value": "https://hooks.acme.io/deploy-notify"},
+          {"obs": "hpp-03", "path": "output.blueprint.required_apps", "value": "[]"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.96,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Precondition falsified: the blueprint has exactly one step and steps.0.route is the literal 'http_webhook'. No browser_agent step exists, so there is nothing to assess for concrete page/field detail. Not-applicable.",
+        "refs": [
+          {"obs": "hpp-03", "path": "output.blueprint.steps.0.route", "value": "http_webhook"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "srw-01",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Conditional criterion, precondition falsified. Positive field check: needs_clarification is false and missing_parameters is []. Worth noting for grounding (not as a verdict): the step did not need to ask anything because it used the human-friendly parameters.spreadsheet_name 'Gym Log' taken straight from the prompt rather than reaching for a spreadsheet ID — but with zero clarification entries the criterion, which scopes strictly to missing_parameters entries, has no referent. Not-applicable.",
+        "refs": [
+          {"obs": "srw-01", "path": "output.blueprint.needs_clarification", "value": "false"},
+          {"obs": "srw-01", "path": "output.blueprint.missing_parameters", "value": "[]"},
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.parameters.spreadsheet_name", "value": "Gym Log"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step to judge. The prompt targets 'my Google Sheet named Gym Log' — Google Sheets is named explicitly in the Rules as an example of a cataloged Composio SaaS app ('Gmail, Slack, GitHub, Google Sheets, Notion, Trello'). Step 1 sets route 'composio_api', app 'Google Sheets', action 'GOOGLESHEETS_ADD_ROW'. The action slug also matches the Rules' stated naming convention (uppercase {APPNAME}_{VERB}_{OBJECT} with spaces removed, 'Google Sheets' -> 'GOOGLESHEETS'), which corroborates that the composio_api branch was taken deliberately rather than by default. No competing route applies: there is no portal without an API (so not browser_agent), no raw URL in the prompt (so not http_webhook), and the step's job is writing a row, not generating text (so not ai_generate). The route matches its Rule-defined classification for the only step present.",
+        "refs": [
+          {"obs": "srw-01", "path": "input.prompt", "value": "log today's workout in my Google Sheet named Gym Log - date August 5, exercise Deadlift, sets 4, reps 6, weight 90kg"},
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.route", "value": "composio_api"},
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.app", "value": "Google Sheets"},
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.action", "value": "GOOGLESHEETS_ADD_ROW"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Precondition falsified: the blueprint has exactly one step and steps.0.route is the literal 'composio_api'. No browser_agent step exists. Not-applicable.",
+        "refs": [
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.route", "value": "composio_api"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "srw-02",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Precondition satisfied — needs_clarification is true and missing_parameters holds exactly one entry, so the criterion binds and is decidable. Inspecting that single entry field by field: parameter_key is 'table_name', label is 'Table Name', description is 'The name of the table inside the Airtable base to add the record to.', suggested_type 'string'. Every one of those asks for a human-readable NAME. The opaque-ID forms this criterion exists to catch for an Airtable target would be 'base_id' (appXXXXXXXX) or 'table_id' (tblXXXXXXXX); a positive check on the entry shows parameter_key is the literal 'table_name', not any *_id key, and the label carries no ID/identifier wording. The clarification_question reinforces this in plain language: it asks for 'the exact table name within your Freelance Income base'. Corroborating evidence that the planner stayed on the name-based track throughout: the step's own parameters use base_name 'Freelance Income' rather than a base ID. Nothing here asks the user for an internal identifier they would have no way to find.",
+        "refs": [
+          {"obs": "srw-02", "path": "output.blueprint.needs_clarification", "value": "true"},
+          {"obs": "srw-02", "path": "output.blueprint.missing_parameters.0.parameter_key", "value": "table_name"},
+          {"obs": "srw-02", "path": "output.blueprint.missing_parameters.0.label", "value": "Table Name"},
+          {"obs": "srw-02", "path": "output.blueprint.missing_parameters.0.description", "value": "The name of the table inside the Airtable base to add the record to."},
+          {"obs": "srw-02", "path": "output.blueprint.clarification_question", "value": "Please specify the exact table name within your 'Freelance Income' base where the invoice records should be added."},
+          {"obs": "srw-02", "path": "output.blueprint.steps.0.parameters.base_name", "value": "Freelance Income"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.94,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step to judge. The prompt names 'my Airtable base called Freelance Income'. Airtable is a public-API SaaS app of exactly the class the Rules assign to composio_api ('any of the 1000+ SaaS apps with a public API via Composio'), and the Rules' own Rule 6 lists Airtable alongside Google Sheets and Notion as a spreadsheet/table/database target, confirming it is treated as a cataloged app rather than a portal. Step 1 sets route 'composio_api', app 'Airtable', action 'AIRTABLE_CREATE_RECORD' — the slug follows the prescribed uppercase {APPNAME}_{VERB}_{OBJECT} convention. No competing route fits: Airtable is not an API-less portal (not browser_agent), the prompt contains no raw URL (not http_webhook), the step writes a record rather than generating text (not ai_generate), and no Telegram identity is involved. The route matches its Rule-defined classification for the only step present. (The step is additionally marked incomplete via missing_parameters.table_name, but that concerns parameter completeness, not route classification, and is judged under a different criterion.)",
+        "refs": [
+          {"obs": "srw-02", "path": "input.prompt", "value": "Can you add this month's invoice to my Airtable base called Freelance Income? Client is Meridian Design, invoice number INV-2026-018, amount 2400 USD, paid on 2026-08-01."},
+          {"obs": "srw-02", "path": "output.blueprint.steps.0.route", "value": "composio_api"},
+          {"obs": "srw-02", "path": "output.blueprint.steps.0.app", "value": "Airtable"},
+          {"obs": "srw-02", "path": "output.blueprint.steps.0.action", "value": "AIRTABLE_CREATE_RECORD"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.94,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Precondition falsified: the blueprint has exactly one step and steps.0.route is the literal 'composio_api'. No browser_agent step exists. Not-applicable.",
+        "refs": [
+          {"obs": "srw-02", "path": "output.blueprint.steps.0.route", "value": "composio_api"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "srw-03",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Conditional criterion, precondition falsified. Positive field check: needs_clarification is false, missing_parameters is [], clarification_question is null. The sheet was addressed by the human-friendly parameters.spreadsheet_name 'Travel Expenses' with nothing asked of the user, so there is no clarification entry to inspect for opaque-ID phrasing. Not-applicable.",
+        "refs": [
+          {"obs": "srw-03", "path": "output.blueprint.needs_clarification", "value": "false"},
+          {"obs": "srw-03", "path": "output.blueprint.missing_parameters", "value": "[]"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.parameters.spreadsheet_name", "value": "Travel Expenses"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Two steps to judge, and this criterion scopes to whether EACH step's route matches the Rules for the work that step performs (the criterion text is 'Each step's route matches the Rules'), not to whether the step set as a whole is the right decomposition. Step 1: route 'ai_generate', app 'VoxAgent AI', action 'GENERATE_TEXT', parameters.prompt 'Extract the following three receipts into a JSON list of objects with keys Date, Merchant, and Amount: ...'. Its job is restructuring text with AI and it requires no external app connection, which is precisely the ai_generate branch ('generate, draft, summarize, translate, or rewrite text/content with AI ... with NO external app connection required'); it also uses the exact app/action literals the Rules mandate for that route, and it correctly avoids the anti-pattern of routing text work to composio_api with an OpenAI/Gemini app. Step 2: route 'composio_api', app 'Google Sheets', action 'GOOGLESHEETS_ADD_ROW' — Google Sheets is named in the Rules as a cataloged Composio app and the slug follows the {APPNAME}_{VERB}_{OBJECT} convention. Neither step names a raw URL, an API-less portal, or a Telegram identity, so no other route competes. Both routes are individually Rule-correct. I record explicitly what I am NOT deciding here: the trace's own metadata.rationale argues the ai_generate + for_each fan-out shape is wrong for user-supplied (not AI-generated) rows, and steps.1.for_each is set to '{{step_1_result}}'. That is a decomposition/fan-out defect that belongs to the fan-out-shape criterion; it does not make either step's route label wrong, and folding it in here would be the inferential leap this criterion's wording forecloses.",
+        "refs": [
+          {"obs": "srw-03", "path": "output.blueprint.steps.0.route", "value": "ai_generate"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.0.app", "value": "VoxAgent AI"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.0.action", "value": "GENERATE_TEXT"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.route", "value": "composio_api"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.app", "value": "Google Sheets"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.action", "value": "GOOGLESHEETS_ADD_ROW"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.for_each", "value": "{{step_1_result}}"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.82,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Precondition falsified: the blueprint has two steps, steps.0.route is the literal 'ai_generate' and steps.1.route is the literal 'composio_api'. Neither is browser_agent, so no browser step exists to assess. Not-applicable.",
+        "refs": [
+          {"obs": "srw-03", "path": "output.blueprint.steps.0.route", "value": "ai_generate"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.route", "value": "composio_api"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "bpt-03",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Precondition satisfied — needs_clarification is true with exactly one missing_parameters entry, so the criterion binds. That entry's parameter_key is 'credentials', label is 'Library Portal Credentials', description is 'Username and password for the library portal.', suggested_type 'string'. Judged against the criterion as written, which enumerates its target class as 'an internal/opaque ID (spreadsheet ID, channel ID, database ID, file ID)': a username/password pair is not an internal identifier of a record or container — it is a human-known secret the user possesses by definition, the exact opposite of the failure mode this criterion guards (asking for a value a normal user has no way to find). A positive check across the entry's fields confirms no *_id key and no ID/identifier wording anywhere: parameter_key is the literal 'credentials', and the clarification_question asks in plain language for 'your username and password, or ensure they are saved in your secure vault'. Corroborating that the planner did not reach for opaque handles elsewhere in the clarification path, the browser step addresses the portal by its human-readable url 'https://library.iiitb.ac.in' rather than any site/session identifier. No opaque-ID request is present. I note but do not adjudicate here that soliciting a raw password through a clarification field raises a credential-handling concern of its own; that is a different failure mode with no criterion in this set, and importing it would be a leap this criterion's stated scope does not support.",
+        "refs": [
+          {"obs": "bpt-03", "path": "output.blueprint.needs_clarification", "value": "true"},
+          {"obs": "bpt-03", "path": "output.blueprint.missing_parameters.0.parameter_key", "value": "credentials"},
+          {"obs": "bpt-03", "path": "output.blueprint.missing_parameters.0.label", "value": "Library Portal Credentials"},
+          {"obs": "bpt-03", "path": "output.blueprint.missing_parameters.0.description", "value": "Username and password for the library portal."},
+          {"obs": "bpt-03", "path": "output.blueprint.clarification_question", "value": "I need your library portal credentials to log in. Please provide your username and password, or ensure they are saved in your secure vault."},
+          {"obs": "bpt-03", "path": "output.blueprint.steps.0.parameters.url", "value": "https://library.iiitb.ac.in"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.88,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Three steps to judge. Step 1: route 'browser_agent', app 'Library Portal', parameters.url 'https://library.iiitb.ac.in' — the prompt says 'go to my college library portal at library.iiitb.ac.in, log in'. The Rules assign browser_agent to 'websites/portals without public APIs (e.g., college ERPs, ...)', and a university library portal behind a login is that class exactly; it appears in no SaaS catalog, so composio_api would be the misroute here and was not taken. Step 2: route 'ai_generate', app 'VoxAgent AI', action 'GENERATE_TEXT', prompt 'Analyze the following library data: {step_1_result}. Identify if any books are overdue and report the total fine amount...' — pure text analysis over an earlier step's output with no external app connection, which is the ai_generate branch, using the mandated app/action literals. Step 3: route 'http_webhook', app 'VoxAgent Vault Notes', action 'SAVE_NOTE'. This is not a generic-URL judgement but Rule 1 firing verbatim: the user asked to extract information from a portal and named no destination (a positive check on input.prompt shows it ends at 'just tell me the fine amount' with no save/store target), and Rule 1 directs that the final step's target app be 'VoxAgent Vault Notes' with route 'http_webhook'. The blueprint's literals match that instruction character for character. All three routes match their Rule-defined classification.",
+        "refs": [
+          {"obs": "bpt-03", "path": "input.prompt", "value": "so um go to my college library portal at library.iiitb.ac.in, log in, and check like when my borrowed books are due, and if anything's overdue just tell me the fine amount"},
+          {"obs": "bpt-03", "path": "output.blueprint.steps.0.route", "value": "browser_agent"},
+          {"obs": "bpt-03", "path": "output.blueprint.steps.0.parameters.url", "value": "https://library.iiitb.ac.in"},
+          {"obs": "bpt-03", "path": "output.blueprint.steps.1.route", "value": "ai_generate"},
+          {"obs": "bpt-03", "path": "output.blueprint.steps.1.app", "value": "VoxAgent AI"},
+          {"obs": "bpt-03", "path": "output.blueprint.steps.2.route", "value": "http_webhook"},
+          {"obs": "bpt-03", "path": "output.blueprint.steps.2.app", "value": "VoxAgent Vault Notes"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.92,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Precondition satisfied — steps.0.route is 'browser_agent', so the criterion binds. The criterion asks whether the acting browser agent has a fair chance to succeed rather than being left to guess at the page, measured against what the user actually described. Site specificity: parameters.url is the concrete 'https://library.iiitb.ac.in', the exact host the user named, not a search query or a generic 'the library site'. Target-element specificity in plain language: instructions read 'Log in to the portal using stored credentials, navigate to the My Account or Borrowed Books section, extract the due dates and any associated fine amounts for all borrowed books' — this names the navigation target by the labels such portals actually use, offers a fallback label rather than betting on one, and states the extraction fields (due dates, fine amounts) and their scope (all borrowed books) explicitly. Field values: the user supplied no per-field values to carry (no book title, no account number), so there is nothing omitted relative to the source request — the plan carries everything the prompt contained. The conditional the prompt attached ('if anything's overdue just tell me the fine amount') is handled as data — fines are extracted unconditionally at step 1 and the overdue judgement is deferred to step 2's ai_generate — so the browser agent is not asked to evaluate a branch it cannot reliably decide on-page. The one gap: 'using stored credentials' names no credential source the trace establishes, and the login is the step most likely to strand the agent. That gap is not silent, however — it is surfaced as missing_parameters.0 'Library Portal Credentials' with a clarification_question, so the plan declares the dependency rather than leaving the agent to guess at it, which is the behaviour this criterion rewards. Judged on concrete site/element/field detail relative to what the user described, the step is sufficiently specified.",
+        "refs": [
+          {"obs": "bpt-03", "path": "output.blueprint.steps.0.route", "value": "browser_agent"},
+          {"obs": "bpt-03", "path": "output.blueprint.steps.0.parameters.url", "value": "https://library.iiitb.ac.in"},
+          {"obs": "bpt-03", "path": "output.blueprint.steps.0.parameters.instructions", "value": "Log in to the portal using stored credentials, navigate to the 'My Account' or 'Borrowed Books' section, extract the due dates and any associated fine amounts for all borrowed books."},
+          {"obs": "bpt-03", "path": "output.blueprint.steps.0.action", "value": "BROWSER_NAVIGATE_AND_EXTRACT"},
+          {"obs": "bpt-03", "path": "output.blueprint.missing_parameters.0.label", "value": "Library Portal Credentials"},
+          {"obs": "bpt-03", "path": "input.prompt", "value": "so um go to my college library portal at library.iiitb.ac.in, log in, and check like when my borrowed books are due, and if anything's overdue just tell me the fine amount"}
+        ],
+        "assumptions": [
+          {"text": "The 'My Account' / 'Borrowed Books' section labels the plan names are labels this specific portal actually uses; the trace contains no page capture, so their real presence on library.iiitb.ac.in is unverifiable from planner output alone.", "kind": "factual-intent", "status": "hypothesis"}
+        ],
+        "result": "pass",
+        "confidence": 0.79,
+        "blockedBy": null
+      }
+    }
+  }
+]

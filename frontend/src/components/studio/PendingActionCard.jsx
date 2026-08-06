@@ -82,6 +82,14 @@ export default function PendingActionCard({
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
             {busy ? "Retrying…" : "I've reconnected it — retry"}
           </button>
+          <button
+            type="button"
+            onClick={onReject}
+            disabled={busy}
+            className="flex items-center gap-1.5 rounded-lg border border-red-400/50 hover:bg-red-400/10 disabled:opacity-40 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 transition-colors ml-auto"
+          >
+            <X size={14} /> Cancel
+          </button>
         </div>
       ) : inputType === "confirm" ? (
         // The sensitive-action approval gate — a real typed decision, not a
@@ -116,6 +124,14 @@ export default function PendingActionCard({
               {opt}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={onReject}
+            disabled={busy}
+            className="flex items-center gap-1.5 rounded-lg border border-red-400/50 hover:bg-red-400/10 disabled:opacity-40 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 transition-colors ml-auto"
+          >
+            <X size={14} /> Cancel
+          </button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex items-center gap-2">
@@ -134,6 +150,14 @@ export default function PendingActionCard({
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
             {busy ? "Resuming…" : "Resume"}
+          </button>
+          <button
+            type="button"
+            onClick={onReject}
+            disabled={busy}
+            className="flex items-center gap-1.5 rounded-lg border border-red-400/50 hover:bg-red-400/10 disabled:opacity-40 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 transition-colors shrink-0"
+          >
+            <X size={14} /> Cancel
           </button>
         </form>
       )}

@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, Loader2, Send, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { cancelTelegramLogin, startTelegramLogin, submitTelegramCode, submitTelegramPassword } from "../../api/vault";
 
-export default function TelegramLoginModal({ open, onClose, onLinked }) {
+export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
   const { userId } = useAuth();
   const [step, setStep] = useState("phone"); // phone | code | password | success
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -38,8 +38,13 @@ export default function TelegramLoginModal({ open, onClose, onLinked }) {
     setSubmitting(true);
     try {
       const res = await startTelegramLogin(userId, phoneNumber.trim());
-      setLoginId(res.login_id);
-      setStep("code");
+      if (res.status === "bot_success") {
+        setStep("success");
+        onLinked?.();
+      } else {
+        setLoginId(res.login_id);
+        setStep("code");
+      }
     } catch (err) {
       setError(err.message || "Failed to send a login code — check the phone number and try again.");
     } finally {
@@ -86,7 +91,7 @@ export default function TelegramLoginModal({ open, onClose, onLinked }) {
       <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
       <div className="relative glass-panel w-full max-w-sm p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Connect Telegram (Personal Account)</h2>
+          <h2 className="font-semibold">Connect {mode === "bot" ? "Telegram Bot" : "Telegram Personal Account"}</h2>
           <button
             onClick={handleClose}
             className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-900/5 dark:hover:bg-white/5"
@@ -110,19 +115,28 @@ export default function TelegramLoginModal({ open, onClose, onLinked }) {
         ) : step === "phone" ? (
           <form onSubmit={handlePhoneSubmit} className="flex flex-col gap-3">
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Enter your Telegram phone number (with country code). Telegram will send a login code to your app.
+              {mode === "bot" ? (
+                <>
+                  Paste your Telegram Bot Token (e.g. <span className="font-mono text-slate-400">123456:ABC-DEF1234ghIkl</span>).<br/>
+                  In Telegram, message @BotFather and send /newbot (or /token for existing bots) to get it.
+                </>
+              ) : (
+                <>
+                  Enter your Telegram phone number (with country code) to connect your personal account.
+                </>
+              )}
             </p>
             <input
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
-              type="tel"
+              type="text"
               required
               autoFocus
-              placeholder="+15551234567"
+              placeholder={mode === "bot" ? "123456789:ABCDefgh..." : "+15551234567"}
               className="rounded-lg border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
             />
             {error && <ErrorNote message={error} />}
-            <SubmitButton submitting={submitting} label="Send Code" />
+            <SubmitButton submitting={submitting} label="Continue" />
           </form>
         ) : step === "code" ? (
           <form onSubmit={handleCodeSubmit} className="flex flex-col gap-3">

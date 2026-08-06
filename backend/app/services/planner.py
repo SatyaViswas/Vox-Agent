@@ -16,14 +16,19 @@ Your task is to parse the user's natural language request into a strict structur
 
 Rules for route classification:
 - 'browser_agent': For websites/portals without public APIs (e.g., college ERPs, WhatsApp Web, Canva, Instagram).
-- 'composio_api': For any of the 1000+ SaaS apps with a public API via Composio (e.g. Gmail, Slack, GitHub, Google Sheets, Notion, Trello, ...) — INCLUDING a Telegram **bot** identity specifically (see the Telegram rule below for when that applies instead of 'telegram_client'). Set `app` to the app's plain name (e.g. "Gmail") and `action` to your best guess at that app's Composio action slug, following Composio's standard naming convention: uppercase `{{APPNAME}}_{{VERB}}_{{OBJECT}}` where `{{APPNAME}}` is the app's name with ALL spaces removed (not replaced with underscores) — e.g. "Google Sheets" → prefix `GOOGLESHEETS`, "Google Calendar" → `GOOGLECALENDAR` (so "GOOGLESHEETS_ADD_ROW", "GMAIL_SEND_EMAIL", "SLACK_SEND_MESSAGE", "GITHUB_CREATE_AN_ISSUE"). This is only a best-effort guess — you do NOT need to know the action's exact slug or parameter names; the execution engine verifies your guess against that app's real tool catalog and self-corrects it if it doesn't exactly match, and aligns parameter keys automatically against the target tool's real schema, asking for anything genuinely missing. Do NOT use 'composio_api' with app "OpenAI" (or any other AI/LLM app) just to generate or draft text/content — use 'ai_generate' for that instead (see below); reserve 'composio_api' + an AI app for when the user explicitly names an AI app they have connected themselves.
+- 'composio_api': For any of the 1000+ SaaS apps with a public API via Composio (e.g. Gmail, Slack, GitHub, Google Sheets, Notion, Trello, ...). Set `app` to the app's plain name (e.g. "Gmail") and `action` to your best guess at that app's Composio action slug, following Composio's standard naming convention: uppercase `{{APPNAME}}_{{VERB}}_{{OBJECT}}` where `{{APPNAME}}` is the app's name with ALL spaces removed (not replaced with underscores) — e.g. "Google Sheets" → prefix `GOOGLESHEETS`, "Google Calendar" → `GOOGLECALENDAR` (so "GOOGLESHEETS_ADD_ROW", "GMAIL_SEND_EMAIL", "SLACK_SEND_MESSAGE", "GITHUB_CREATE_AN_ISSUE"). This is only a best-effort guess — you do NOT need to know the action's exact slug or parameter names; the execution engine verifies your guess against that app's real tool catalog and self-corrects it if it doesn't exactly match, and aligns parameter keys automatically against the target tool's real schema, asking for anything genuinely missing. Do NOT use 'composio_api' with app "OpenAI" (or any other AI/LLM app) just to generate or draft text/content — use 'ai_generate' for that instead (see below); reserve 'composio_api' + an AI app for when the user explicitly names an AI app they have connected themselves.
 - 'ai_generate': For a step whose job is purely to generate, draft, summarize, translate, or rewrite text/content with AI — e.g. "write a caption", "summarize this", "draft a reply" — with NO external app connection required (it runs on VoxAgent's own built-in AI). Set `app` to "VoxAgent AI", `action` to "GENERATE_TEXT", and `parameters` to `{{"prompt": "<full instructions for what to generate, including any context from earlier steps via {{step_N_result}}>"}}`. Never route plain text-generation to 'composio_api' with an OpenAI/Gemini/Anthropic app — those require a connected account the user probably doesn't have; 'ai_generate' needs nothing.
 - 'http_webhook': For custom URLs, REST endpoints, or triggering other external software.
 - 'telegram_client': For automating the user's OWN personal Telegram account — reading or sending in Saved Messages, DMs, or any chat they're personally part of. See the Telegram rule below.
 
-Telegram rule — there are TWO distinct Telegram identities, pick the right one:
-- Default to 'telegram_client' with `app` set to "Telegram Personal Account" whenever the request is about the user's own account at all — phrases like "my telegram", "saved messages", "any message I get on telegram", "send from my account", "reply to [contact]" — this is the overwhelmingly common case. Actions: "SEND_MESSAGE" with parameters `target` (a chat name/username, or "me" for Saved Messages) and `text`.
-- Only use 'composio_api' with `app` "Telegram" (a separate bot identity, e.g. TELEGRAM_SEND_MESSAGE with `chat_id`/`text`) when the user EXPLICITLY says "bot" (e.g. "have my bot reply to...", "send via my Telegram bot").
+Telegram rule — there are TWO distinct Telegram identities. YOU MUST pick the right one (BOTH use 'telegram_client' as the route):
+- If the user explicitly asks to use their PERSONAL account (e.g. "my telegram", "saved messages", "any message I get on telegram", "send from my account"), set `app` to "Telegram Personal Account".
+- If the user explicitly asks to use their BOT (e.g. "my bot", "bot reply", "customer support bot"), set `app` to "Telegram Bot".
+- IMPORTANT: If the request is ambiguous or does not explicitly state "bot" or "personal account", DO NOT GUESS. You MUST set `needs_clarification` to true and add a `missing_parameters` entry with: `parameter_key: "telegram_account_type"`, `label: "Telegram Account Type"`, `description: "Should this run on your personal Telegram account, or your connected Telegram Bot?"`, `suggested_type: "select"`, and `options: ["Telegram Bot", "Telegram Personal Account"]`. Leave the step's `app` parameter exactly as `"{{telegram_account_type}}"` and omit it from `required_apps` until resolved.
+For both, the action is "SEND_MESSAGE". For the `target` parameter:
+- If replying to the person who triggered the event, set it to the EXACT placeholder `{{trigger_chat_id}}`.
+- Otherwise, set it to a chat name/username, or "me" for Saved Messages.
+Do NOT use 'composio_api' for Telegram.
 
 Rule 1 (Default Storage): If the user asks to extract, scrape, or fetch information from a website or portal but DOES NOT specify where to save/store it, set the final step's target app to "VoxAgent Vault Notes" with route "http_webhook".
 
@@ -42,11 +47,17 @@ Rule 3 (Data Handoff Between Steps): When a later step needs to use data extract
 
 Rule 4 (Event-Driven "Whenever X Happens" Automations): If the user describes a REACTIVE automation — "whenever I get a message on...", "every time I receive an email about...", "when someone opens a GitHub issue, ..." — this is fundamentally different from a one-time or scheduled task and must be modeled differently:
 - Set `trigger.type` to `"webhook"`.
-- Set `trigger.event_app` to the app whose events are being watched — e.g. "Gmail", or "Telegram Personal Account" for anything about the user's own Telegram (Saved Messages, DMs, any chat — see the Telegram rule above; this is almost always the right choice for "whenever I get a telegram message...").
+- Set `trigger.event_app` to the app whose events are being watched — e.g. "Gmail", "Telegram Personal Account", or "Telegram Bot". If it's a Telegram automation and ambiguous, set this to `"{{telegram_account_type}}"` and follow the Telegram rule above to add a `missing_parameters` entry.
 - Set `trigger.event_target` to any filter narrowing which events match — e.g. a phone number, a sender address, a specific chat/contact name, or "Saved Messages" for Telegram specifically. Omit it (or leave blank) to match events from ANY chat/sender, which is exactly what "detect any message from any account" means.
 - Set `trigger.details` to a short human-readable description of the watched condition (e.g. "Triggered when any message arrives in Telegram Saved Messages").
 - Do NOT add a step that "monitors" or "listens" for the event — the trigger itself IS the listener; listening is not an action a step performs. `steps` must contain ONLY the REACTION steps that should run once a matching event fires (e.g., just the "send an email" step).
 - The very first reaction step may reference the captured event's content with these placeholders, populated the same way for ANY trigger-capable app (Telegram, Gmail, Slack, GitHub, ...): `{{trigger_result}}` for the event's message text (e.g. an email body of `{{trigger_result}}` to forward the triggering message verbatim), `{{trigger_chat_id}}` for the sender/chat identifier when a reply needs to go back to whoever/wherever triggered it (for a 'telegram_client' reply step, set its `target` parameter to `{{trigger_chat_id}}`), and `{{trigger_data}}` for the full structured event payload when a step needs more than just the text (e.g. logging full details to Vault Notes). Later steps can still use `{{step_N_result}}` normally for outputs produced by earlier reaction steps.
+
+Rule 4.5 (Extracting Fields from Webhooks): When a reaction step requires a specific parameter (like an email address, phone number, name, etc.) that must be dynamically pulled from the `{{trigger_data}}` payload, DO NOT ask the user for the exact column or field name in `missing_parameters` or `clarification_question`. Instead, YOU MUST add a preliminary 'ai_generate' step whose sole job is to extract that specific piece of data. Set its prompt to: `Extract the [target field] from this data: {{trigger_data}}. Output ONLY the raw [target field] string and nothing else. Do not include quotes.` Then, in the downstream action step, use the placeholder `{{step_N_result}}` for that parameter. If downstream steps need INDIVIDUAL raw strings for multiple specific parameters (e.g., both a `recipient_email` and a drafted email body), add separate 'ai_generate' steps for each required field so they can be individually routed to their respective parameters via their own `{{step_N_result}}` placeholders.
+
+Rule 4.6 (Google Sheets Triggers): For Google Sheets triggers (e.g., "whenever a new row is added"), the trigger requires both the exact spreadsheet name AND the exact sheet tab name (it defaults to 'Sheet1' otherwise, which will fail to trigger if the user's data is actually on a differently named tab).
+- If the user explicitly stated the spreadsheet name (e.g. "Outreach Leads Google Sheet"), set `trigger.event_target` to that name. If they did NOT specify the spreadsheet name, add a `missing_parameters` entry with `step_number: "trigger"`, `parameter_key: "event_target"`, `label: "Spreadsheet Name"`, and ask for it.
+- Because users rarely specify the tab name (e.g. "Sheet1" or "Leads") in their prompt, you MUST always add a `missing_parameters` entry for the tab name unless they explicitly named it. Use `step_number: "trigger"`, `parameter_key: "sheet_name"`, `label: "Sheet Tab Name"`, and `description: "What is the exact name of the tab inside this spreadsheet? (e.g. 'Sheet1', 'Leads')"` to ensure the trigger watches the correct tab.
 
 Rule 5 (Fan-Out — one AI-generated item per downstream action): If the user asks for MULTIPLE discrete generated items to each be stored/sent individually (e.g., "generate 5 captions and save them to Google Sheets" → 5 separate rows, NOT one row with all 5 crammed together; "draft 3 email subject lines and send each as a separate email"), model it as exactly two steps:
 - Step N: route 'ai_generate', producing the whole batch at once (e.g. `parameters.prompt` = "Write 5 engaging Instagram captions for ...").
@@ -61,6 +72,10 @@ Rule 7 (Credentials Are Handled Out-of-Band — Never a Parameter): VoxAgent res
 - Do NOT model the login form as its own step and do NOT invent DOM field names for it. When a portal requires a login, just say so inside the browser step's task/instructions text (e.g. "log in to the portal if prompted, then open the Exam Registration page and ...") and let the pre-authenticated session handle it.
 - Set the step's `app` to the portal's own recognizable name or host (e.g. "portal.vitap.ac.in") so it matches the user's saved vault entry, and include it in `required_apps` so the UI can prompt them to connect it if they haven't.
 - A genuinely non-secret value the user must supply (a specific course name, a roll number, a date) is still a normal Rule 2 clarification — this rule covers ONLY secrets and login credentials.
+
+Rule 8 (Stored Knowledge / Knowledge Hub): If the user mentions "stored knowledge", "business knowledge", "knowledge hub", or anything similar, it means VoxAgent should use its built-in RAG capabilities at runtime to answer the question.
+- Do NOT ask the user for this knowledge in `missing_parameters` or `needs_clarification`. The knowledge is ALREADY stored securely in the system.
+- Simply pass the instruction to use this knowledge into the `ai_generate` prompt (e.g. "Use the stored business knowledge to answer..."). The execution engine automatically injects the knowledge.
 
 Output exactly in the following JSON schema format:
 {schema_json}
@@ -116,6 +131,35 @@ _LIST_GENERATION_INSTRUCTION = (
 )
 
 
+import re
+import requests
+from bs4 import BeautifulSoup
+
+def _inject_url_content(prompt: str) -> str:
+    url_pattern = re.compile(r'https?://[^\s<>"]+|www\.[^\s<>"]+')
+    urls = set(url_pattern.findall(prompt))
+    if not urls:
+        return prompt
+    
+    appended_content = "\n\n--- External Content Extracted from URLs ---\n"
+    added = False
+    for url in urls:
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                text = soup.get_text(separator=' ', strip=True)
+                text = text[:25000] # truncate to avoid blowing up context
+                appended_content += f"\nContent from {url}:\n{text}\n"
+                added = True
+        except Exception:
+            pass
+            
+    if added:
+        return prompt + appended_content
+    return prompt
+
 def generate_ai_content(prompt: str, as_list: bool = False):
     """Runs a plain AI text-generation step directly against Gemini for the
     'ai_generate' route — drafting/summarizing/rewriting content with no
@@ -129,6 +173,9 @@ def generate_ai_content(prompt: str, as_list: bool = False):
     """
     if not client:
         raise ValueError("GEMINI_API_KEY is not configured.")
+
+    # Automatically fetch URLs in the prompt so Gemini can summarize them
+    prompt = _inject_url_content(prompt)
 
     if as_list:
         response = client.models.generate_content(

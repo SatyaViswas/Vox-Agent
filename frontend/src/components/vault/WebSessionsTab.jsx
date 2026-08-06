@@ -7,9 +7,11 @@ import TelegramLoginModal from "./TelegramLoginModal";
 import PortalSessionFormModal from "./PortalSessionFormModal";
 
 const TELEGRAM_PERSONAL_APP_NAME = "Telegram Personal Account";
+const TELEGRAM_BOT_APP_NAME = "Telegram Bot";
 
 const isWhatsApp = (appName) => (appName || "").toLowerCase() === "whatsapp web";
 const isTelegramPersonal = (appName) => (appName || "").toLowerCase() === TELEGRAM_PERSONAL_APP_NAME.toLowerCase();
+const isTelegramBot = (appName) => (appName || "").toLowerCase() === TELEGRAM_BOT_APP_NAME.toLowerCase();
 
 export default function WebSessionsTab() {
   const { userId } = useAuth();
@@ -17,7 +19,7 @@ export default function WebSessionsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
-  const [telegramOpen, setTelegramOpen] = useState(false);
+  const [telegramMode, setTelegramMode] = useState(null); // "personal" | "bot" | null
   const [formState, setFormState] = useState(null); // { mode: "create" | "edit", name?: string }
 
   const fetchSessions = useCallback(() => {
@@ -50,7 +52,9 @@ export default function WebSessionsTab() {
     if (isWhatsApp(session.app_name)) {
       setQrOpen(true);
     } else if (isTelegramPersonal(session.app_name)) {
-      setTelegramOpen(true);
+      setTelegramMode("personal");
+    } else if (isTelegramBot(session.app_name)) {
+      setTelegramMode("bot");
     } else {
       setFormState({ mode: "edit", name: session.app_name });
     }
@@ -83,8 +87,17 @@ export default function WebSessionsTab() {
             New Portal Session
           </button>
           <button
-            onClick={() => setTelegramOpen(true)}
+            onClick={() => setTelegramMode("bot")}
             className="flex items-center gap-1.5 rounded-xl border border-slate-300/70 dark:border-white/15 text-slate-600 dark:text-slate-300 hover:bg-slate-900/5 dark:hover:bg-white/5 text-sm font-medium px-4 py-2.5 transition-colors shrink-0"
+            title="Listen and reply to messages sent directly to your Telegram Bot (e.g. customer support)"
+          >
+            <Send size={16} />
+            Link Telegram Bot
+          </button>
+          <button
+            onClick={() => setTelegramMode("personal")}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-300/70 dark:border-white/15 text-slate-600 dark:text-slate-300 hover:bg-slate-900/5 dark:hover:bg-white/5 text-sm font-medium px-4 py-2.5 transition-colors shrink-0"
+            title="Automate your own chats — like reading Saved Messages or replying as you"
           >
             <Send size={16} />
             Link Telegram Account
@@ -120,7 +133,7 @@ export default function WebSessionsTab() {
           {sessions.map((session) => (
             <div key={session.id} className="glass-panel p-4 flex items-center gap-3">
               <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-brand-500/10 text-brand-500 shrink-0">
-                {isTelegramPersonal(session.app_name) ? <Send size={18} /> : <Globe size={18} />}
+                {(isTelegramPersonal(session.app_name) || isTelegramBot(session.app_name)) ? <Send size={18} /> : <Globe size={18} />}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm truncate">{session.app_name}</p>
@@ -139,7 +152,9 @@ export default function WebSessionsTab() {
                     ? "Re-link WhatsApp Web"
                     : isTelegramPersonal(session.app_name)
                       ? "Re-link Telegram account"
-                      : "Edit login details"
+                      : isTelegramBot(session.app_name)
+                        ? "Re-link Telegram bot"
+                        : "Edit login details"
                 }
                 className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-brand-500 hover:bg-brand-500/10 transition-colors shrink-0"
               >
@@ -158,7 +173,7 @@ export default function WebSessionsTab() {
       )}
 
       <WhatsAppQrModal open={qrOpen} onClose={() => setQrOpen(false)} onLinked={fetchSessions} />
-      <TelegramLoginModal open={telegramOpen} onClose={() => setTelegramOpen(false)} onLinked={fetchSessions} />
+      <TelegramLoginModal mode={telegramMode} open={!!telegramMode} onClose={() => setTelegramMode(null)} onLinked={fetchSessions} />
       <PortalSessionFormModal
         open={!!formState}
         mode={formState?.mode}

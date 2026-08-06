@@ -272,6 +272,10 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
     iteration of a step) and returns its raw result dict. Pulled out of
     _run_single_step / _run_for_each_step so both paths share one dispatch
     table instead of drifting apart."""
+    trigger_data = step_results.get("trigger_data")
+    if isinstance(trigger_data, dict) and trigger_data.get("is_test"):
+        parameters["_is_test_run"] = True
+
     if is_vault_notes_target(app):
         # No real destination was specified for extracted data (see
         # planner.py Rule 1) — persist the previous step's output into
@@ -312,10 +316,9 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
         return await execute_http_webhook(url=url, payload=parameters)
 
     if route == "telegram_client":
-        # A real logged-in Telegram account (not a bot) — the only route
-        # that can see/send in Saved Messages or any chat the account is
-        # personally part of. See telegram_client_engine.
-        return await execute_telegram_client_action(user_id=user_id, action=action, parameters=parameters)
+        # Supports both "Telegram Personal Account" and "Telegram Bot" apps.
+        # Resolves via telegram_client_engine using the specific app_name.
+        return await execute_telegram_client_action(user_id=user_id, action=action, parameters=parameters, app_name=app)
 
     if route == "ai_generate":
         # Runs entirely on VoxAgent's own built-in AI — no external app
@@ -398,7 +401,7 @@ async def _run_action_and_classify(agent_id, user_id, blueprint, steps, index, s
     extracted_value = None if (is_error or explicit_question) else _extract_result_value(result_data)
     question = explicit_question or (
         extracted_value.strip()
-        if not is_error and _looks_like_clarification_request(extracted_value)
+        if not is_error and route == "browser_agent" and _looks_like_clarification_request(extracted_value)
         else None
     )
 
@@ -836,7 +839,7 @@ async def resume_agent_workflow(agent_id: str, answer: str):
     user_id = context["user_id"]
     blueprint = context["blueprint"]
     steps = list(context["steps"])
-    step_results = dict(context["step_results"])
+    step_results = {int(k) if k.isdigit() else k: v for k, v in context.get("step_results", {}).items()}
     paused_index = context["paused_index"]
 
     # Re-run the paused step with the user's answer folded into its
@@ -912,7 +915,7 @@ async def reject_paused_run(agent_id: str, reason: str = "Rejected by user") -> 
     user_id = context["user_id"]
     blueprint = context["blueprint"]
     steps = list(context["steps"])
-    step_results = dict(context["step_results"])
+    step_results = {int(k) if k.isdigit() else k: v for k, v in context.get("step_results", {}).items()}
     paused_index = context["paused_index"]
     rejected_step = steps[paused_index]
     step_number = rejected_step.get("step_number", paused_index + 1)

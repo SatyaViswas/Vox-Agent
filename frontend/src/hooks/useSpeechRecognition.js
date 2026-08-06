@@ -16,7 +16,7 @@ export function useSpeechRecognition({ onFinalTranscript } = {}) {
   useEffect(() => {
     if (!isSupported) return;
     const recognition = new SpeechRecognitionImpl();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
 

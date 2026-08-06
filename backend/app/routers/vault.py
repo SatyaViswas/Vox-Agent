@@ -23,7 +23,7 @@ from app.services.whatsapp_engine import (
     cancel_whatsapp_qr_session,
 )
 from app.services import telegram_client_engine
-from app.services.telegram_client_engine import TELEGRAM_PERSONAL_APP_NAME
+from app.services.telegram_client_engine import TELEGRAM_PERSONAL_APP_NAME, TELEGRAM_BOT_APP_NAME
 
 router = APIRouter(tags=["vault"])
 
@@ -82,8 +82,12 @@ async def required_apps_status(
     agent, until a real event happens and nothing visibly comes of it)."""
     names = [a.strip() for a in (apps or "").split(",") if a.strip()]
     connected_slugs = {c["slug"] for c in list_composio_connected_accounts(user_id)}
-    telegram_connected = any(
+    telegram_personal_connected = any(
         (a.get("app_name") or "").strip().lower() == TELEGRAM_PERSONAL_APP_NAME.lower() and a.get("status") == "active"
+        for a in list_user_apps(user_id)
+    )
+    telegram_bot_connected = any(
+        (a.get("app_name") or "").strip().lower() == TELEGRAM_BOT_APP_NAME.lower() and a.get("status") == "active"
         for a in list_user_apps(user_id)
     )
 
@@ -93,7 +97,9 @@ async def required_apps_status(
         if lowered in _BUILTIN_APPS:
             results.append({"app": name, "connected": True, "builtin": True})
         elif lowered == TELEGRAM_PERSONAL_APP_NAME.lower():
-            results.append({"app": name, "connected": telegram_connected, "connect_via": "telegram_personal"})
+            results.append({"app": name, "connected": telegram_personal_connected, "connect_via": "telegram_personal"})
+        elif lowered == TELEGRAM_BOT_APP_NAME.lower():
+            results.append({"app": name, "connected": telegram_bot_connected, "connect_via": "telegram_bot"})
         else:
             slug = _slugify_app(name)
             results.append({"app": name, "connected": slug in connected_slugs, "slug": slug})
@@ -118,6 +124,24 @@ async def get_user_apps(user_id: str = Query("00000000-0000-0000-0000-0000000000
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def _rearm_event_triggers(user_id: str):
+    from app.database import supabase
+    from app.routers.execution import arm_event_trigger
+    import asyncio
+    
+    if not supabase: return
+    response = supabase.table("agents").select("*").eq("user_id", user_id).eq("trigger_type", "event_trigger").eq("is_active", True).execute()
+    
+    for agent in response.data or []:
+        try:
+            blueprint = agent.get("json_blueprint") or {}
+            if isinstance(blueprint, str):
+                import json
+                blueprint = json.loads(blueprint)
+            asyncio.create_task(arm_event_trigger(agent["id"], user_id, blueprint))
+        except Exception:
+            pass
+
 @router.post("/vault/save-session")
 async def save_session(request: SaveSessionRequest):
     try:
@@ -127,6 +151,7 @@ async def save_session(request: SaveSessionRequest):
             auth_type=request.auth_type,
             credentials_data=request.credentials
         )
+        _rearm_event_triggers(request.user_id)
         return {"status": "success", "message": "Credentials stored securely"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -135,10 +160,12 @@ async def save_session(request: SaveSessionRequest):
 async def remove_app(app_name: str, user_id: str = Query("00000000-0000-0000-0000-000000000000")):
     try:
         success = disconnect_app(user_id, app_name)
-        if success and app_name.strip().lower() == TELEGRAM_PERSONAL_APP_NAME.lower():
+        if success and app_name.strip().lower() in (TELEGRAM_PERSONAL_APP_NAME.lower(), TELEGRAM_BOT_APP_NAME.lower()):
             # The saved session credential is gone — tear down the live
             # client and stop any agents that were listening through it.
-            await telegram_client_engine.disconnect_user(user_id)
+            # Determine the exact internal app name
+            exact_app_name = TELEGRAM_PERSONAL_APP_NAME if app_name.strip().lower() == TELEGRAM_PERSONAL_APP_NAME.lower() else TELEGRAM_BOT_APP_NAME
+            await telegram_client_engine.disconnect_user(user_id, exact_app_name)
         if success:
             return {"status": "success", "message": f"{app_name} disconnected"}
         else:
@@ -190,6 +217,7 @@ class ConnectWithCredentialsRequest(BaseModel):
 async def connect_with_credentials_route(request: ConnectWithCredentialsRequest):
     try:
         result = connect_app_with_credentials(request.user_id, request.app_slug, request.credentials)
+        _rearm_event_triggers(request.user_id)
         return {"status": "success", **result}
     except NoAuthRequiredError as e:
         return {"status": "no_auth_required", "app_slug": request.app_slug, "message": str(e)}
@@ -251,8 +279,10 @@ async def start_telegram_login(request: TelegramLoginStartRequest):
     """Step 1 of connecting a personal Telegram account: sends a login code
     to the given phone number via Telegram (not SMS by default)."""
     try:
-        login_id = await telegram_client_engine.start_login(request.phone_number)
-        return {"status": "success", "login_id": login_id}
+        res = await telegram_client_engine.start_login(request.phone_number, request.user_id)
+        if isinstance(res, dict) and res.get("status") == "bot_success":
+            return res
+        return {"status": "success", "login_id": res}
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(e))

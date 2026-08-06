@@ -18,6 +18,12 @@ if settings.COMPOSIO_API_KEY:
         traceback.print_exc()
         print(f"Warning: Failed to initialize Composio: {e}")
 
+async def _execute_composio_with_timeout(*args, **kwargs):
+    return await asyncio.wait_for(
+        asyncio.to_thread(composio.tools.execute, *args, **kwargs),
+        timeout=120
+    )
+
 # A separate, minimal Gemini client used only to disambiguate a guessed
 # action slug against a shortlist of an app's real tools (see
 # _pick_best_action_via_ai) — kept local to this module rather than shared
@@ -849,8 +855,7 @@ async def _auto_resolve_missing_ids(app: str, action_name: str, parameters: dict
         # to disambiguate and no reason to ask; only fall back to the
         # clarification pause when there's real ambiguity (0 or 2+ items).
         try:
-            listing = await asyncio.to_thread(
-                composio.tools.execute,
+            listing = await _execute_composio_with_timeout(
                 slug=search_tool.slug,
                 arguments={query_param: ""} if query_param else {},
                 user_id=entity_id,
@@ -873,8 +878,7 @@ async def _auto_resolve_missing_ids(app: str, action_name: str, parameters: dict
         return updated, None
 
     try:
-        result = await asyncio.to_thread(
-            composio.tools.execute,
+        result = await _execute_composio_with_timeout(
             slug=search_tool.slug,
             arguments={query_param: name_value} if query_param else {},
             user_id=entity_id,
@@ -1051,8 +1055,7 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
 
     if action_name in ("LINKEDIN_CREATE_POST", "LINKEDIN_CREATE_LINKED_IN_POST") and "author" not in (parameters or {}):
         try:
-            profile = await asyncio.to_thread(
-                composio.tools.execute,
+            profile = await _execute_composio_with_timeout(
                 slug="LINKEDIN_GET_MY_INFO",
                 arguments={},
                 user_id=entity_id,
@@ -1072,8 +1075,7 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
 
 
     try:
-        result = await asyncio.to_thread(
-            composio.tools.execute,
+        result = await _execute_composio_with_timeout(
             slug=action_name,
             arguments=parameters or {},
             user_id=entity_id,
@@ -1134,6 +1136,8 @@ def list_composio_apps(search: str | None = None, cursor: str | None = None, lim
 
     apps = []
     for item in items:
+        if item.slug == "telegram":
+            continue
         meta = getattr(item, "meta", None)
         categories = getattr(meta, "categories", None) if meta else None
         category = categories[0].name if categories else "Other"

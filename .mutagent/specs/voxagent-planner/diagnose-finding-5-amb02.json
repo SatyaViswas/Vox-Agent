@@ -1,0 +1,229 @@
+{
+  "clusterId": "F-rule2-duplicate-literal-generalization-5",
+  "iteration": "voxagent-planner-pass2",
+  "what": "hallucination",
+  "why": "prompt-underspec",
+  "where": "system-prompt",
+  "confidence": "high",
+  "verdict": "REGRESSION CONFIRMED, and it is a GENERALIZATION FAILURE rather than a new defect. Rule 2's anti-duplicate bullet (planner.py:32, shipped in 69d238f) did not fail because the model ignored it — it failed because on a Rule-3-shaped, non-Airtable two-step case the model is reading TWO other instructions that actively license a literal, and Rule 2's prohibition is the only one of the three that is (a) stated generically, (b) illustrated with a single Airtable-specific key (`table_name`), and (c) physically located in the clarification block, i.e. read AFTER the step's `parameters` object has already been composed. The two competing licenses are planner.py:38 (Rule 3's closing clause 'steps with no such dependency should keep concrete literal parameter values') — which fires on exactly this two-step handoff shape and never fires on srw-02 (single-step) — and planner.py:50 (Rule 5's carve-out, added in 71fb7b1) whose generalizing sentence 'The rule is: any name or value the user literally said belongs in `parameters` as a concrete literal' reads as a global principle and is satisfiable by the word 'orders', which the user DID literally say (as the DATA, not as the destination's name). fan-01/srw-02 hold because their winning instruction is the Rule 5 carve-out's point-of-use worked example; amb-02 has no such example to land on.",
+  "problem": "The planner emits `spreadsheet_name` both in `missing_parameters` and as an invented literal inside step 2's `parameters` on 2 of 3 identical amb-02 runs at temperature 0.1 — a self-contradicting blueprint that, if the clarification is skipped or auto-answered, writes the user's order data into a Google Sheet named 'Orders' that the user never named. The same defect is present in a third form in the pre-fix baseline trace (`\"spreadsheet_name\": \"{spreadsheet_name}\"`), so the shipped Rule 2 amendment has changed the defect's spelling on this shape but not its incidence — Rule 2's fix generalizes to the two Airtable cases it was tuned against (fan-01, srw-02) and not to the Rule-3-shaped Google Sheets case.",
+  "evidence": [
+    "planner.py:32 (worktree /private/tmp/voxagent-optimize-pass2/backend/app/services/planner.py) — the shipped anti-duplicate bullet, verbatim: \"- If you add a parameter to `missing_parameters`, LEAVE THAT PARAMETER OUT of the step's `parameters` object entirely. Never do both — never list `table_name` as missing while also writing `\\\"table_name\\\": \\\"Invoices\\\"` into the step. ...\" Its ONLY worked instance is `table_name` / \"Invoices\" — an Airtable key. No non-Airtable instance appears anywhere in Rule 2.",
+    "planner.py:36 (Rule 2, last bullet) — the ONLY place `spreadsheet_name` appears inside Rule 2 is the opaque-ID bullet: \"(e.g. `parameter_key` \\\"spreadsheet_name\\\" with label \\\"Google Sheet Name\\\", not \\\"spreadsheet_id\\\")\". So within Rule 2, `spreadsheet_name` is exemplified ONLY as a thing to PUT IN missing_parameters, and never as a thing to LEAVE OUT of parameters. The two bullets teach the two halves of the invariant with two different keys, and the model applied each half to the key it was demonstrated on: it correctly produced `parameter_key: \"spreadsheet_name\"` in missing_parameters (bullet 6's example) and did NOT transfer bullet 2's omission requirement (demonstrated on `table_name`).",
+    "planner.py:38 (Rule 3, closing sentence) — \"Only use this when a step genuinely depends on another step's output; steps with no such dependency should keep concrete literal parameter values.\" amb-02 IS a Rule 3 case (step 2's `row_data` = `{step_1_result}`), so Rule 3 is in the model's active-attention set. Its closing clause partitions step 2's parameters into {dependent -> placeholder} and {non-dependent -> concrete literal}, with NO third bucket for 'flagged missing -> omit'. `spreadsheet_name` is non-dependent, so this clause reads as a direct instruction to give it a concrete literal. COMPETING INSTRUCTION, outside Rule 5, exactly as suspected.",
+    "planner.py:50 (Rule 5 carve-out, shipped in 71fb7b1) — \"The rule is: any name or value the user literally said belongs in `parameters` as a concrete literal; only identities the user never gave at all are flagged as missing.\" The sentence opens with the globalizing phrase \"The rule is:\" and contains no fan-out qualifier, so it reads as a general principle even to a model that has not entered the fan-out branch. Its first clause is satisfiable by the token 'orders', which the amb-02 prompt literally contains — 'Grab the latest orders from our internal API'. The model appears to have used it to license `spreadsheet_name: \"Orders\"`. SECOND COMPETING INSTRUCTION, and it was introduced by the very fix that made fan-01 pass.",
+    "PLACEMENT ASYMMETRY — Rule 5's version of the invariant is at the POINT OF USE: it sits inside the sentence that instructs the model on what to write into `parameters` (planner.py:50, \"Inside THIS step's `parameters`, ... IMPORTANT: do NOT invent a value for a constant parameter whose identity the user never gave\"). Rule 2's version (planner.py:32) sits in the disambiguation block, which the model reaches when deciding to clarify — i.e. after step 2's parameters object has already been composed. Rule 2 never instructs a revisit, and nowhere in Rules 1-7 is there a final consistency check reconciling `missing_parameters` against `steps[].parameters`.",
+    "OBSERVED (pass2 live runs, gemini-3.1-flash-lite, temperature 0.1, prompt held constant, 3 repetitions): run 1 and run 2 both produced `missing_parameters=['spreadsheet_name']` AND step 2 `parameters = {'spreadsheet_name': 'Orders', 'row_data': '{step_1_result}', 'headers': [...]}`. Run 3 produced no duplicate. 2/3 duplicate rate on a non-fan-out, non-Airtable case, against a planner where fan-01/srw-02 are clean.",
+    "BASELINE (pre-fix), traces/planner-eval-traces.jsonl trace_id amb-02, output.blueprint.steps[1].parameters — `{\"spreadsheet_name\": \"{spreadsheet_name}\", \"row_data\": \"{step_1_result}\", \"headers\": [\"Order ID\", \"Customer Name\", \"Total Amount\", \"Status\"]}` with `missing_parameters[0].parameter_key == \"spreadsheet_name\"`. The duplicate KEY was present before the fix too, as a self-referential echo placeholder rather than an invented name. This matters twice over: (1) it shows the fix did not reduce incidence on this shape, and (2) Rule 2:32's prohibition is phrased against writing a plausible-looking VALUE (\"A plausible-looking stand-in ... is indistinguishable from a value the user actually supplied\"), which does not obviously cover an echo placeholder — so a model could satisfy Rule 2's stated reasoning while still emitting a duplicate key.",
+    "eval-dataset-candidates.json, amb-02 — scenario \"ambiguous-recipient-or-target\", complexity \"multi-step\", edge_case true, rationale: \"Two required parameters are missing at once across two different steps: the endpoint URL (step 1, http_webhook) and the spreadsheet name (step 2). Tests that missing_parameters carries a per-step entry for each rather than clarifying only the first, and that neither a fake URL nor a fake sheet name is invented.\" The seed was authored to test exactly this, and it names the invented-sheet-name failure mode explicitly.",
+    "WHY fan-01/srw-02 DO hold (the contrast that isolates the cause): srw-02 is single-step, so Rule 3 never fires and its 'keep concrete literal parameter values' clause is never read. fan-01 is fan-out, so the model enters Rule 5 and lands on the point-of-use worked example \"`base_name: \\\"Content Calendar\\\"` is a literal (user said it); `table_name` is missing (user never named the table inside that base)\" — a fully worked instance of the exact decision being made, delivered at the moment the parameters object is written. amb-02 triggers NEITHER protection: Rule 3 fires (adding a competing license) and Rule 5 does not (removing the only point-of-use example).",
+    "agentspec.yaml:112-118 — the mirrored Rule 2 in spec.agent.systemPrompt carries the identical text and the identical single-`table_name`-example weakness; agentspec.yaml:120 carries the identical Rule 3 closing clause; agentspec.yaml:132 carries the identical Rule 5 carve-out. Any planner.py edit must be mirrored here or the spec and the live prompt diverge.",
+    "agentspec.yaml:28-31 (`disambiguation-gate` SOP) — onFailure already ends with \"...and never leave an invented stand-in value for that parameter in the step's parameters — omit the key entirely.\" The SOP states the invariant correctly and generically; it is the system prompt's illustration of it that is key-specific."
+  ],
+  "whyChain": [
+    {
+      "why": "amb-02 emits `spreadsheet_name` in missing_parameters AND as a literal 'Orders' in step 2's parameters, on 2 of 3 identical runs",
+      "evidence": "pass2 live runs 1-2; baseline traces/planner-eval-traces.jsonl amb-02 steps[1].parameters",
+      "whatHappened": "Three repetitions of the same prompt at temperature 0.1 against the committed main planner produced the same self-contradiction twice: the blueprint declared the spreadsheet name unknown and simultaneously wrote a plausible name into the step that would execute.",
+      "example": "\"parameters\": {\"spreadsheet_name\": \"Orders\", \"row_data\": \"{step_1_result}\", \"headers\": [...]}"
+    },
+    {
+      "why": "Rule 2's anti-duplicate bullet exists and is explicit, but is illustrated with exactly one key — an Airtable `table_name`",
+      "evidence": "planner.py:32",
+      "whatHappened": "The bullet's only worked instance is 'never list `table_name` as missing while also writing \"table_name\": \"Invoices\" into the step'. The model applied the demonstrated instance (Airtable) and did not transfer the abstract principle to `spreadsheet_name` on Google Sheets."
+    },
+    {
+      "why": "Inside Rule 2, `spreadsheet_name` is demonstrated only in the OTHER half of the invariant",
+      "evidence": "planner.py:36",
+      "whatHappened": "Rule 2's last bullet exemplifies `parameter_key: \"spreadsheet_name\"` as the correct human-friendly thing to put IN missing_parameters. The model followed that example exactly, and had no corresponding example telling it to remove the same key from the step body."
+    },
+    {
+      "why": "Rule 3 fires on this shape and its closing clause licenses a concrete literal for any non-dependent parameter",
+      "evidence": "planner.py:38",
+      "whatHappened": "Because step 2 consumes `{step_1_result}`, the model is reading Rule 3, whose last sentence sorts parameters into 'depends on an earlier step -> placeholder' and 'no such dependency -> keep concrete literal parameter values'. `spreadsheet_name` falls in the second bucket, so Rule 3 tells the model to give it a literal, with no exception carved for flagged-missing parameters.",
+      "example": "steps with no such dependency should keep concrete literal parameter values."
+    },
+    {
+      "why": "Rule 5's carve-out states a globally-phrased principle that the token 'orders' satisfies",
+      "evidence": "planner.py:50",
+      "whatHappened": "The carve-out added in 71fb7b1 says 'The rule is: any name or value the user literally said belongs in `parameters` as a concrete literal'. It is scoped to fan-out only by its position in Rule 5, not by its wording. The amb-02 prompt literally contains 'orders', so the clause reads as permission to write `spreadsheet_name: \"Orders\"` — the user said it as the DATA being moved, but the sentence draws no distinction between a word appearing in the request and a value stated AS a parameter's identity."
+    },
+    {
+      "why": "The two instructions that DO hold reliably are point-of-use and example-grounded; Rule 2's is neither",
+      "evidence": "planner.py:50 (point-of-use, worked base_name/table_name example) vs planner.py:32 (clarification-block, generic)",
+      "whatHappened": "Rule 5 states the omit-invented-value requirement inside the sentence that dictates what goes into `parameters`, with a full worked instance. Rule 2 states it in the disambiguation block, which the model consults when it decides to clarify — after the parameters object is already composed — and no rule anywhere instructs the model to go back and reconcile the two.",
+      "isOrigin": true
+    },
+    {
+      "why": "No rule in the prompt requires a final reconciliation of missing_parameters against steps[].parameters",
+      "evidence": "planner.py:13-64 — full get_system_prompt(); Rules 1-7 read in full",
+      "whatHappened": "Rules 1-7 cover routing, default storage, disambiguation, handoff, triggers, fan-out, headers and credentials. None of them contains a pre-emit consistency check, so the only defence against the duplicate is that the model happens to remember Rule 2:32 while composing the step body. That is a probabilistic defence, and it lost 2 times out of 3.",
+      "isOrigin": true
+    }
+  ],
+  "secondaryObservations": [
+    {
+      "id": "S1-item-placeholder-outside-fan-out",
+      "priority": "low",
+      "status": "flagged-not-investigated",
+      "observation": "Pass2 run 3 of amb-02 (the run WITHOUT the duplicate) emitted step 2 `row_data: '{{item}}'` while `for_each` was absent/null and no ai_generate step existed anywhere in the blueprint. `{{item}}` is defined only as the per-iteration placeholder for a Rule 5 fan-out step and is meaningless without a `for_each`; the orchestrator would pass the literal string through.",
+      "possibleContributingCause": "Rule 5 (planner.py:51) forbids adding a spurious `for_each` field but says nothing about using `{{item}}` outside a for_each step — the ban is on the wrong half of the pair. Compounding it, there is a brace-spelling inconsistency across the rendered prompt: Rule 3 renders the single-brace `{step_N_result}` while Rule 5 renders the double-brace `{{step_N_result}}`/`{{item}}`, and Rule 6 — which fires on EVERY spreadsheet/table row write, including Rule-3-shaped single-record ones — renders the double-brace fan-out spelling `{{step_N_result}}` in its own example (planner.py:53, source `{{{{step_N_result}}}}`). So a Rule-3-shaped spreadsheet write is shown the fan-out placeholder vocabulary by Rule 6, which plausibly primes the fan-out `{{item}}` token.",
+      "proposedFollowUp": "Separate finding. Candidate edits, NOT applied and NOT part of remedy 1 or 2: (a) extend planner.py:51 to 'and NEVER use the `{{item}}` placeholder in a step that has no `for_each` — outside a fan-out there is no per-iteration value, so use `{step_N_result}` or a literal'; (b) normalize Rule 6's example placeholder (planner.py:53) to Rule 3's single-brace `{step_N_result}` spelling. Both need their own 3x repetition + full 24-trace re-run before shipping.",
+      "doNotBundle": "Keep out of the Rule 2 remedy so the amb-02 A/B stays attributable to a single change."
+    },
+    {
+      "id": "S2-step1-url-never-clarified",
+      "priority": "low",
+      "status": "flagged-out-of-scope",
+      "observation": "The amb-02 seed rationale requires missing_parameters to carry a per-step entry for BOTH the step 1 endpoint URL and the step 2 spreadsheet name. The baseline trace carries only the step 2 entry, and step 1 ships `parameters: {}` with app 'Internal API' and no URL and no clarification. Under-clarification of step 1 is a distinct defect from this finding's over-population of step 2 and is not addressed by either remedy here.",
+      "proposedFollowUp": "Own finding; re-measure after remedy 1 lands, since a prompt that teaches 'the step body must show the gap' may or may not also increase per-step clarification coverage."
+    }
+  ],
+  "assumptions": [
+    {
+      "text": "The 2-of-3 duplicate rate reported for pass2 amb-02 came from live Gemini calls against the get_system_prompt() text currently at /private/tmp/voxagent-optimize-pass2/backend/app/services/planner.py, i.e. a worktree containing all three already-promoted fixes.",
+      "status": "unverified",
+      "basis": "Run outputs were supplied in the dispatch brief, not re-executed by this analysis. The worktree file was read directly and does contain all three fixes (Rule 7 at planner.py:55-60, Rule 2's omission bullet at planner.py:32, Rule 5's carve-out at planner.py:50), which is consistent with the brief."
+    },
+    {
+      "text": "Rule 3's closing clause and Rule 5's globally-phrased carve-out are actually influencing the amb-02 output, rather than the duplicate arising purely from Rule 2's example-specificity.",
+      "status": "hypothesis-pending",
+      "basis": "Textual/causal: Rule 3 provably fires on amb-02 (step 2 uses {step_1_result}) and provably does NOT fire on srw-02 (single-step), which matches the observed pass/fail split exactly; and 'Orders' is a token the Rule 5 clause's first half licenses. Confirmation requires an ablation — run amb-02 3x with remedy 1 only, then 3x with remedy 1 + remedy 2 — which is not yet executed."
+    },
+    {
+      "text": "Adding a second, non-Airtable worked example to Rule 2 will not regress fan-01 or srw-02.",
+      "status": "hypothesis-pending",
+      "basis": "The remedy is purely additive — planner.py:32 and Rule 5's base_name/table_name carve-out at planner.py:50 are left byte-for-byte unchanged, and the new bullet explicitly reaffirms 'not just an Airtable `table_name`' and preserves the literal-vs-missing distinction the Airtable case depends on. Still requires a full 24-trace re-run of run_dataset_through_planner.py to confirm."
+    },
+    {
+      "text": "Adding the FINAL CHECK bullet will not cause the model to strip legitimate literals (e.g. fan-01's `base_name: \"Content Calendar\"`).",
+      "status": "hypothesis-pending",
+      "basis": "The check is scoped strictly to keys that already appear in missing_parameters, and `base_name` is never flagged missing in fan-01. Risk is that the model over-applies it and flags MORE parameters as missing to justify omitting them; measure over-clarification on the well-specified-happy-path control scenario in the re-run."
+    },
+    {
+      "text": "Omitting the destination key entirely from a step's parameters remains safe at execution time — composio_engine's required-field pause path produces a sensible needs_input prompt rather than a hard failure.",
+      "status": "unverified",
+      "basis": "Carried forward unchanged from diagnose-finding-1.json remedy 3 (composio_engine.py:671-691, 996). Already accepted when the shipped Rule 2 fix landed in 69d238f; remedy 1 does not change the execution-time shape, it only makes the already-intended shape happen more reliably."
+    },
+    {
+      "text": "The f-string brace escaping in the proposed planner.py diff is correct — the new bullets render as intended and do not raise at import.",
+      "status": "verified",
+      "basis": "The exact proposed bullet text was evaluated as an f-string in isolation: source `{{\"row_data\": \"{{step_1_result}}\", ...}}` renders to `{\"row_data\": \"{step_1_result}\", ...}` and source `\"{{spreadsheet_name}}\"` renders to `\"{spreadsheet_name}\"`, matching Rule 3's single-brace convention and the baseline trace's echo placeholder respectively."
+    },
+    {
+      "text": "The `{{item}}`-without-for_each smell (S1) and the step 1 URL under-clarification (S2) are independent of the duplicate-literal defect and will not be fixed as a side effect of remedy 1 or 2.",
+      "status": "unverified",
+      "basis": "Not investigated per dispatch scope. S1 appeared in the one run that did NOT have the duplicate, which is weak evidence of independence but not proof."
+    }
+  ],
+  "remedies": [
+    {
+      "rank": 1,
+      "target": "system-prompt",
+      "targetFile": "/private/tmp/voxagent-optimize-pass2/backend/app/services/planner.py",
+      "targetLocation": "get_system_prompt(), Rule 2 — insert immediately after line 32, before line 33 ('- Set `needs_clarification` to true.')",
+      "cost": "low",
+      "correctness": "high",
+      "title": "Give Rule 2 its own non-Airtable worked example, legitimize the no-destination-key shape, and add a pre-emit consistency check",
+      "rationale": "Rule 2's prohibition already exists and is explicit (planner.py:32) — the model is not defying it, it is failing to transfer it off the single Airtable `table_name` instance it was demonstrated on, while Rule 3:38 and Rule 5:50 both supply a competing license on this exact shape. The fix that DID generalize (Rule 5's carve-out) works because it is example-grounded and stated at the point where parameters are composed; this remedy gives Rule 2 the same two properties without touching a byte of existing text.",
+      "whyWorks": "Three mechanisms, each closing a distinct gap in the why-chain. (1) The worked amb-02 example replaces the abstract 'every parameter' with a concrete non-Airtable instance whose parameters object is shown literally WITHOUT the key — the same delivery form that made Rule 5's carve-out stick on fan-01. (2) The 'SUPPOSED to come out without a destination key' bullet directly counteracts the completeness pressure from Rule 3:38 and Rule 6, and names the 'topic word lifted from the request' failure mode, which is precisely the loophole Rule 5:50's 'any name the user literally said' clause opens for 'orders'; it also names the echo-placeholder form (`\"{spreadsheet_name}\"`) seen in the baseline, which Rule 2:32's plausible-value phrasing does not clearly cover. (3) The FINAL CHECK bullet converts a memory-dependent constraint into a deterministic verification pass performed AFTER the JSON is composed, which is the point in the generation order where the defect actually occurs — this is the only part of the remedy that does not depend on the model recalling a rule at composition time.",
+      "diff": {
+        "before": "- If you add a parameter to `missing_parameters`, LEAVE THAT PARAMETER OUT of the step's `parameters` object entirely. Never do both — never list `table_name` as missing while also writing `\"table_name\": \"Invoices\"` into the step. A plausible-looking stand-in there is indistinguishable from a value the user actually supplied, and the execution engine will act on it if the clarification is ever skipped or auto-answered. The `missing_parameters` entry IS the value's placeholder; the step body must show the gap.\n- Set `needs_clarification` to true.",
+        "after": "- If you add a parameter to `missing_parameters`, LEAVE THAT PARAMETER OUT of the step's `parameters` object entirely. Never do both — never list `table_name` as missing while also writing `\"table_name\": \"Invoices\"` into the step. A plausible-looking stand-in there is indistinguishable from a value the user actually supplied, and the execution engine will act on it if the clarification is ever skipped or auto-answered. The `missing_parameters` entry IS the value's placeholder; the step body must show the gap.\n- This holds for EVERY app and EVERY parameter, not just an Airtable `table_name`, and it holds in every shape — single-step, a Rule 3 two-step handoff, or a Rule 5 fan-out. Concrete example — \"Grab the latest orders from our internal API and drop them into one of my spreadsheets\": the user never named the spreadsheet, so step 2's `parameters` object is exactly `{{\"row_data\": \"{{step_1_result}}\", \"headers\": [\"Order ID\", \"Customer Name\"]}}` — there is NO `spreadsheet_name` key in it at all — and `spreadsheet_name` appears ONLY in `missing_parameters`. Writing `\"spreadsheet_name\": \"Orders\"` there is wrong even though the user said the word \"orders\": they said it to describe the DATA being moved, not to NAME the destination. A word that merely appears somewhere in the request is not a name the user gave; only a value the user stated AS that parameter's identity counts as a literal.\n- A step whose destination the user never named is SUPPOSED to come out without a destination key. Do not \"complete\" it with a plausible default, a topic word lifted from the request, a generic name (\"Sheet1\", \"Orders\", \"General\", \"#general\"), or an echo placeholder like `\"spreadsheet_name\": \"{{spreadsheet_name}}\"`. An intentionally incomplete step body plus a `missing_parameters` entry IS the correct, complete output.\n- FINAL CHECK before you emit the JSON: walk every entry in `missing_parameters`, find the step whose `step_number` matches, and confirm that step's `parameters` object does NOT contain that `parameter_key`. If it does, delete the key from `parameters` and keep only the `missing_parameters` entry.\n- Set `needs_clarification` to true."
+      },
+      "escapingNote": "CRITICAL — get_system_prompt() returns an f-string, so every literal brace in the inserted text is DOUBLED in the source and renders single. Source `{{\"row_data\": \"{{step_1_result}}\", \"headers\": [...]}}` renders as `{\"row_data\": \"{step_1_result}\", \"headers\": [...]}` (single braces, matching Rule 3's convention at planner.py:38), and source `\"{{spreadsheet_name}}\"` renders as `\"{spreadsheet_name}\"`. The `after` text above is the PLANNER.PY SOURCE form and must be pasted verbatim as-is. Verified by evaluating the bullet text as an f-string in isolation. Do NOT single-brace it in planner.py; do NOT double-brace it in agentspec.yaml (see mirror below).",
+      "mirror": {
+        "file": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml",
+        "location": "spec.agent.systemPrompt, Rule 2 — insert immediately after line 114, before line 115 ('- Set `needs_clarification` to true.'), at the same 6-space YAML block-scalar indent",
+        "note": "agentspec.yaml is a plain YAML block scalar, NOT an f-string — use SINGLE braces here (matching agentspec.yaml:120's `{step_N_result}`).",
+        "insertText": "- This holds for EVERY app and EVERY parameter, not just an Airtable `table_name`, and it holds in every shape — single-step, a Rule 3 two-step handoff, or a Rule 5 fan-out. Concrete example — \"Grab the latest orders from our internal API and drop them into one of my spreadsheets\": the user never named the spreadsheet, so step 2's `parameters` object is exactly `{\"row_data\": \"{step_1_result}\", \"headers\": [\"Order ID\", \"Customer Name\"]}` — there is NO `spreadsheet_name` key in it at all — and `spreadsheet_name` appears ONLY in `missing_parameters`. Writing `\"spreadsheet_name\": \"Orders\"` there is wrong even though the user said the word \"orders\": they said it to describe the DATA being moved, not to NAME the destination. A word that merely appears somewhere in the request is not a name the user gave; only a value the user stated AS that parameter's identity counts as a literal.\n- A step whose destination the user never named is SUPPOSED to come out without a destination key. Do not \"complete\" it with a plausible default, a topic word lifted from the request, a generic name (\"Sheet1\", \"Orders\", \"General\", \"#general\"), or an echo placeholder like `\"spreadsheet_name\": \"{spreadsheet_name}\"`. An intentionally incomplete step body plus a `missing_parameters` entry IS the correct, complete output.\n- FINAL CHECK before you emit the JSON: walk every entry in `missing_parameters`, find the step whose `step_number` matches, and confirm that step's `parameters` object does NOT contain that `parameter_key`. If it does, delete the key from `parameters` and keep only the `missing_parameters` entry."
+      },
+      "applyInstructions": [
+        "1. Open /private/tmp/voxagent-optimize-pass2/backend/app/services/planner.py and locate line 32 (the '- If you add a parameter to `missing_parameters`...' bullet) inside get_system_prompt().",
+        "2. Replace the two-line block (line 32 + line 33) with the `after` text above, verbatim, preserving the DOUBLED braces exactly as written. Existing text on lines 30, 31, 32, 33-36 is otherwise unchanged.",
+        "3. Smoke-test the f-string: `cd /private/tmp/voxagent-optimize-pass2/backend && python3 -c \"from app.services.planner import get_system_prompt; p=get_system_prompt(); assert '{\\\"row_data\\\": \\\"{step_1_result}\\\"' in p; print('render OK')\"` — this catches a brace-escaping mistake before any Gemini spend.",
+        "4. Mirror the `mirror.insertText` above into agentspec.yaml after line 114 with SINGLE braces at the 6-space block-scalar indent, and verify with `python3 -c \"import yaml;yaml.safe_load(open('/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml'))\"`.",
+        "5. A/B amb-02 first, remedy 1 alone: run the amb-02 prompt 3x at temperature 0.1. PASS bar = 3/3 runs where `spreadsheet_name` appears in missing_parameters and is ABSENT from steps[1].parameters.",
+        "6. Only then run the full 24-trace regression: `python3 run_dataset_through_planner.py` then `python3 tier0_code_checks.py` then `python3 aggregate_scorecard.py`. Required non-regressions: fan-01 keeps `base_name: \"Content Calendar\"` as a literal with `table_name` missing-and-absent; srw-02 keeps `table_name` missing-and-absent; amb-01 and amb-03 keep clarifying with no invented channel/contact literal; bpt-02 and bpt-03 keep needs_clarification=false with no credential entries; the well-specified-happy-path control scenario must NOT gain any new needs_clarification=true (this is the specific over-clarification risk the FINAL CHECK bullet introduces).",
+        "7. If step 5 passes but step 6 shows the amb-02 duplicate persisting in any run, apply remedy 2 and repeat — the residual is then attributable to Rule 3's competing clause."
+      ],
+      "assumptions": [
+        "Source access to both planner.py (worktree) and agentspec.yaml is available and both were read directly for this finding — the diff anchors are byte-exact as of the read, not inferred from trace metadata.",
+        "The line numbers cited (planner.py:32/33, agentspec.yaml:114/115) are valid against the files as read; re-anchor on the verbatim `before` text rather than the line number if either file has moved since."
+      ]
+    },
+    {
+      "rank": 2,
+      "target": "system-prompt",
+      "targetFile": "/private/tmp/voxagent-optimize-pass2/backend/app/services/planner.py",
+      "targetLocation": "get_system_prompt(), Rule 3 — line 38, final sentence only",
+      "cost": "low",
+      "correctness": "medium",
+      "title": "Close Rule 3's competing 'keep concrete literal parameter values' license",
+      "rationale": "Rule 3 fires on amb-02 and does not fire on srw-02, which is exactly the boundary between the failing and passing cases. Its closing sentence partitions a step's parameters into 'depends on an earlier step -> placeholder' and 'no such dependency -> concrete literal' with no third bucket for a flagged-missing parameter, so on this shape the prompt contains a direct instruction pointing the opposite way from Rule 2:32. Correctness is medium rather than high because remedy 1 may prove sufficient on its own; apply this only if amb-02 still shows a duplicate after remedy 1's 3x A/B.",
+      "whyWorks": "It adds the missing third bucket at the exact sentence that currently forces a binary choice, so the model composing step 2's parameters no longer has to choose between two instructions that both apply. It also pre-empts the adjacent failure of substituting `{step_N_result}` for an unknown destination name (a placeholder misuse the same sentence would otherwise leave open once the literal is forbidden).",
+      "diff": {
+        "before": "Only use this when a step genuinely depends on another step's output; steps with no such dependency should keep concrete literal parameter values.",
+        "after": "Only use this when a step genuinely depends on another step's output; steps with no such dependency should keep concrete literal parameter values — where \"concrete literal\" means a value the USER actually gave. If the user never named it, it is not a literal: it goes in `missing_parameters` under Rule 2 and is left OUT of that step's `parameters` entirely — do not fill it with a plausible default, and do not reach for `{{step_N_result}}` for it either, since that placeholder is only ever for a real upstream dependency."
+      },
+      "escapingNote": "planner.py source form — `{{step_N_result}}` is DOUBLED and renders as `{step_N_result}`, matching the rest of Rule 3. In the agentspec.yaml mirror use the SINGLE-brace `{step_N_result}`.",
+      "mirror": {
+        "file": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml",
+        "location": "spec.agent.systemPrompt, Rule 3 — line 120, same trailing sentence",
+        "note": "Single braces in YAML.",
+        "replacementSentence": "Only use this when a step genuinely depends on another step's output; steps with no such dependency should keep concrete literal parameter values — where \"concrete literal\" means a value the USER actually gave. If the user never named it, it is not a literal: it goes in `missing_parameters` under Rule 2 and is left OUT of that step's `parameters` entirely — do not fill it with a plausible default, and do not reach for `{step_N_result}` for it either, since that placeholder is only ever for a real upstream dependency."
+      },
+      "companionSopEdit": {
+        "file": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml",
+        "location": "spec.intent.sop, `data-handoff` entry — line 35 (`onFailure`)",
+        "before": "onFailure: \"Never paste invented placeholder text standing in for a real value.\"",
+        "after": "onFailure: \"Never paste invented placeholder text standing in for a real value, and never treat a non-dependent parameter as licence to invent a literal — if the user never named it, it belongs in missing_parameters and must be absent from the step's parameters.\""
+      },
+      "applyInstructions": [
+        "1. Apply ONLY if amb-02 still shows the duplicate in any of remedy 1's 3 A/B runs — this keeps the two edits independently attributable.",
+        "2. In planner.py:38, replace the final sentence with the `after` text verbatim (doubled braces).",
+        "3. Mirror into agentspec.yaml:120 with single braces, and apply the companionSopEdit at agentspec.yaml:35.",
+        "4. Re-run amb-02 3x, then the full 24-trace regression. Watch specifically for over-correction on multi-step handoff traces that legitimately carry user-given literals in a downstream step — the risk is the model now under-populates a step whose destination the user DID name."
+      ],
+      "assumptions": [
+        "Rule 3's closing clause is genuinely contributing rather than merely correlating with the two-step shape; this remains hypothesis-pending until the remedy-1-alone ablation is run.",
+        "Source access to planner.py and agentspec.yaml is available; both were read directly, so the `before` strings are byte-exact rather than inferred."
+      ]
+    },
+    {
+      "rank": 3,
+      "target": "eval-criterion",
+      "targetFile": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/tier0_code_checks.py",
+      "cost": "low",
+      "correctness": "high",
+      "title": "Add a repetition-based determinism guard so a 2-of-3 defect cannot pass as fixed",
+      "rationale": "This regression was invisible to the existing harness for a structural reason: run_dataset_through_planner.py executes each seed ONCE, so a defect that fires on 2 of 3 identical runs has a 1-in-3 chance of being recorded as a clean pass. The three promoted fixes were validated against single runs of fan-01/srw-02, which is why a probabilistic residual survived promotion.",
+      "whyWorks": "Running each clarification-relevant seed N=3 times and failing the criterion if ANY repetition contradicts turns a sampled observation into a bound. It also makes the remedy-1 A/B bar in step 5 above (3/3 clean) mechanically enforced rather than a manual convention.",
+      "describedChange": "Extend run_dataset_through_planner.py with a `--repeat N` flag (default 1, use 3 for the ambiguous-recipient-or-target and fan-out-batch scenarios) that emits one trace per repetition with a `repetition` field in metadata; then extend the clause-2 duplicate-key check in tier0_code_checks.py's check_no_guessed_required_param to aggregate across repetitions of the same trace_id and return fail if ANY repetition contains a parameter_key present in both missing_parameters and the matching step's parameters, reporting the k/N incidence in the note. Cost is a 3x Gemini spend on the affected scenarios only, not the whole 24-trace set.",
+      "applyInstructions": [
+        "1. Add the `--repeat N` flag to run_dataset_through_planner.py, tagging each emitted trace with metadata.repetition.",
+        "2. In tier0_code_checks.py, group verdicts by trace_id base and fail the clause-2 duplicate check if any repetition contradicts; include the k/N rate in the note.",
+        "3. Re-baseline before applying remedy 1 so the pre-fix incidence (expected 2/3 on amb-02) is on record, then re-run after.",
+        "4. Extend to fan-01/srw-02/amb-01/amb-03 so the promoted fixes get the same determinism bound they were never held to."
+      ],
+      "assumptions": [
+        "The harness scripts are editable and re-runnable in this environment; both were located but not executed as part of this analysis.",
+        "A 3x repetition is enough to catch a ~2/3-incidence defect with acceptable confidence; a genuinely rare (<10%) residual would still slip through."
+      ]
+    }
+  ],
+  "sourceTraceIds": ["amb-02"],
+  "relatedFindings": ["F-no-guessed-required-param-1"],
+  "referenceIds": {
+    "criterionId": "no-guessed-required-param",
+    "findingId": "F-rule2-duplicate-literal-generalization-5",
+    "plannerPath": "/private/tmp/voxagent-optimize-pass2/backend/app/services/planner.py",
+    "committedPlannerPath": "/Users/satyaviswas/Documents/Vox-Agent/backend/app/services/planner.py",
+    "specPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml",
+    "datasetPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/eval-dataset-candidates.json",
+    "tracesPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/traces/planner-eval-traces.jsonl",
+    "checkPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/tier0_code_checks.py",
+    "priorFindingPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/diagnose-finding-1.json",
+    "priorFixCommits": ["69d238f", "71fb7b1"]
+  }
+}

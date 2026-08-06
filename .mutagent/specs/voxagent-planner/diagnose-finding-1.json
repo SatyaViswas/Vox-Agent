@@ -1,0 +1,171 @@
+{
+  "clusterId": "F-no-guessed-required-param-1",
+  "what": "low-score",
+  "why": "tool-misuse",
+  "where": "harness-side",
+  "confidence": "high",
+  "verdict": "SPLIT CLUSTER — the 4 traces do NOT share one root cause. 2/4 (fan-01, srw-02) are FALSE POSITIVES produced by the tier-0 check's rigid `scenario != ambiguous-recipient-or-target => must not clarify` predicate; the planner's clarification there is defensible and arguably correct, and the real defect in those two is a DIFFERENT one the check never looks for (an invented literal co-existing with the clarification). 2/4 (bpt-02, bpt-03) are a GENUINE planner defect, but not the one the check names: the planner asks the user for portal credentials that VoxAgent's architecture supplies from the App Vault at execution time, and that the planner's system prompt never tells it about.",
+  "problem": "The `no-guessed-required-param` criterion reported 4 failures (fan-01, bpt-02, srw-02, bpt-03) from a single scenario-label predicate — 2 of the 4 are harness artifacts where the planner behaved correctly, and the 2 that are real defects (credential requests routed around the App Vault, and invented table_name literals shipped alongside the clarification) are both mis-described by the verdict text, so the criterion's measured 4/24 failure rate is not a usable signal for either defect.",
+  "evidence": [
+    "tier0_code_checks.py:22 — `should_need = scenario == AMBIGUOUS_SCENARIO`; tier0_code_checks.py:28-30 — `else: if not needs_clar: return \"pass\" ... return \"fail\", \"scenario is fully specified but needs_clarification=True unexpectedly\"`. The check treats the SCENARIO LABEL as a proxy for prompt completeness: any needs_clarification=true on any of the 7 non-ambiguous scenarios is an automatic fail.",
+    "agentspec.yaml:164 (criterion `no-guessed-required-param`) — \"Given a prompt that OMITS a required parameter (recipient, target sheet/channel name, threshold, portal URL), the blueprint sets needs_clarification=true with a non-empty missing_parameters, AND no step's parameters contain an invented value for that field.\" The criterion is conditioned on the PROMPT's content, not on the scenario label, and it has a SECOND clause (no invented value) that tier0_code_checks.py never evaluates.",
+    "agentspec.yaml:218-221 — only `well-specified-happy-path` is defined as \"A fully-specified, unambiguous single-step request naming everything the target action needs\" and is explicitly \"a control scenario confirming the planner doesn't over-trigger clarification.\" The other 6 scenarios (fan-out-batch, spreadsheet-row-write, browser-portal-task, ...) label the STRUCTURAL property under test (fan-out shape, header safety, browser context), and their `expectedBehavior` says nothing about clarification. The tier-0 predicate over-extends the single control scenario's contract to all 7.",
+    "Consequence: 3 of the 4 cluster members (fan-01 fan-out-batch, srw-02 spreadsheet-row-write, bpt-02/bpt-03 browser-portal-task) were judged against a contract their scenario never asserted."
+  ],
+  "subCases": [
+    {
+      "subCaseId": "A-airtable-table-name",
+      "traceIds": ["fan-01", "srw-02"],
+      "verdict": "NOT a planner over-triggering defect. The seed prompts are genuinely under-specified (Airtable base named, table not), so needs_clarification=true satisfies the criterion's own clause 1. Root cause of the FAILING VERDICT is the eval criterion's scenario-label proxy. A real but SEPARATE planner defect does exist here: an invented table_name literal shipped inside steps[].parameters at the same time as the clarification (criterion clause 2).",
+      "what": "hallucination",
+      "why": "prompt-underspec",
+      "where": "system-prompt",
+      "secondaryClassification": {
+        "note": "The failing VERDICT itself (as distinct from the invented literal) is harness-side.",
+        "what": "low-score",
+        "why": "tool-misuse",
+        "where": "harness-side"
+      },
+      "evidence": [
+        "fan-01 prompt: \"...add each one as its own record in my Airtable base Content Calendar\" — names the BASE only. srw-02 prompt: \"Can you add this month's invoice to my Airtable base called Freelance Income?\" — names the BASE only. In Airtable's real data model a base contains N tables and AIRTABLE_CREATE_RECORD cannot resolve a target from a base name alone, so `table_name` IS a required parameter the user omitted. Under agentspec.yaml:164 clause 1, asking for it is the SPECIFIED behavior, not a defect.",
+        "planner.py:30 (Rule 2) — the disambiguation trigger list is \"(e.g., target Google Sheet name, target WhatsApp phone number, specific threshold value, or ERP portal URL)\". It explicitly calls out a Google Sheet NAME and an ERP portal URL, but NEVER mentions that a table target must be disambiguated WITHIN a base. There is no text anywhere in Rules 1-6 telling the planner whether a base name alone is sufficient.",
+        "planner.py:52 (Rule 6) — the only place Airtable is named at all (\"Google Sheets, Airtable, a Notion database\") and it concerns the `headers` parameter exclusively, not base/table addressing. So the Rules give the planner zero guidance either way; it fell back on Airtable's real data model, which is correct.",
+        "Seed-design gap (eval-dataset-candidates.json, srw-02.rationale): \"Base name is human-friendly, so no opaque base ID should be requested.\" The dataset author anticipated only the base-ID risk and never considered the table-within-base gap. fan-01.rationale is entirely about fan-out shape and headers (\"Failure modes are 8 separate ai_generate steps or one record containing all 8 titles\"). Neither seed was authored to test clarification completeness — the omission of the table name is incidental to what these two traces were built to measure.",
+        "GENUINE DEFECT (criterion clause 2, unmeasured by tier-0): fan-01 step 2 `parameters.table_name = \"Blog Posts\"` while `missing_parameters[0] = {step_number: 2, parameter_key: \"table_name\", ...}`. srw-02 step 1 `parameters.table_name = \"Invoices\"` while `missing_parameters[0] = {step_number: 1, parameter_key: \"table_name\", ...}`. \"Blog Posts\" and \"Invoices\" appear nowhere in either user prompt — both are invented. The blueprint self-contradicts: it declares the value missing AND supplies a plausible-looking stand-in for it. If the clarification is skipped, auto-answered, or dropped downstream, the execution engine will write to a table the user never named.",
+        "planner.py:31 (Rule 2) — \"Do NOT invent or guess fake names or numbers.\" The invented literals violate the planner's own rule; Rule 2 tells the planner to ADD a missing_parameters entry but never tells it to LEAVE THE PARAMETER OUT of steps[].parameters, so the model does both."
+      ]
+    },
+    {
+      "subCaseId": "B-portal-credentials",
+      "traceIds": ["bpt-02", "bpt-03"],
+      "verdict": "GENUINE planner defect, and more serious than 'over-triggered clarification'. The planner asks the user for portal username/password/credentials as blueprint parameters. VoxAgent's architecture NEVER accepts credentials as blueprint parameters — they are supplied at execution time from the encrypted App Vault as a restored browser session. The clarification is therefore unanswerable-by-design, blocks an otherwise-correct blueprint, and requests plaintext secrets into a `suggested_type: \"string\"` form field. The tier-0 verdict flags these traces for the right reason by accident but names the wrong defect.",
+      "what": "wrong-output",
+      "why": "prompt-underspec",
+      "where": "system-prompt",
+      "evidence": [
+        "orchestrator.py:294-305 — the browser_agent route: `task_description = f\"On {app}: {action}.\"` ... `return await execute_browser_action(task_description=task_description, user_id=user_id, app_name=app)`. Only task text, user_id and the app NAME cross the boundary. No credential parameter is ever read off the step.",
+        "browser_engine.py:56-63 — \"Setup Browser Context with stored session cookies from Vault if app_name is provided\": `if app_name: from app.services.vault import get_app_credentials; credentials = get_app_credentials(user_id, app_name); if credentials and \"cookies\" in credentials: storage_state = credentials`, then browser_engine.py:71-74 `browser_kwargs[\"storage_state\"] = storage_state; browser = Browser(**browser_kwargs)`. Authentication is a restored Playwright storage_state, i.e. an already-logged-in session — not a username/password typed into a form.",
+        "vault.py:91-97 (`get_app_credentials`) — reads the `connected_apps` table filtered on `user_id`/`app_name`/`status == \"active\"` and Fernet-decrypts `encrypted_credentials.data` (vault.py:11-13, 122-125). This is the App Vault connect flow, populated by `save_app_credentials` (vault.py:56) from the /vault connect endpoints — never from a blueprint.",
+        "Backend-wide search for a credential consumer: the ONLY `password` handling in backend/app is the dedicated Telegram vault-connect flow (routers/vault.py:246 `password: str`, routers/vault.py:273-277 `/vault/telegram/login/password`, telegram_client_engine.py:128 `submit_password`). Nothing anywhere reads a `username`, `password`, or `credentials` key out of a step's `parameters`. `missing_parameters` itself has no backend consumer at all beyond its schema declaration (schemas/blueprint.py:50) — it is surfaced to the user as a form. A credential asked for there goes nowhere useful.",
+        "agentspec.yaml:64 (spec.intent.nonGoals) — \"Resolving auth/credential issues — handled at execution time, not plan time.\" Asking for credentials at plan time is an explicit declared non-goal of this agent.",
+        "bpt-02 blueprint: step 1 `NAVIGATE_AND_LOGIN` with `parameters: {url, username_field: \"username\", password_field: \"password\"}` (DOM field names, harmless) but `missing_parameters` = `[{parameter_key: \"username\", label: \"Username\"}, {parameter_key: \"password\", label: \"Password\", suggested_type: \"string\"}]` and `clarification_question`: \"I need your login credentials to access the portal. Please provide your username and password for portal.vitap.ac.in.\" The rest of the blueprint is correct — URL, page, and course name are all preserved across 3 steps, exactly what the bpt-02 seed rationale asks for.",
+        "bpt-03 SELF-CONTRADICTION: step 1 `parameters.instructions` = \"Log in to the portal using stored credentials, navigate to the 'My Account' or 'Borrowed Books' section, extract the due dates...\" — the planner's own task text already assumes stored credentials — yet `missing_parameters` = `[{parameter_key: \"credentials\", label: \"Library Portal Credentials\", description: \"Username and password for the library portal.\"}]` and `clarification_question`: \"I need your library portal credentials to log in. Please provide your username and password, or ensure they are saved in your secure vault.\" The planner half-knows the vault exists but the Rules never state the invariant, so it hedges and asks anyway.",
+        "bpt-03 is otherwise a clean pass on its seed intent: Rule 1 default storage fired correctly (step 3 `http_webhook` / \"VoxAgent Vault Notes\") and the 'if anything's overdue' conditional stayed inside the task text rather than becoming a control-flow step. The credential clarification is the only defect in it.",
+        "planner.py:13-56 (`get_system_prompt`) — Rules 1-6 in full contain NO mention of credentials, login, authentication, the App Vault, connected apps, or stored sessions. The invariant that credentials come from the vault is nowhere stated to the model. This is the failure ORIGIN."
+      ]
+    }
+  ],
+  "whyChain": [
+    {
+      "why": "The `no-guessed-required-param` criterion reported 4 failures on fan-01, bpt-02, srw-02, bpt-03",
+      "evidence": "tier0-verdicts.json — 4 entries with verdict \"fail\", note \"scenario is fully specified but needs_clarification=True unexpectedly\"",
+      "whatHappened": "The tier-0 pre-pass scanned 24 planner traces and emitted a fail verdict for every trace whose blueprint set needs_clarification=true outside the ambiguous-recipient-or-target scenario."
+    },
+    {
+      "why": "The check decides 'fully specified' from the scenario LABEL, never from the prompt's content",
+      "evidence": "tier0_code_checks.py:22, 28-30",
+      "whatHappened": "check_no_guessed_required_param computes `should_need = scenario == AMBIGUOUS_SCENARIO` and, for every other scenario, returns fail the moment needs_clarification is true — it never inspects the prompt for an omitted parameter, and never runs the criterion's second clause about invented values.",
+      "example": "should_need = scenario == AMBIGUOUS_SCENARIO"
+    },
+    {
+      "why": "The scenario label is not a valid proxy: only 1 of the 8 scenarios asserts clarification-completeness",
+      "evidence": "agentspec.yaml:218-221 vs 199-224",
+      "whatHappened": "Only well-specified-happy-path is defined as fully-specified and named the control scenario for over-triggering; fan-out-batch, spreadsheet-row-write and browser-portal-task assert structural properties (fan-out shape, headers, browser context) and their expectedBehavior text never mentions clarification. Applying the control scenario's contract to all 7 others manufactured the fan-01/srw-02 failures.",
+      "isOrigin": true
+    },
+    {
+      "why": "Separately, fan-01/srw-02 DID leave an invented literal in the step params — a real defect the check does not detect",
+      "evidence": "fan-01 step 2 parameters.table_name=\"Blog Posts\"; srw-02 step 1 parameters.table_name=\"Invoices\"",
+      "whatHappened": "Both blueprints listed table_name in missing_parameters while simultaneously writing a plausible invented table name into the very same step's parameters, so a downstream consumer that ignores the clarification would execute against a table the user never named."
+    },
+    {
+      "why": "Rule 2 tells the planner to ADD a missing_parameters entry but never to OMIT the value from steps[].parameters",
+      "evidence": "planner.py:30-35",
+      "whatHappened": "Rule 2's five bullets cover not-inventing, setting the flag, adding the entry, writing the question, and avoiding opaque IDs — none of them says the flagged parameter must be absent from the step body, so the model satisfies the letter of the rule while still shipping a stand-in value.",
+      "isOrigin": true
+    },
+    {
+      "why": "bpt-02/bpt-03 asked the user for portal credentials",
+      "evidence": "bpt-02 missing_parameters=[username, password]; bpt-03 missing_parameters=[credentials]",
+      "whatHappened": "Both blueprints were structurally correct browser_agent plans, then blocked themselves on a clarification asking the user to type a portal username and password into a suggested_type:\"string\" form field."
+    },
+    {
+      "why": "VoxAgent supplies browser credentials from the encrypted App Vault at execution time, never as a blueprint parameter",
+      "evidence": "orchestrator.py:294-305 -> browser_engine.py:56-63 -> vault.py:91-97; agentspec.yaml:64",
+      "whatHappened": "The orchestrator hands the browser engine only the task text, user_id and app name; the engine looks the app up in the vault and restores a logged-in Playwright storage_state. No code path anywhere in backend/app reads a username/password/credentials key from a step's parameters."
+    },
+    {
+      "why": "Rules 1-6 of the planner system prompt never mention credentials, login, the App Vault, or stored sessions",
+      "evidence": "planner.py:13-56 — full get_system_prompt() text",
+      "whatHappened": "The model was given six rules covering routing, storage defaults, disambiguation, handoff, triggers, fan-out and headers, and nothing at all about authentication, so on a 'log in to my portal' request it fell back on the generic assumption that a login needs credentials from the user.",
+      "isOrigin": true
+    }
+  ],
+  "assumptions": [
+    {
+      "text": "Airtable's AIRTABLE_CREATE_RECORD genuinely requires a table identifier in addition to a base identifier, making table_name a required parameter that fan-01/srw-02's prompts omitted.",
+      "status": "verified",
+      "basis": "Airtable's data model (a base contains N tables) plus composio_engine.py's schema-driven required-field pause path (composio_engine.py:671-691, 996) which would raise needs_input for any required field absent from parameters."
+    },
+    {
+      "text": "The eval dataset's seed prompts for fan-01 and srw-02 were authored to test fan-out shape and header safety respectively, not clarification completeness, so their omission of the table name is incidental rather than deliberate.",
+      "status": "verified",
+      "basis": "eval-dataset-candidates.json rationale fields for fan-01 and srw-02 read verbatim; neither mentions clarification."
+    },
+    {
+      "text": "No code path in the VoxAgent backend consumes a username/password/credentials key from a blueprint step's parameters.",
+      "status": "verified",
+      "basis": "Repo-wide grep of backend/app for 'password' returns only routers/vault.py and telegram_client_engine.py (the Telegram vault-connect flow); grep for 'missing_parameters' returns only schemas/blueprint.py:50 and planner.py itself."
+    },
+    {
+      "text": "The user has actually connected the target portal in the App Vault, so get_app_credentials returns a usable storage_state for bpt-02/bpt-03's portals at execution time.",
+      "status": "unverified",
+      "basis": "Not observable from planner-stage traces. If the portal is NOT connected, the correct product behavior is still a vault-connect prompt from the execution layer (browser_engine.py:57-63 returns None and proceeds unauthenticated), not a plan-time password request — but the failure mode for an unconnected portal was not measured here."
+    },
+    {
+      "text": "The four traces are the complete membership of this cluster; no other trace in the 24-trace set shows the same two behaviors.",
+      "status": "verified",
+      "basis": "tier0-verdicts.json read in full — exactly 4 entries carry verdict fail on no-guessed-required-param."
+    },
+    {
+      "text": "Rewording Rule 2 / adding Rule 7 will not regress the 3 ambiguous-recipient-or-target traces (amb-01/02/03) that currently pass by correctly clarifying.",
+      "status": "hypothesis-pending",
+      "basis": "Requires a re-run of the full 24-trace dataset through run_dataset_through_planner.py after the prompt edit; not yet executed."
+    }
+  ],
+  "remedies": [
+    {
+      "rank": 1,
+      "target": "eval-criterion",
+      "cost": "low",
+      "correctness": "high",
+      "description": "Fix the tier-0 check, not the planner, for fan-01/srw-02. Stop using the scenario label as a proxy for prompt completeness — only `well-specified-happy-path` asserts 'must not clarify' (agentspec.yaml:218-221); every other non-ambiguous scenario is silent on clarification and must return n/a rather than fail. At the same time, implement the criterion's SECOND clause (agentspec.yaml:164, 'no step's parameters contain an invented value for that field'), which is currently unimplemented and is what actually catches the real fan-01/srw-02 defect (table_name listed as missing AND present as an invented literal). This is rank 1 because it is a pure test-harness edit with zero product risk, and because until it lands the criterion's numbers are not a usable signal for either sub-case: 2 of its 4 failures are noise and the other 2 are labelled with the wrong cause.",
+      "exactChange": "In /Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/tier0_code_checks.py, replace `check_no_guessed_required_param` (lines 19-30) and the constant at line 16 with:\n\n    CLARIFICATION_EXPECTED = {\"ambiguous-recipient-or-target\"}\n    CLARIFICATION_FORBIDDEN = {\"well-specified-happy-path\"}\n\n    def check_no_guessed_required_param(bp, scenario):\n        needs_clar = bp.get(\"needs_clarification\", False)\n        missing = bp.get(\"missing_parameters\", []) or []\n        steps = bp.get(\"steps\", []) or []\n\n        # Clause 2 of agentspec.yaml:164 — applies to EVERY scenario: a parameter\n        # declared missing must not also carry an invented literal in the step body.\n        contradicted = [\n            mp.get(\"parameter_key\")\n            for mp in missing\n            for s in steps\n            if s.get(\"step_number\") == mp.get(\"step_number\")\n            and mp.get(\"parameter_key\") in (s.get(\"parameters\") or {})\n        ]\n        if contradicted:\n            return \"fail\", (\n                f\"parameter(s) {contradicted} are listed in missing_parameters AND carry an \"\n                f\"invented literal in the same step's parameters (criterion clause 2)\"\n            )\n\n        if scenario in CLARIFICATION_EXPECTED:\n            if needs_clar and missing:\n                return \"pass\", f\"scenario requires clarification; needs_clarification=True with {len(missing)} missing_parameters entr(ies)\"\n            return \"fail\", f\"scenario requires clarification but needs_clarification={needs_clar}, missing_parameters={missing}\"\n\n        if scenario in CLARIFICATION_FORBIDDEN:\n            if not needs_clar:\n                return \"pass\", \"control scenario is fully specified and did not over-trigger clarification\"\n            return \"fail\", f\"control scenario is fully specified but needs_clarification=True unexpectedly (missing_parameters={missing})\"\n\n        return \"n/a\", (\n            \"this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not \"\n            \"clarification-completeness; clause-1 over-trigger is only decidable for \"\n            \"well-specified-happy-path. Clause 2 (no invented value) was checked and passed.\"\n        )\n\nThen re-run `python3 tier0_code_checks.py` and re-aggregate. Expected result: fan-01 and srw-02 flip from the (invalid) 'over-triggered clarification' fail to a VALID fail on clause 2 (invented table_name literal); bpt-02 and bpt-03 become n/a on this criterion and are re-clustered under remedy 2's credential defect. OPTIONAL companion (eval-dataset, only if you want fan-01/srw-02 to keep exercising a clean happy path too): add a table name to the two seed prompts in eval-dataset-candidates.json — fan-01 -> \"...in my Airtable base Content Calendar, table Blog Posts\" and srw-02 -> \"...my Airtable base called Freelance Income, in the Invoices table...\" — and re-run run_dataset_through_planner.py. Do NOT do this INSTEAD of the criterion fix: it would paper over the clause-2 defect rather than measure it."
+    },
+    {
+      "rank": 2,
+      "target": "system-prompt",
+      "cost": "medium",
+      "correctness": "high",
+      "description": "Add a new Rule 7 to the planner system prompt stating the credential invariant that VoxAgent's architecture already enforces: login credentials for a browser_agent portal (or any connected app) come from the App Vault at execution time and must NEVER appear in missing_parameters. This is the highest-severity PRODUCT defect in the cluster — it blocks otherwise-correct blueprints on an unanswerable question (nothing in the backend consumes the answer), it contradicts the agent's own declared nonGoal (agentspec.yaml:64), and it solicits plaintext secrets into a suggested_type:\"string\" form field. It is rank 2 only because a system-prompt edit carries regression risk across every browser-portal trace and needs a full 24-trace re-run to confirm.",
+      "exactChange": "In /Users/satyaviswas/Documents/Vox-Agent/backend/app/services/planner.py, inside get_system_prompt(), insert immediately after Rule 6 (after line 52, before the 'Output exactly in the following JSON schema format:' line at 54):\n\n    Rule 7 (Credentials Come From the App Vault — Never Ask For Them): Login credentials — usernames, passwords, PINs, OTPs, API keys, tokens, session cookies — are NEVER blueprint parameters and must NEVER appear in `missing_parameters`, no matter how the user phrases the request. VoxAgent supplies them at execution time from the user's App Vault: for a 'browser_agent' step the engine restores the user's already-logged-in browser session for that portal, and for a 'composio_api' step the connected account is attached automatically. So when a request says \"log in to X and ...\", treat the login as ALREADY HANDLED: set the step's `app` to the portal's name (this is what matches the stored vault session), fold the login into the step's plain-language task text (e.g. \"Log in using the stored session, then ...\"), and do NOT set `needs_clarification` for anything auth-related. If the portal turns out not to be connected, the execution layer — not you — asks the user to connect it. The only portal detail you may ever ask for under Rule 2 is its human-friendly URL or name when the user genuinely didn't give one.\n\nMirror the same paragraph verbatim into /Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml at spec.agent.systemPrompt (insert after the Rule 6 block, currently ending at line 134), and add a matching SOP entry under spec.intent.sop (after the `spreadsheet-header-safety` entry ending at line 44):\n\n      - id: credentials-from-vault\n        when: \"A step requires authenticating to a portal or connected app.\"\n        description: \"Treat authentication as execution-time concern: set the step's app to the portal name so the vault session is matched, and describe the login inside the task text.\"\n        onFailure: \"Never place a username, password, OTP, API key or token in missing_parameters or in a step's parameters — the App Vault supplies them (browser_engine.py:56-63 -> vault.get_app_credentials).\"\n\nVerify by re-running the browser-portal-task traces: bpt-02 should keep its 3-step URL/page/course structure with needs_clarification=false, and bpt-03 should keep its Rule-1 Vault Notes final step with needs_clarification=false."
+    },
+    {
+      "rank": 3,
+      "target": "system-prompt",
+      "cost": "low",
+      "correctness": "medium",
+      "description": "Amend Rule 2 so a parameter flagged in missing_parameters is OMITTED from the step body rather than filled with a plausible stand-in, and extend Rule 2's trigger examples to cover a table within a named base. This fixes the genuine fan-01/srw-02 defect (invented `table_name: \"Blog Posts\"` / `\"Invoices\"` shipped alongside the clarification) that remedy 1 makes measurable. Correctness is medium rather than high because omitting a required key changes what composio_engine's required-field pause sees at execution time (composio_engine.py:671-691) — verify the needs_input path still produces a sane question before shipping.",
+      "exactChange": "In /Users/satyaviswas/Documents/Vox-Agent/backend/app/services/planner.py, Rule 2 (lines 30-35): (1) extend the trigger example list on line 30 from \"(e.g., target Google Sheet name, target WhatsApp phone number, specific threshold value, or ERP portal URL)\" to \"(e.g., target Google Sheet name, the specific TABLE within a named Airtable base or Notion workspace — naming the base alone is not enough to address a table, target WhatsApp phone number, specific threshold value, or ERP portal URL)\"; (2) insert a new bullet immediately after the existing \"- Do NOT invent or guess fake names or numbers.\" line (line 31):\n\n    - If you add a parameter to `missing_parameters`, LEAVE THAT PARAMETER OUT of the step's `parameters` object entirely. Never do both — never list `table_name` as missing while also writing `\"table_name\": \"Invoices\"` into the step. A plausible-looking stand-in there is indistinguishable from a value the user actually supplied, and the execution engine will act on it if the clarification is ever skipped or auto-answered. The `missing_parameters` entry IS the value's placeholder; the step body must show the gap.\n\nMirror both edits verbatim into agentspec.yaml spec.agent.systemPrompt Rule 2 (lines 112-117), and tighten the `disambiguation-gate` SOP onFailure (agentspec.yaml:31) by appending: \"; and never leave an invented stand-in value for that parameter in the step's parameters — omit the key entirely.\"\n\nVerify with remedy 1's clause-2 check: fan-01 and srw-02 should re-run to blueprints where `table_name` is absent from steps[].parameters and present only in missing_parameters."
+    }
+  ],
+  "sourceTraceIds": ["fan-01", "bpt-02", "srw-02", "bpt-03"],
+  "referenceIds": {
+    "criterionId": "no-guessed-required-param",
+    "specPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml",
+    "tracesPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/traces/planner-eval-traces.jsonl",
+    "verdictsPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/tier0-verdicts.json",
+    "checkPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/tier0_code_checks.py",
+    "findingId": "F-no-guessed-required-param-1"
+  }
+}

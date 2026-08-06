@@ -42,33 +42,32 @@ function summarizeLogMessages(entries) {
   return failed > 0 ? `${failed} of ${entries.length} step(s) failed` : `${entries.length} step(s) executed successfully`;
 }
 
+import { useStudioStore } from "../store/studioStore";
+
 export default function AgentStudio() {
   const location = useLocation();
   const { userId } = useAuth();
 
-  const [prompt, setPrompt] = useState("");
-  const [planning, setPlanning] = useState(false);
-  const [planError, setPlanError] = useState(null);
-  const [blueprint, setBlueprint] = useState(null);
-
-  const [disambigValues, setDisambigValues] = useState({});
-  const [approved, setApproved] = useState(false);
-  const [disambigResolved, setDisambigResolved] = useState(false);
-  // null while checking, true/false once known — gates "Save & Run" so an
-  // agent never gets created with an app it actually needs disconnected
-  // (see RequiredAppsGate).
-  const [requiredAppsConnected, setRequiredAppsConnected] = useState(null);
-
-  const [agentId, setAgentId] = useState(null);
-  const [runStatus, setRunStatus] = useState("idle");
-  const [runError, setRunError] = useState(null);
-  const [logs, setLogs] = useState([]);
-  const [stepStatuses, setStepStatuses] = useState({});
-
-  const [liveClarification, setLiveClarification] = useState(null);
-  const [resuming, setResuming] = useState(false);
-  const [resumeError, setResumeError] = useState(null);
-  const [requireApproval, setRequireApproval] = useState(true);
+  const {
+    prompt, setPrompt,
+    planning, setPlanning,
+    planError, setPlanError,
+    blueprint, setBlueprint,
+    disambigValues, setDisambigValues,
+    approved, setApproved,
+    disambigResolved, setDisambigResolved,
+    requiredAppsConnected, setRequiredAppsConnected,
+    agentId, setAgentId,
+    runStatus, setRunStatus,
+    runError, setRunError,
+    logs, setLogs, appendLog,
+    stepStatuses, setStepStatuses,
+    liveClarification, setLiveClarification,
+    resuming, setResuming,
+    resumeError, setResumeError,
+    requireApproval, setRequireApproval,
+    clearStudio
+  } = useStudioStore();
 
   const wsRef = useRef(null);
   const pollRef = useRef(null);
@@ -76,10 +75,6 @@ export default function AgentStudio() {
   const reconnectTimerRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
   const activeAgentIdRef = useRef(null);
-
-  const appendLog = useCallback((entry) => {
-    setLogs((prev) => [...prev, { ...entry, timestamp: new Date().toLocaleTimeString() }]);
-  }, []);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -299,6 +294,15 @@ export default function AgentStudio() {
     [appendLog, stopPolling, closeSocket, fetchAndSetLiveClarification]
   );
 
+  useEffect(() => {
+    if ((runStatus === "running" || runStatus === "starting" || runStatus === "listening") && agentId) {
+      if (!wsRef.current && !pollRef.current) {
+        connectTelemetrySocket(agentId);
+        startPolling(agentId);
+      }
+    }
+  }, [runStatus, agentId, connectTelemetrySocket, startPolling]);
+
   const handleGenerate = useCallback(
     async (rawPrompt) => {
       const text = (rawPrompt ?? "").trim();
@@ -350,14 +354,9 @@ export default function AgentStudio() {
     toggle: toggleRecording,
   } = useSpeechRecognition({
     onFinalTranscript: (finalText) => {
-      setPrompt(finalText);
-      handleGenerate(finalText);
+      setPrompt((prev) => (prev ? prev + " " + finalText : finalText).trim());
     },
   });
-
-  useEffect(() => {
-    if (isRecording && interimTranscript) setPrompt(interimTranscript);
-  }, [isRecording, interimTranscript]);
 
   const handleTextSubmit = (e) => {
     e.preventDefault();
@@ -373,14 +372,55 @@ export default function AgentStudio() {
     const updated = cloneBlueprint(blueprint);
     (updated.missing_parameters || []).forEach((param) => {
       const value = disambigValues[paramKey(param)];
-      const stepIndex = updated.steps.findIndex((s) => s.step_number === param.step_number);
-      if (stepIndex !== -1 && value !== undefined) {
-        updated.steps[stepIndex].parameters = {
-          ...updated.steps[stepIndex].parameters,
-          [param.parameter_key]: value,
-        };
+      if (value !== undefined) {
+        if (param.step_number === null || param.step_number === undefined || param.step_number === 'trigger') {
+          if (!updated.trigger) updated.trigger = {};
+          if (param.parameter_key === 'event_app') {
+            updated.trigger.event_app = value;
+            if (!updated.required_apps.includes(value)) {
+              updated.required_apps.push(value);
+            }
+          } else if (param.parameter_key === 'event_target') {
+            updated.trigger.event_target = value;
+          } else {
+            // For any other trigger-specific config (future proofing)
+            if (!updated.trigger.trigger_config) updated.trigger.trigger_config = {};
+            updated.trigger.trigger_config[param.parameter_key] = value;
+          }
+        } else {
+          const stepIndex = updated.steps.findIndex((s) => s.step_number === param.step_number);
+          if (stepIndex !== -1) {
+            updated.steps[stepIndex].parameters = {
+              ...updated.steps[stepIndex].parameters,
+              [param.parameter_key]: value,
+            };
+          }
+        }
+        
+        // The AI might use the placeholder in ANY step's app field, not necessarily the one matching param.step_number
+        updated.steps.forEach((step) => {
+          if (step.app?.includes(param.parameter_key)) {
+            step.app = value;
+            if (!updated.required_apps.includes(value)) {
+              updated.required_apps.push(value);
+            }
+          }
+        });
+
+        if (updated.trigger?.event_app?.includes && updated.trigger?.event_app?.includes(param.parameter_key)) {
+          updated.trigger.event_app = value;
+          if (!updated.required_apps.includes(value)) {
+            updated.required_apps.push(value);
+          }
+        }
       }
     });
+    
+    // Clean up any unreplaced placeholders the LLM might have stuck in required_apps
+    if (updated.required_apps) {
+      updated.required_apps = updated.required_apps.filter(app => !app.includes('{') && !app.includes('}'));
+    }
+    
     updated.needs_clarification = false;
     setBlueprint(updated);
     setDisambigResolved(true);
@@ -515,17 +555,27 @@ export default function AgentStudio() {
 
   return (
     <div className="flex flex-col gap-5 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Agent Studio</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Describe a task in plain English and watch VoxAgent plan and execute it live.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Agent Studio</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Describe a task in plain English and watch VoxAgent plan and execute it live.
+          </p>
+        </div>
+        {(blueprint || prompt || logs.length > 0) && (
+          <button
+            onClick={clearStudio}
+            className="text-sm font-medium text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       <form onSubmit={handleTextSubmit} className="glass-panel flex items-center gap-2 p-2 pl-4">
         <SendHorizontal size={18} className="text-slate-400 shrink-0" />
         <input
-          value={prompt}
+          value={isRecording && interimTranscript ? `${prompt} ${interimTranscript}`.trim() : prompt}
           onChange={(e) => setPrompt(e.target.value)}
           type="text"
           placeholder="Tell VoxAgent what to do..."

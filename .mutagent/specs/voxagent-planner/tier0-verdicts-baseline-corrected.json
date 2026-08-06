@@ -1,0 +1,842 @@
+{
+  "amb-01": {
+    "scenario": "ambiguous-recipient-or-target",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "fail",
+        "note": "parameter(s) ['channel'] are listed in missing_parameters AND carry an invented literal in the same step's parameters (criterion clause 2)",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "amb-02": {
+    "scenario": "ambiguous-recipient-or-target",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "fail",
+        "note": "parameter(s) ['spreadsheet_name'] are listed in missing_parameters AND carry an invented literal in the same step's parameters (criterion clause 2)",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "pass",
+        "note": "all 1 positional row-write step(s) include a headers parameter",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "amb-03": {
+    "scenario": "ambiguous-recipient-or-target",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "fail",
+        "note": "parameter(s) ['target'] are listed in missing_parameters AND carry an invented literal in the same step's parameters (criterion clause 2)",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "ctfm-01": {
+    "scenario": "cross-tool-field-mismatch",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "ctfm-02": {
+    "scenario": "cross-tool-field-mismatch",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "ctfm-03": {
+    "scenario": "cross-tool-field-mismatch",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "pass",
+        "note": "all 1 positional row-write step(s) include a headers parameter",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "msh-01": {
+    "scenario": "multi-step-handoff",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "pass",
+        "note": "a downstream step references an earlier step's output via the {step_N_result} placeholder convention",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "msh-02": {
+    "scenario": "multi-step-handoff",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "pass",
+        "note": "a downstream step references an earlier step's output via the {step_N_result} placeholder convention",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "msh-03": {
+    "scenario": "multi-step-handoff",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "pass",
+        "note": "a downstream step references an earlier step's output via the {step_N_result} placeholder convention",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "fan-01": {
+    "scenario": "fan-out-batch",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "fail",
+        "note": "parameter(s) ['table_name'] are listed in missing_parameters AND carry an invented literal in the same step's parameters (criterion clause 2)",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "pass",
+        "note": "canonical two-step ai_generate + for_each/{{item}} pattern present",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "pass",
+        "note": "all 1 positional row-write step(s) include a headers parameter",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "fan-02": {
+    "scenario": "fan-out-batch",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "pass",
+        "note": "canonical two-step ai_generate + for_each/{{item}} pattern present",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "fan-03": {
+    "scenario": "fan-out-batch",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "pass",
+        "note": "canonical two-step ai_generate + for_each/{{item}} pattern present",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "rct-01": {
+    "scenario": "reactive-trigger",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "trigger.type=webhook with event_app='Gmail' set",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "rct-02": {
+    "scenario": "reactive-trigger",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "trigger.type=webhook with event_app='GitHub' set",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "rct-03": {
+    "scenario": "reactive-trigger",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "trigger.type=webhook with event_app='Slack' set",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "bpt-01": {
+    "scenario": "browser-portal-task",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "bpt-02": {
+    "scenario": "browser-portal-task",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "hpp-01": {
+    "scenario": "well-specified-happy-path",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "pass",
+        "note": "control scenario is fully specified and did not over-trigger clarification",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "hpp-02": {
+    "scenario": "well-specified-happy-path",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "pass",
+        "note": "control scenario is fully specified and did not over-trigger clarification",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "hpp-03": {
+    "scenario": "well-specified-happy-path",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "pass",
+        "note": "control scenario is fully specified and did not over-trigger clarification",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "srw-01": {
+    "scenario": "spreadsheet-row-write",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "pass",
+        "note": "all 1 positional row-write step(s) include a headers parameter",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "srw-02": {
+    "scenario": "spreadsheet-row-write",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "fail",
+        "note": "parameter(s) ['table_name'] are listed in missing_parameters AND carry an invented literal in the same step's parameters (criterion clause 2)",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "pass",
+        "note": "all 1 positional row-write step(s) include a headers parameter",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "srw-03": {
+    "scenario": "spreadsheet-row-write",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "pass",
+        "note": "all 1 positional row-write step(s) include a headers parameter",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  },
+  "bpt-03": {
+    "scenario": "browser-portal-task",
+    "criteria": {
+      "no-guessed-required-param": {
+        "verdict": "n/a",
+        "note": "this scenario's expectedBehavior (agentspec.yaml) asserts a structural property, not clarification-completeness; clause-1 over-trigger is only decidable for well-specified-happy-path. Clause 2 (no invented value) was checked and passed.",
+        "method": "code-check (tier-0)"
+      },
+      "step-handoff-placeholder": {
+        "verdict": "n/a",
+        "note": "criterion only checked for multi-step-handoff scenario",
+        "method": "code-check (tier-0)"
+      },
+      "fan-out-shape": {
+        "verdict": "n/a",
+        "note": "criterion only checked for fan-out-batch scenario",
+        "method": "code-check (tier-0)"
+      },
+      "sheet-header-safety": {
+        "verdict": "n/a",
+        "note": "no step performs a positional structured row write",
+        "method": "code-check (tier-0)"
+      },
+      "event-trigger-modeling": {
+        "verdict": "pass",
+        "note": "non-reactive request correctly did not set trigger.type=webhook (got 'manual')",
+        "method": "code-check (tier-0)"
+      },
+      "schema-aligned-execution": {
+        "verdict": "n/a",
+        "note": "out of scope for this trace source \u2014 this criterion is explicitly jointly owned by the planner and composio_engine.py's RUNTIME schema-alignment layer (per the criterion's own description in agentspec.yaml). Our Phase 3 traces capture only the PLANNING stage (generate_blueprint output), not actual execution against Composio, so this criterion cannot be measured from this trace source. Flagged honestly rather than faked; would require execution-level traces (e.g. from real orchestrator.py runs) to evaluate.",
+        "method": "code-check (tier-0)"
+      }
+    }
+  }
+}

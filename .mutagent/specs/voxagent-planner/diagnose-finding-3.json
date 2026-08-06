@@ -1,0 +1,394 @@
+{
+  "_meta": {
+    "stage": "ADL-4-DIAGNOSE",
+    "subject": "voxagent-planner",
+    "analyzer": "diagnostics-analyzer",
+    "traceSource": ".mutagent/specs/voxagent-planner/traces/planner-eval-traces.jsonl (24 traces)",
+    "codeAccess": true,
+    "scope": "EVAL-SCOPE gaps (criterion-level / cross-cutting), not per-trace failures"
+  },
+
+  "gapA": {
+    "findingId": "F-gapA-1",
+    "actionable": "The schema-aligned-execution criterion is structurally unscorable against this trace source: all 24 traces capture planner output only (output = {status, blueprint, error}), and the criterion's own pass condition is an execution-layer event (a needs_input pause) that no trace record can contain.",
+    "problem": "The schema-aligned-execution criterion scored 0/24 applicable traces because every trace in planner-eval-traces.jsonl captures only the planner's WorkflowBlueprint (output keys are exactly status/blueprint/error across all 24 records) while the criterion is defined as 'measured against real execution traces, not planner output alone' — 1 of 9 criteria (11% of the eval surface) is permanently unmeasurable on this dataset, and the cross-tool-field-mismatch scenario it exists to cover (ctfm-01/02/03) is therefore unverified end-to-end.",
+
+    "what": "missing-context",
+    "why": "handoff-loss",
+    "where": "harness-side",
+
+    "failureOrigin": {
+      "what": "missing-context",
+      "why": "handoff-loss",
+      "where": "harness-side",
+      "evidence": ".mutagent/specs/voxagent-planner/traces/planner-eval-traces.jsonl (all 24 records: output keys == [status, blueprint, error]); agentspec.yaml:175-178 (criterion definition)",
+      "whatHappened": "The Phase-3 capture harness recorded the planner call in isolation — it invoked planner.generate_blueprint() and serialized the returned WorkflowBlueprint, then stopped. The downstream half of the transaction the criterion is about (composio_engine.py's _resolve_action_slug + _normalize_parameters_via_schema correcting the planner's guess against the target tool's live schema, and _build_execution_result deciding success vs a needs_input pause) never ran and was never joined into the record. The evaluator therefore found zero traces carrying the field it needed to score, and reported 0/24 applicable rather than a pass or a fail.",
+      "example": "«\"output\": {\"status\": \"success\", \"blueprint\": { ... }, \"error\": null}» — the complete output envelope of ctfm-01, with no execution/result/step_logs/needs_input key anywhere in it",
+      "confidence": "high"
+    },
+
+    "evidence": {
+      "traceShapeIsPlannerOnly": "All 24 JSONL records have identical top-level keys [trace_id, timestamp, input, metadata, output] and identical output keys [status, blueprint, error]. `output.status` is the PLANNER's own success/failure at producing JSON (all 24 are 'success'), NOT the outcome of any API call. `output.blueprint` is a serialized WorkflowBlueprint (title/trigger/required_apps/steps/needs_clarification/missing_parameters). There is no execution block, no per-step result, no step_logs, no needs_input, no failure_class, no aligned-parameter record in any trace.",
+      "criterionRequiresExecutionData": "agentspec.yaml:175-178 — schema-aligned-execution, type code-check: 'the executed step (planner output + composio_engine.py's runtime schema alignment together) succeeds without a needs_input pause caused purely by a fixable naming mismatch. Measured against real execution traces, not planner output alone — this criterion is jointly owned by the planner and the schema-alignment layer it depends on.' Its goal is 'No pure naming-mismatch pause on the schema-mismatch scenario set.'",
+      "theMissingSignalIsProducedElsewhere": "The 'needs_input pause' the criterion tests for is emitted by backend/app/services/composio_engine.py:996-1000 ({'status': 'needs_input', 'question', 'error', 'missing_field'}) and consumed by orchestrator.py:434-437 (_run_single_step). The schema correction it is testing happens in composio_engine.py:238 (_normalize_parameters_via_schema) and :296 (_resolve_action_slug), both of which call the LIVE Composio tool catalog (composio_engine.py:96 _get_action_schema). None of these code paths execute during blueprint generation — planner.py:58 generate_blueprint() is a single Gemini call and nothing else.",
+      "scenarioSetExistsButIsUnscored": "The cross-tool-field-mismatch scenario is populated (ctfm-01, ctfm-02, ctfm-03) and the scenario's expectedBehavior in agentspec.yaml:204-205 is explicitly end-to-end ('Still resolves to a working call end-to-end, jointly via the planner's guess and composio_engine.py's schema alignment'). So the dataset does cover the scenario at the PROMPT level; it is the OUTCOME level that was never captured.",
+      "evenAReplayCannotScoreItToday": "The agentspec's own Phase-3 note (agentspec.yaml:226-228) contemplates 'replaying historical execution_logs rows'. But orchestrator.py:415-423 _log_entry() records only {step, app, action, route, result, at} — it does NOT record the step's parameters, in either their planner-emitted or their schema-aligned form. So an execution_logs replay can prove THAT a step paused with needs_input + missing_field, but cannot establish the criterion's discriminator: whether the pause was 'caused purely by a fixable naming mismatch' versus a genuinely user-missing value. The instrumentation gap is upstream of the capture gap.",
+      "notAPlannerDefect": "No planner behavior is implicated. planner.py's nonGoals (agentspec.yaml:65) already delegate exact parameter naming to the schema-alignment layer by design. A planner-side remedy here would be a category error."
+    },
+
+    "whyChain": [
+      {
+        "why": "The schema-aligned-execution criterion reported 0 applicable traces out of 24.",
+        "evidence": "Phase-4 eval result vs. planner-eval-traces.jsonl (24 records)",
+        "whatHappened": "The evaluator iterated all 24 traces looking for the execution-outcome signal the criterion scores on, matched none, and emitted zero applicable instead of a score."
+      },
+      {
+        "why": "No trace carries an execution outcome — every trace's output is the planner's blueprint and nothing else.",
+        "evidence": "planner-eval-traces.jsonl — all 24 records, output keys == [status, blueprint, error]",
+        "whatHappened": "Each record's output envelope closes after the serialized WorkflowBlueprint; the only status present is the planner's own JSON-production status, which is 'success' on all 24 even for traces whose blueprint would fail at execution.",
+        "example": "«\"output\": {\"status\": \"success\", \"blueprint\": {...}, \"error\": null}»"
+      },
+      {
+        "why": "The capture harness invoked only the plan-time entry point, so the execution-time half of the transaction never happened during capture.",
+        "evidence": "backend/app/services/planner.py:58 generate_blueprint(); backend/app/services/orchestrator.py:270-308 _dispatch_action",
+        "whatHappened": "generate_blueprint() makes one Gemini call and returns a WorkflowBlueprint; _dispatch_action (the function that would route the step into composio_engine and produce a real outcome) sits behind a separate run-agent entry point that the dataset generation never called."
+      },
+      {
+        "why": "The criterion's pass/fail discriminator is a value that exists only on the far side of that boundary — composio_engine's needs_input verdict after live schema alignment.",
+        "evidence": "backend/app/services/composio_engine.py:996-1000; agentspec.yaml:176 ('without a needs_input pause caused purely by a fixable naming mismatch')",
+        "whatHappened": "composio_engine returns {'status':'needs_input', 'question', 'error', 'missing_field'} only after it has fetched the target tool's real schema and attempted key alignment — a verdict that is physically unavailable to a plan-time-only recorder.",
+        "example": "«return {\"status\": \"needs_input\", \"question\": question, \"error\": error_text, \"missing_field\": missing_field}»"
+      },
+      {
+        "why": "The Phase-3 trace-capture methodology defined a single-stage, plan-time-only record schema, so the planner→execution handoff outcome is dropped at capture time and cannot be recovered from the artifact.",
+        "evidence": ".mutagent/specs/voxagent-planner/traces/planner-eval-traces.jsonl — record schema {trace_id, timestamp, input, metadata, output{status, blueprint, error}}",
+        "whatHappened": "The schema has no slot for an execution result, so no amount of re-reading the dataset can produce the missing signal; the criterion is unscorable by construction, not by chance.",
+        "isOrigin": true
+      }
+    ],
+
+    "remedies": [
+      {
+        "remedyId": "R-A1",
+        "title": "Make the trace record two-stage: join a real execution outcome (with pre/post schema-alignment parameters) onto each planner trace",
+        "applyTarget": ".mutagent/specs/voxagent-planner/traces/ (Phase-3 capture methodology + record schema) — with a prerequisite instrumentation change in backend/app/services/orchestrator.py:415 (_log_entry)",
+        "targetClass": "code-construct",
+        "rationale": "Every one of the 24 traces stops at output.blueprint, while agentspec.yaml:176 defines the criterion as 'measured against real execution traces, not planner output alone'. A correctly-scoped capture for this criterion would carry, per step, the planner's emitted action/parameters AND the post-alignment action/parameters AND the resulting status — the exact three values composio_engine.py:238/:296/:996 produce and immediately discard. The current record keeps the first and drops the other two.",
+        "whyWorks": "The criterion's discriminator is 'was this pause caused PURELY by a fixable naming mismatch?'. That is decidable iff you can see the planner's key set, the target tool's real key set after _normalize_parameters_via_schema, and the terminal status side by side. Recording parameters_planned + action_planned (from the blueprint) alongside parameters_aligned + action_resolved + status + missing_field (from the execution pass) makes the check a deterministic set-difference — the criterion's declared type is already code-check, so no judge is needed. Instrumenting _log_entry first is what makes this work retroactively as well as prospectively: once parameters are in log_messages, historical execution_logs rows become replayable evidence instead of status-only rows.",
+        "applyInstructions": [
+          "Step 1: Extend backend/app/services/orchestrator.py:415 _log_entry() to accept and record the step's parameters in both forms — add keys `parameters_planned` (the raw blueprint parameters for the step) and `parameters_aligned` (clean_parameters as actually dispatched at orchestrator.py:371-376), plus `action_planned` and `action_resolved`. Redact credential-shaped keys before writing (see R-B3).",
+          "Step 2: Extend the Phase-3 capture script's record schema with a sibling `execution` block: {run_id, status, steps: [{step_number, action_planned, action_resolved, parameters_planned_keys, parameters_aligned_keys, status, missing_field, failure_class}]}. Keep `output` untouched so the 8 currently-scoring criteria are unaffected.",
+          "Step 3: For the cross-tool-field-mismatch scenario set (ctfm-01/02/03) plus any new schema-mismatch prompts, run each blueprint through the real orchestrator against a throwaway sandbox account for each target app, and attach the resulting `execution` block to the trace. Do NOT run these against a real user's connected accounts — several ctfm targets are send-effecting actions.",
+          "Step 4: Backfill where possible by joining existing execution_logs rows (orchestrator.py:255-263 _persist_run writes {agent_id, run_id, status, log_messages}) onto historical planner traces by run_id, once Step 1 has been live long enough for log_messages to carry the parameter keys.",
+          "Step 5: Implement the schema-aligned-execution code-check as: FAIL iff a step's status == 'needs_input' AND set(parameters_aligned_keys) differs from set(parameters_planned_keys) only by renaming (i.e. the alignment layer had to rename and still could not satisfy the schema); PASS if status == 'success'; NOT-APPLICABLE if the step never reached dispatch.",
+          "Step 6: Re-run *evaluate and confirm schema-aligned-execution reports N/N applicable rather than 0/24."
+        ],
+        "assumptions": [
+          {
+            "text": "A sandbox/throwaway Composio-connected account exists (or can be created) for the ctfm scenario's target apps, so execution capture does not fire real side effects — several cross-tool-field-mismatch prompts are send/write actions.",
+            "status": "unverified",
+            "basis": "The ctfm scenario's expectedBehavior (agentspec.yaml:204-205) is explicitly end-to-end, and orchestrator._dispatch_action → execute_composio_action performs a real API call; no sandbox/dry-run flag was found in composio_engine.py."
+          },
+          {
+            "text": "Composio's live tool catalog is reachable during capture (the same assumption agentspec.yaml:68 already records for execution time), since _get_action_schema (composio_engine.py:96) must resolve the target's real schema for the alignment step to be meaningful.",
+            "status": "verified",
+            "basis": "agentspec.yaml:68 states this assumption explicitly; composio_engine.py:96 _get_action_schema fetches the live schema."
+          },
+          {
+            "text": "Adding an `execution` sibling block does not disturb the 8 criteria that currently score, because all of them read only input/metadata/output.",
+            "status": "unverified",
+            "basis": "Inferred from the criteria definitions in agentspec.yaml:162-198, all of which describe blueprint-level properties; the evaluator implementation was not read."
+          }
+        ],
+        "cost": "medium",
+        "correctness": "high",
+        "describedChange": "Split the trace record from single-stage (plan-time only) to two-stage (plan-time + execution-time), and instrument the orchestrator's per-step log entry to retain the parameter key sets on both sides of composio_engine's schema-alignment pass. This is an architectural change to the Phase-3 capture methodology plus one small code change in _log_entry — not a line edit to planner.py, which is correctly out of scope for this gap."
+      },
+      {
+        "remedyId": "R-A2",
+        "title": "Split the criterion: keep the execution-level one gated on R-A1, add a planner-observable proxy that scores today",
+        "applyTarget": ".mutagent/specs/voxagent-planner/agentspec.yaml — spec.evaluation.criteria",
+        "targetClass": "code-construct",
+        "rationale": "The dataset does cover the schema-mismatch scenario at the prompt level (ctfm-01/02/03 exist with populated blueprints) — only the outcome is missing. Today that partial coverage yields zero signal: a blueprint that guesses a wildly implausible parameter name and one that guesses a near-miss score identically (i.e. not at all). A proxy criterion recovers the planner-side half of the joint ownership the criterion itself declares.",
+        "whyWorks": "The criterion is explicitly 'jointly owned by the planner and the schema-alignment layer'. Separating the two owners lets the planner-owned half be judged from planner output alone (are the emitted parameter keys plausible for the named action, and is the action slug well-formed per the Composio {APPNAME}_{VERB}_{OBJECT} convention the system prompt teaches?), while the alignment-layer-owned half stays honestly blocked on real execution data. This removes the false-zero without pretending to measure what cannot be measured.",
+        "applyInstructions": [
+          "Step 1: In agentspec.yaml spec.evaluation.criteria, add a new criterion `plausible-action-slug-and-params` (type: llm-judge) — 'For each composio_api step, the action slug follows the uppercase {APPNAME}_{VERB}_{OBJECT} convention with spaces removed, and the emitted parameter keys are recognizable near-misses of the target action's real schema (judged against the tool's documented fields), not arbitrary invented names.' Goal: 'No composio_api step whose parameter keys are unrecognizable to the target action.'",
+          "Step 2: Amend the existing `schema-aligned-execution` description to state its data dependency explicitly: 'Requires two-stage traces carrying an execution outcome (see R-A1); NOT scorable against plan-time-only trace records.'",
+          "Step 3: Re-run *evaluate; confirm the new proxy criterion scores across ctfm-01/02/03 and any composio_api step in the other scenarios."
+        ],
+        "assumptions": [
+          {
+            "text": "An llm-judge criterion can reasonably assess parameter-key plausibility without live catalog access, using the judge model's own knowledge of common SaaS action schemas.",
+            "status": "hypothesis-pending",
+            "basis": "Three of the nine existing criteria are already type llm-judge (no-opaque-id-asked, correct-route-classification, browser-context-sufficiency), so the eval harness supports the type; the accuracy of judge-model schema knowledge for arbitrary Composio actions is untested."
+          },
+          {
+            "text": "The proxy is a complement, not a replacement — passing it does not imply the end-to-end criterion would pass, since the alignment layer can still fail on a plausible-looking key.",
+            "status": "verified",
+            "basis": "agentspec.yaml:176 defines the criterion as jointly owned; composio_engine.py:238 _normalize_parameters_via_schema can still return an unresolved key set for a plausible guess."
+          }
+        ],
+        "cost": "low",
+        "correctness": "medium",
+        "describedChange": "Add one new planner-observable llm-judge criterion covering the planner-owned half of schema alignment, and annotate the existing execution-level criterion with its explicit data dependency."
+      },
+      {
+        "remedyId": "R-A3",
+        "title": "Report 0-applicable as NOT-MEASURABLE rather than folding it into the score",
+        "applyTarget": ".mutagent/specs/voxagent-planner/agentspec.yaml — spec.evaluation.criteria[schema-aligned-execution]",
+        "targetClass": "code-construct",
+        "rationale": "A criterion with zero applicable traces is silently indistinguishable, in a summary score, from a criterion that passed vacuously — which is how an 11% hole in the eval surface stayed invisible until a judge surfaced it out-of-band. The trace record makes clear this is a data-availability state, not a quality state.",
+        "whyWorks": "Marking the criterion with an explicit `requires: execution-traces` / `status: blocked` field forces the eval report to surface it as an unmeasured dimension rather than a neutral one, so the coverage hole is visible on every future run until R-A1 lands. It is a reporting-hygiene fix: it does not create measurement, it prevents the absence of measurement from being mistaken for a result.",
+        "applyInstructions": [
+          "Step 1: Add `requires: [execution-traces]` and `status: blocked-on-dataset` fields to the schema-aligned-execution criterion in agentspec.yaml.",
+          "Step 2: Update the eval reporting to render a blocked criterion in a separate 'not measurable on this dataset' section, excluded from the pass-rate denominator.",
+          "Step 3: Add an entry to spec.intent.unknowns noting that end-to-end schema-alignment pass-rate remains unmeasured pending the two-stage dataset."
+        ],
+        "assumptions": [
+          {
+            "text": "The eval harness tolerates additional non-schema keys on a criterion entry, or the schema can be extended to accept them.",
+            "status": "unverified",
+            "basis": "agentspec apiVersion is agentspec.mutagent.io/v0.3.0; the criterion schema's strictness was not inspected."
+          }
+        ],
+        "cost": "low",
+        "correctness": "medium",
+        "describedChange": "Annotate the criterion with an explicit blocked/requires marker and exclude blocked criteria from the pass-rate denominator, so an unmeasurable dimension is reported as unmeasured instead of neutral."
+      }
+    ],
+
+    "sourceTraceIds": ["ctfm-01", "ctfm-02", "ctfm-03", "amb-01", "bpt-01"],
+    "referenceIds": {
+      "traceId": "ctfm-01",
+      "sessionId": "voxagent-planner-phase4",
+      "findingId": "F-gapA-1"
+    },
+    "audience": "CLIENT",
+    "assumptions": [
+      {
+        "text": "The 0/24 applicable count reported by Phase 4 refers to this criterion finding no trace carrying an execution outcome, not to an evaluator bug.",
+        "status": "verified",
+        "basis": "Independently confirmed by inspecting all 24 JSONL records: output keys are exactly [status, blueprint, error] in every one, with no execution-outcome field."
+      },
+      {
+        "text": "The dataset generator called planner.generate_blueprint() (or the POST /api/v1/plan endpoint) directly, without running the resulting blueprint.",
+        "status": "unverified",
+        "basis": "Inferred from the trace record shape (plan-time fields only) and from planner.py:58 generate_blueprint() being a single Gemini call; the capture script itself was not located in the repo."
+      }
+    ]
+  },
+
+  "gapB": {
+    "findingId": "F-gapB-1",
+    "actionable": "In both authenticated browser-portal traces (bpt-02, bpt-03) the planner asks the user for raw username/password/credentials as blueprint parameters — values VoxAgent's real architecture resolves out-of-band from the App Vault (vault.get_app_credentials(user_id, app_name)) and which NO engine ever consumes as a step parameter. This is an actual planner behavioral defect with a credential-leak consequence, AND an eval coverage gap (no criterion covers it).",
+    "problem": "The planner requests raw login credentials as blueprint parameters on 2 of 2 authenticated browser-portal traces (bpt-02: missing_parameters username + password; bpt-03: missing_parameters credentials) — a 100% failure rate on the authenticated subset of the browser-portal-task scenario. VoxAgent resolves browser_agent session credentials from the App Vault keyed by (user_id, app_name) at execution time (browser_engine.py:57-62 → vault.get_app_credentials), so these parameters have no consumption path: the workflow halts on needs_clarification=true even when a valid vault entry exists, and any password the user then types is folded into step parameters (orchestrator.py:850) where it is string-joined verbatim into the browser task prompt sent to Gemini (orchestrator.py:301-305) and echoed into the telemetry stream (orchestrator.py:855) — while still never being used to authenticate. All 9 scored criteria passed these traces because none of them examines what missing_parameters asks FOR.",
+
+    "what": "wrong-output",
+    "why": "prompt-underspec",
+    "where": "system-prompt",
+
+    "verdict": "BOTH — and the behavioral defect is primary. This is not merely a spec/eval coverage gap. The eval coverage gap (no criterion inspects the SEMANTICS of a missing_parameters entry) is the reason it went undetected, but the underlying planner behavior is a real, reproducible production defect: it emits blueprint parameters the product cannot consume, blocks the workflow on a clarification the vault already answers, and opens a plaintext-credential path into an LLM prompt and the telemetry/execution_logs stream. Remedy therefore targets the system prompt FIRST (R-B1), with the new criterion (R-B2) added so it stays fixed.",
+
+    "failureOrigin": {
+      "what": "wrong-output",
+      "why": "prompt-underspec",
+      "where": "system-prompt",
+      "evidence": "backend/app/services/planner.py:11-56 get_system_prompt() — Rules 1-6 plus the route-classification and Telegram rules contain zero mention of credentials, login, authentication, or the App Vault as an auth source; grep for credential|password|username|vault over planner.py returns only Rule 1's 'VoxAgent Vault Notes' (a STORAGE destination, unrelated to auth)",
+      "whatHappened": "Facing a portal step that plainly requires a login, the planner found no rule covering authentication. Rule 2 (Disambiguation & Missing Params) is the only rule that matches 'a parameter the user did not provide', and it instructs the planner to set needs_clarification=true and add a missing_parameters entry. So the planner correctly applied the only rule available to it and asked the user for the username and password — a locally rule-compliant output that is architecturally wrong, because credentials are the one class of value the product resolves out-of-band and never accepts as a parameter.",
+      "example": "«\"clarification_question\": \"I need your login credentials to access the portal. Please provide your username and password for portal.vitap.ac.in.\"»",
+      "confidence": "high"
+    },
+
+    "evidence": {
+      "bpt02": {
+        "trace": "bpt-02 (browser-portal-task, multi-step, 'Log in to my college portal at portal.vitap.ac.in, go to the Exam Registration page, and register me for the Data Structures re-exam')",
+        "missing_parameters": "[{step_number: 1, parameter_key: 'username', label: 'Username', description: 'The username for the college portal.', suggested_type: 'string'}, {step_number: 1, parameter_key: 'password', label: 'Password', description: 'The password for the college portal.', suggested_type: 'string'}]",
+        "clarification_question": "'I need your login credentials to access the portal. Please provide your username and password for portal.vitap.ac.in.'",
+        "additional": "Step 1 (route browser_agent, action NAVIGATE_AND_LOGIN) also carries invented DOM-field parameters {url, username_field: 'username', password_field: 'password'} — the planner is modeling the login form itself, which the browser_use agent handles from the task text and the vault-supplied storage_state.",
+        "needs_clarification": "true — the entire 3-step exam-registration workflow halts on this."
+      },
+      "bpt03": {
+        "trace": "bpt-03 (browser-portal-task, voice-transcript, edge_case: true, 'go to my college library portal at library.iiitb.ac.in, log in, and check when my borrowed books are due...')",
+        "missing_parameters": "[{step_number: 1, parameter_key: 'credentials', label: 'Library Portal Credentials', description: 'Username and password for the library portal.', suggested_type: 'string'}]",
+        "clarification_question": "'I need your library portal credentials to log in. Please provide your username and password, or ensure they are saved in your secure vault.'",
+        "notable": "The planner half-knows the vault exists ('or ensure they are saved in your secure vault') but still sets needs_clarification=true and still emits the parameter — strong evidence that the model has latent knowledge of the architecture and needs an explicit rule to act on it, which makes a system-prompt remedy well-targeted.",
+        "sideEffect": "This trace ALSO scores as a false clarification against its own scenario intent: the metadata rationale says Rule 1's default storage should fire 'instead of a clarification' — Rule 1 did fire correctly (step 3, VoxAgent Vault Notes), but the credential ask still blocked the run."
+      },
+      "bpt01Control": "bpt-01 (WhatsApp Web, no login mentioned in the prompt) correctly emits needs_clarification=false with no credential parameter — so the defect fires specifically on prompts that name a login, i.e. 2/2 of the authenticated subset, 2/3 of the browser-portal-task scenario.",
+      "realArchitecture": {
+        "vaultLookup": "backend/app/services/browser_engine.py:55-62 — execute_browser_action(task_description, session_cookies, user_id, app_name): 'if app_name: from app.services.vault import get_app_credentials; credentials = get_app_credentials(user_id, app_name); if credentials and \"cookies\" in credentials: storage_state = credentials'. Authentication is a Playwright storage_state injected into the Browser, not a parameter the agent types.",
+        "vaultKeying": "backend/app/services/vault.py:91-125 get_app_credentials(user_id, app_name) — selects connected_apps WHERE user_id = ensure_uuid(user_id) AND app_name = app_name AND status = 'active', then Fernet-decrypts encrypted_credentials.data. Keyed exactly by (user_id, app_name), upserted uniquely on that pair (vault.py:75-89).",
+        "outOfBandWritePath": "backend/app/routers/vault.py:120-131 POST /vault/save-session → save_app_credentials(user_id, app_name, auth_type, credentials), with auth_type constrained to Literal['session_cookie', 'oauth2', 'api_key'] (routers/vault.py:33). Frontend entry point: frontend/src/api/vault.js:35 saveSession({userId, appName, authType, credentials}). The user connects an app ONCE in the vault UI; workflows never re-ask.",
+        "orchestratorPassesAppName": "backend/app/services/orchestrator.py:305 — 'return await execute_browser_action(task_description=task_description, user_id=user_id, app_name=app)'. The step's `app` field IS the vault lookup key.",
+        "noConsumptionPath": "There is NO code path anywhere that reads a step parameter named username/password/credentials as an authentication input. browser_engine only accepts auth as storage_state cookies (browser_engine.py:60 checks 'cookies' in credentials) or as the session_cookies argument (routers/engines.py:15,33). A user-supplied password would therefore not even log the agent in — the step would still fail after the user handed over their password."
+      },
+      "harmPath": {
+        "leak1_llmPrompt": "backend/app/services/orchestrator.py:301-305 — the browser branch of _dispatch_action builds the task text by string-joining every parameter verbatim: 'detail_str = \", \".join(f\"{k}={v}\" for k, v in parameters.items()); task_description += f\" Relevant details: {detail_str}.\"'. A supplied password becomes plaintext prose inside the Gemini prompt sent to ChatGoogle (browser_engine.py:37-40).",
+        "leak2_telemetryAndLogs": "backend/app/services/orchestrator.py:845-855 resume_agent_workflow — 'resumed_step[\"parameters\"] = {**resumed_step.get(\"parameters\", {}), answer_key: answer}' then 'await telemetry_manager.send_log(agent_id, f\"Resuming with clarification: {answer}\", level=\"info\")'. The answer (the password) is echoed into the live telemetry stream and lands in step_logs, which _persist_run (orchestrator.py:255-263) writes into the execution_logs table.",
+        "leak3_blueprintPersistence": "The clarification answer is merged into the step's parameters, and the blueprint is persisted as agents.json_blueprint (read back at orchestrator.py:246) — unencrypted, unlike the vault's Fernet-encrypted connected_apps.encrypted_credentials (vault.py:64-71).",
+        "functionalHarm": "needs_clarification=true halts the run (orchestrator.py:434-449 creates a pending_action and pauses the whole workflow) even when a valid vault entry for that portal already exists — so a correctly-connected user is blocked by a question the system already has the answer to."
+      },
+      "evalCoverageGap": {
+        "whyNoCriterionCaught it": "Of the 9 criteria, the two that touch missing_parameters are no-guessed-required-param (agentspec.yaml:164-167 — checks that clarification IS raised and that no invented value appears; bpt-02/03 PASS, since they did raise clarification and did not invent) and no-opaque-id-asked (agentspec.yaml:168-170 — checks the entry is not an internal/opaque ID; 'username'/'password'/'credentials' are human-friendly, so bpt-02/03 PASS). browser-context-sufficiency (agentspec.yaml:195-198) judges task DETAIL, not credential handling. No criterion asks whether a missing_parameters entry is a value the user SHOULD be asked for at all.",
+        "specLevelBlindSpot": "The agentspec's nonGoals (agentspec.yaml:64) say 'Resolving auth/credential issues — handled at execution time, not plan time.' That is exactly the correct architecture — but it was recorded as a nonGoal and never translated into (a) a system-prompt Rule the planner can follow, or (b) a criterion that verifies it. The nonGoal states the intent; nothing enforces it.",
+        "sopGap": "spec.intent.sop's disambiguation-gate (agentspec.yaml:28-31) carves out exactly one forbidden clarification class — opaque internal IDs. Credentials are a second forbidden class of identical shape that was never carved out."
+      }
+    },
+
+    "whyChain": [
+      {
+        "why": "On both authenticated browser-portal traces the planner emitted credential values in missing_parameters and blocked the workflow on needs_clarification=true.",
+        "evidence": "bpt-02 missing_parameters[username, password]; bpt-03 missing_parameters[credentials]",
+        "whatHappened": "For bpt-02 the planner produced a 3-step exam-registration blueprint and then attached two missing_parameters entries asking for the portal username and password; for bpt-03 it produced a 3-step library-check blueprint and attached one entry asking for 'Library Portal Credentials'. Both set needs_clarification=true, which halts the run before step 1 dispatches.",
+        "example": "«{\"step_number\": 1, \"parameter_key\": \"password\", \"label\": \"Password\", \"description\": \"The password for the college portal.\", \"suggested_type\": \"string\"}»"
+      },
+      {
+        "why": "Those parameters can never be consumed as authentication — VoxAgent resolves browser_agent credentials out-of-band from the App Vault.",
+        "evidence": "backend/app/services/browser_engine.py:57-62; backend/app/services/vault.py:91-125; backend/app/services/orchestrator.py:305",
+        "whatHappened": "At execution time the orchestrator calls execute_browser_action(..., user_id=user_id, app_name=app); browser_engine calls get_app_credentials(user_id, app_name), which decrypts the connected_apps row for that (user, app) pair and injects it as Playwright storage_state ONLY if it contains a 'cookies' key. A username/password step parameter is read by no auth code path at all.",
+        "example": "«credentials = get_app_credentials(user_id, app_name); if credentials and \"cookies\" in credentials: storage_state = credentials»"
+      },
+      {
+        "why": "Worse than inert — a supplied credential is leaked into an LLM prompt and the telemetry/log stream while still not authenticating anything.",
+        "evidence": "backend/app/services/orchestrator.py:301-305 (task_description string-join); orchestrator.py:850-855 (parameter merge + telemetry echo)",
+        "whatHappened": "If the user answers the clarification, resume_agent_workflow folds the answer into the step's parameters under the missing_field key and immediately telemetry-logs 'Resuming with clarification: <answer>'; the browser dispatch then string-joins every parameter into the task text as 'password=<value>' and ships it to Gemini. The password reaches an external model and the execution_logs table, and the login still fails.",
+        "example": "«detail_str = \", \".join(f\"{k}={v}\" for k, v in parameters.items())»"
+      },
+      {
+        "why": "The planner had no rule telling it credentials are out-of-band, and the only rule that matched the situation told it to ask the user.",
+        "evidence": "backend/app/services/planner.py:11-56 get_system_prompt(); Rule 2 at planner.py:30-35",
+        "whatHappened": "The prompt's route rules, Telegram rule, and Rules 1-6 never mention credentials, login, authentication, or vault-as-auth-source. Rule 2 (Disambiguation & Missing Params) matches any 'action requires specific parameters that the user did not provide' and prescribes needs_clarification + a missing_parameters entry. The planner followed it faithfully. bpt-03's own clarification text ('or ensure they are saved in your secure vault') shows the model had partial knowledge of the vault but no instruction authorizing it to rely on it.",
+        "example": "«I need your library portal credentials to log in. Please provide your username and password, or ensure they are saved in your secure vault.»"
+      },
+      {
+        "why": "The system prompt's rule set omits the credential class entirely — Rule 2's forbidden-ask carve-out covers opaque internal IDs and nothing else, so credentials fall through into the default 'ask the user' branch.",
+        "evidence": "backend/app/services/planner.py:30-35 (Rule 2, whose only NEVER clause is 'NEVER ask the user for an internal ID')",
+        "whatHappened": "Rule 2 names exactly one class of value the planner must never request. Credentials are structurally the same case — a value resolved by the system at run time, not by the user at plan time — but were never written into the prompt, so nothing diverts them out of the clarification path.",
+        "isOrigin": true
+      }
+    ],
+
+    "remedies": [
+      {
+        "remedyId": "R-B1",
+        "title": "Add Rule 7 (Credentials Are Never a Parameter) to the planner system prompt",
+        "applyTarget": "backend/app/services/planner.py — get_system_prompt(), insert after Rule 6 (line 52), before the 'Output exactly in the following JSON schema format:' block (line 54)",
+        "targetClass": "code-construct",
+        "rationale": "bpt-02 and bpt-03 both emit credential entries in missing_parameters, and grep over planner.py:11-56 confirms the system prompt says nothing about credentials, login, or vault-as-auth — while the real execution path (browser_engine.py:57-62 → vault.get_app_credentials(user_id, app_name)) resolves them from a Fernet-encrypted connected_apps row and never reads a step parameter for auth. A correct blueprint for bpt-02 would carry needs_clarification=false with zero credential entries and a step-1 task text that simply states the portal requires a login; instead it carries two credential entries and halts. bpt-03's own clarification text ('or ensure they are saved in your secure vault') shows the model already has latent knowledge of the vault — it just needs to be told to act on it, which is precisely the failure mode a prompt rule fixes.",
+        "whyWorks": "Rule 2 is the rule the planner is currently (and correctly) applying — its scope is 'any required parameter the user did not provide', and its only NEVER carve-out is opaque internal IDs. Adding an explicit second carve-out for the credential class diverts credentials out of the clarification branch at the exact decision point where the misbehavior originates, mirroring the mechanism that already works for opaque IDs across the whole dataset (the no-opaque-id-asked criterion passes everywhere). Because the rule also forbids credential-shaped KEYS in step parameters, it simultaneously suppresses bpt-02's invented username_field/password_field DOM parameters, which would otherwise still be string-joined into the browser task text. And because it tells the planner to state the login requirement in the task description instead, the browser agent still receives the context it needs — so browser-context-sufficiency is not regressed by the removal.",
+        "applyInstructions": [
+          "Step 1: Open backend/app/services/planner.py and locate get_system_prompt() (line 11); the prompt body is an f-string, so any literal brace in new text must be doubled ({{ }}) exactly as Rules 3/5/6 already do.",
+          "Step 2: Insert the new Rule 7 block immediately after Rule 6 (after line 52) and before the 'Output exactly in the following JSON schema format:' line (line 54).",
+          "Step 3: Rule 7 text — 'Rule 7 (Credentials Are Handled Out-of-Band — Never a Parameter): VoxAgent resolves all login credentials for a browser_agent step at execution time from the user's connected App Vault, keyed by the step's `app` name — the acting browser agent starts an ALREADY-AUTHENTICATED session. Therefore: (a) NEVER add a username, password, credential, login, PIN, OTP, API key, token, or secret entry to `missing_parameters`, and never set needs_clarification=true on account of one; (b) NEVER put a credential-shaped key (username, password, credentials, username_field, password_field, api_key, token, secret, ...) into any step's `parameters`; (c) Do NOT model the login form itself as its own step or invent DOM field names for it — instead, when a portal requires a login, simply state that in the browser step's task/instructions text (e.g. \"log in to the portal if prompted, then ...\") and let the pre-authenticated session handle it; (d) Set the step's `app` to the portal's own recognizable name or host (e.g. \"portal.vitap.ac.in\") so it matches the user's saved vault entry, and list it in `required_apps` so the UI can prompt the user to connect it if they have not; (e) A genuinely non-secret input the user must supply (a specific course name, a roll number they told you to use, a date) is still a normal Rule 2 clarification — Rule 7 covers ONLY secrets and login credentials.'",
+          "Step 4: Verify the rule numbering and the f-string still renders — call get_system_prompt() once and assert the output contains 'Rule 7' and no unescaped-brace KeyError.",
+          "Step 5: Re-run the browser-portal-task scenario prompts (bpt-01, bpt-02, bpt-03) and assert: zero credential entries in missing_parameters; bpt-02 needs_clarification=false; bpt-01 unchanged (control); bpt-03 still produces the Rule 1 Vault Notes final step.",
+          "Step 6: Re-run the full 24-trace eval to confirm no regression in the 8 currently-scoring criteria, especially browser-context-sufficiency (the login requirement must now appear in the task text) and no-guessed-required-param (removing the credential ask must not cause any other required value to be invented)."
+        ],
+        "assumptions": [
+          {
+            "text": "The vault entry for a portal is keyed by the exact `app` string the planner emits — so a planner that emits app='College Portal' while the user saved the entry as 'portal.vitap.ac.in' will silently get storage_state=None and browse unauthenticated. Clause (d) of Rule 7 addresses this, but the naming convention used by the vault UI when a user connects a custom portal was not verified end-to-end.",
+            "status": "unverified",
+            "basis": "vault.get_app_credentials filters on .eq('app_name', app_name) (vault.py:97) and orchestrator.py:305 passes app_name=app (the blueprint's step app field); frontend/src/api/vault.js:35 saveSession takes a caller-supplied appName whose UI-side default was not traced."
+          },
+          {
+            "text": "browser_engine only honors a vault record containing a 'cookies' key (browser_engine.py:60), so a portal connected with auth_type 'api_key' or 'oauth2' yields storage_state=None and the browser session starts unauthenticated — Rule 7 makes the planner stop asking, but does not by itself guarantee the session is authenticated.",
+            "status": "verified",
+            "basis": "browser_engine.py:60 'if credentials and \"cookies\" in credentials'; routers/vault.py:33 allows auth_type in {session_cookie, oauth2, api_key}."
+          },
+          {
+            "text": "Suppressing the credential clarification does not regress browser-context-sufficiency, because the login requirement moves into the step's task/instructions text rather than disappearing.",
+            "status": "hypothesis-pending",
+            "basis": "bpt-03 already demonstrates the target shape — its step-1 instructions read 'Log in to the portal using stored credentials, navigate to ...' — but confirmation requires re-running the llm-judge criterion after the change."
+          }
+        ],
+        "cost": "low",
+        "correctness": "high",
+        "diff": {
+          "before": "Rule 6 (Headers for Spreadsheet/Table Row Writes): ... in the same order as `headers`.\n\nOutput exactly in the following JSON schema format:\n{schema_json}",
+          "after": "Rule 6 (Headers for Spreadsheet/Table Row Writes): ... in the same order as `headers`.\n\nRule 7 (Credentials Are Handled Out-of-Band — Never a Parameter): VoxAgent resolves all login credentials for a 'browser_agent' step at execution time from the user's connected App Vault, keyed by that step's `app` name — the acting browser agent starts an ALREADY-AUTHENTICATED session, so it never needs to be handed a username or password.\n- NEVER add a username, password, credential, login, PIN, OTP, API key, token, or secret entry to `missing_parameters`, and NEVER set `needs_clarification` to true because a login is required. Credentials are the one class of value the user must not be asked for at plan time.\n- NEVER put a credential-shaped key (`username`, `password`, `credentials`, `username_field`, `password_field`, `api_key`, `token`, `secret`, ...) into any step's `parameters`.\n- Do NOT model the login form as its own step and do NOT invent DOM field names for it. When a portal requires a login, just say so inside the browser step's task/instructions text (e.g. \"log in to the portal if prompted, then open the Exam Registration page and ...\") and let the pre-authenticated session handle it.\n- Set the step's `app` to the portal's own recognizable name or host (e.g. \"portal.vitap.ac.in\") so it matches the user's saved vault entry, and include it in `required_apps` so the UI can prompt them to connect it if they haven't.\n- A genuinely non-secret value the user must supply (a specific course name, a roll number, a date) is still a normal Rule 2 clarification — this rule covers ONLY secrets and login credentials.\n\nOutput exactly in the following JSON schema format:\n{schema_json}"
+        }
+      },
+      {
+        "remedyId": "R-B2",
+        "title": "Add a no-credential-parameter-request criterion + an authenticated browser-portal scenario so this stays measurable",
+        "applyTarget": ".mutagent/specs/voxagent-planner/agentspec.yaml — spec.evaluation.criteria and spec.evaluation.scenarios (and spec.intent.sop.disambiguation-gate)",
+        "targetClass": "code-construct",
+        "rationale": "bpt-02 and bpt-03 PASS all nine current criteria while exhibiting the defect: no-guessed-required-param (agentspec.yaml:164-167) only checks that clarification was raised and no value invented — both did; no-opaque-id-asked (agentspec.yaml:168-170) only checks the entry is not an opaque internal ID — 'username'/'password' are human-friendly. A correctly-covered eval would assert not just that a clarification is well-formed but that it is a value the user should be asked for at all. The gap is exactly the same shape as the opaque-ID carve-out the spec already has, applied to a second forbidden class.",
+        "whyWorks": "A deterministic code-check over every missing_parameters entry's parameter_key/label and over every step's parameters keys, matched against a credential-term denylist, converts an out-of-band judge observation into a gating signal that runs on every future eval. Because the check is purely lexical over planner output, it needs no execution data (unlike Gap A) and scores today against the existing 24 traces — it would have flagged bpt-02 and bpt-03 on the first run. Adding the matching scenario guarantees the dataset keeps at least one authenticated-portal prompt so the criterion never silently loses its applicable set.",
+        "applyInstructions": [
+          "Step 1: Add to spec.evaluation.criteria — id: no-credential-parameter-request; type: code-check; description: 'No missing_parameters entry and no step parameter asks for a login credential or secret (username, password, credentials, login, passcode, PIN, OTP, api_key, token, secret, or a *_field DOM variant of these). VoxAgent resolves browser_agent credentials out-of-band from the App Vault (vault.get_app_credentials, keyed by user_id + app_name), so a credential must never appear at plan time.'; goal: 'Zero credential requests across all scenarios; needs_clarification is never raised on account of a login.'",
+          "Step 2: Add to spec.evaluation.scenarios — id: authenticated-browser-portal; description: 'A browser-portal request that explicitly requires logging in to a private portal (college ERP, library account, bank statement page).'; expectedBehavior: 'route=browser_agent with the login stated in the task text, the portal named as `app` so it matches the vault entry, zero credential entries in missing_parameters, and needs_clarification=false when nothing non-secret is missing.'; edgeCase: false.",
+          "Step 3: Amend spec.intent.sop.disambiguation-gate's onFailure (agentspec.yaml:31) to name the second forbidden class alongside opaque IDs: '... and never ask for a login credential or secret — those are resolved from the user's App Vault at execution time.'",
+          "Step 4: Add a matching constraint under spec.intent.constraints: 'Never request a login credential or secret as a blueprint parameter — credentials are resolved out-of-band from the App Vault at execution time.'",
+          "Step 5: Implement the check (lexical denylist over missing_parameters[].parameter_key + .label and over each step's parameters keys, case-insensitive, substring-matched) and run it against the existing 24 traces to confirm it flags exactly bpt-02 and bpt-03 today, and zero traces after R-B1 lands."
+        ],
+        "assumptions": [
+          {
+            "text": "A lexical denylist is sufficient discrimination — no legitimate non-secret parameter in this domain uses a credential-shaped key.",
+            "status": "unverified",
+            "basis": "Across all 24 traces, credential-shaped keys appear only in bpt-02 (username, password, username_field, password_field) and bpt-03 (credentials), all of which are true positives; no legitimate use was observed, but the denylist could collide on a future prompt (e.g. a step that writes a 'Username' column header into a spreadsheet)."
+          },
+          {
+            "text": "The criterion is a complement to R-B1, not a substitute — it detects the defect but does not prevent it; without the Rule 7 prompt change it would simply report a persistent failure.",
+            "status": "verified",
+            "basis": "The criterion reads planner output; the behavior it measures originates in planner.py's system prompt (see F-gapB-1 whyChain origin)."
+          }
+        ],
+        "cost": "low",
+        "correctness": "high",
+        "describedChange": "Add one deterministic code-check criterion (no-credential-parameter-request) and one scenario (authenticated-browser-portal) to spec.evaluation, and extend the disambiguation-gate SOP's onFailure plus spec.intent.constraints to name credentials as a second forbidden ask class alongside opaque internal IDs."
+      },
+      {
+        "remedyId": "R-B3",
+        "title": "Defense-in-depth: redact credential-shaped values at the execution boundary so a planner regression can never leak a secret",
+        "applyTarget": "backend/app/services/orchestrator.py — _dispatch_action browser_agent branch (lines 301-305) and resume_agent_workflow (lines 845-855)",
+        "targetClass": "code-construct",
+        "rationale": "Today the browser branch string-joins EVERY step parameter verbatim into the LLM task text ('\", \".join(f\"{k}={v}\" ...)', orchestrator.py:303) and resume_agent_workflow echoes the raw clarification answer into telemetry ('Resuming with clarification: {answer}', orchestrator.py:855) before merging it into the step's parameters. A safe boundary would treat credential-shaped keys as unloggable and un-promptable regardless of how they got there; the current boundary treats them as ordinary strings, which is why a single planner mistake escalates into a plaintext secret reaching an external model and the execution_logs table.",
+        "whyWorks": "R-B1 removes the planner's reason to produce credential parameters, but nothing structurally prevents a future prompt edit, model swap, or user-typed answer from reintroducing one. Filtering credential-shaped keys out of the task-description join and redacting the resume telemetry line severs the two concrete leak paths at the point of use, so the blast radius of any recurrence is a failed login rather than a disclosed secret. It is independent of the planner and holds even if R-B1 regresses.",
+        "applyInstructions": [
+          "Step 1: Define a module-level CREDENTIAL_KEY_TOKENS set in orchestrator.py (password, passwd, pwd, secret, token, api_key, apikey, credential, credentials, otp, pin, passcode, and *_field variants), plus a helper _is_credential_key(key) doing a case-insensitive token match.",
+          "Step 2: In _dispatch_action's browser_agent branch (orchestrator.py:301-305), exclude credential-shaped keys from detail_str; instead append a neutral note such as ' The session is already authenticated.' when one was filtered.",
+          "Step 3: In resume_agent_workflow (orchestrator.py:855), redact the echoed answer when context['missing_field'] is credential-shaped — log 'Resuming with clarification: [redacted]'.",
+          "Step 4: Apply the same redaction in _log_entry (orchestrator.py:415) so credential values never reach step_logs and therefore never reach execution_logs via _persist_run (orchestrator.py:255-263). Coordinate with R-A1 Step 1, which also modifies _log_entry.",
+          "Step 5: If a credential-shaped clarification is ever requested at run time, route the user to the vault connect flow (POST /vault/save-session, routers/vault.py:120) rather than accepting the value as a step parameter — the pending_actions input_type 'credential_reconnect' already exists for this (orchestrator.py:444-448).",
+          "Step 6: Add a regression test asserting that a step whose parameters contain password='hunter2' produces a task_description not containing 'hunter2' and a step_log not containing 'hunter2'."
+        ],
+        "assumptions": [
+          {
+            "text": "The pending_actions 'credential_reconnect' input_type already drives a vault-connect UI flow, so Step 5 wires into an existing path rather than requiring new frontend work.",
+            "status": "unverified",
+            "basis": "orchestrator.py:444-448 sets input_type='credential_reconnect' when reconnect_app is present; the frontend handling of that input_type was not inspected."
+          },
+          {
+            "text": "This is an execution-layer fix outside the voxagent-planner spec's target (backend/app/services/planner.py) and should be filed against the orchestrator rather than gating this ADL pass.",
+            "status": "verified",
+            "basis": "agentspec.yaml:152-158 scopes the spec's target artifact to backend/app/services/planner.py; agentspec.yaml:63 lists executing the blueprint as a nonGoal owned by orchestrator.py."
+          }
+        ],
+        "cost": "medium",
+        "correctness": "medium",
+        "describedChange": "Introduce a credential-key denylist at the execution boundary and apply it in three places: exclude credential-shaped parameters from the browser task-description string join, redact them from the resume telemetry line, and redact them from per-step log entries before they are persisted to execution_logs — converting a planner mistake from a secret-disclosure event into a benign failed login."
+      }
+    ],
+
+    "sourceTraceIds": ["bpt-02", "bpt-03", "bpt-01"],
+    "referenceIds": {
+      "traceId": "bpt-02",
+      "sessionId": "voxagent-planner-phase4",
+      "findingId": "F-gapB-1"
+    },
+    "audience": "CLIENT",
+    "assumptions": [
+      {
+        "text": "Source code for the VoxAgent backend was directly readable for this analysis, so file:line pointers in the evidence are verified rather than inferred.",
+        "status": "verified",
+        "basis": "Read backend/app/services/{planner,vault,browser_engine,orchestrator,composio_engine}.py, backend/app/routers/vault.py, and frontend/src/api/vault.js directly in the working tree."
+      },
+      {
+        "text": "The user in the bpt-02/bpt-03 scenarios has (or would have) connected the portal in the App Vault; if they have not, the correct behavior is a connect-the-app prompt from the UI (driven by required_apps), not a plan-time password request.",
+        "status": "hypothesis-pending",
+        "basis": "vault.get_app_credentials returns None for an unconnected app (vault.py:99-100) and browser_engine then proceeds with storage_state=None (browser_engine.py:57-62); the UI's handling of an unconnected required_app was not traced end-to-end."
+      }
+    ]
+  }
+}

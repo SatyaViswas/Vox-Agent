@@ -6,6 +6,7 @@ import AgentStudio from "./pages/AgentStudio";
 import MyAgents from "./pages/MyAgents";
 import AppVault from "./pages/AppVault";
 import VaultNotes from "./pages/VaultNotes";
+import KnowledgeBase from "./pages/KnowledgeBase";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/agents" element={<MyAgents />} />
         <Route path="/vault" element={<AppVault />} />
         <Route path="/notes" element={<VaultNotes />} />
+        <Route path="/knowledge" element={<KnowledgeBase />} />
       </Route>
     </Routes>
   );

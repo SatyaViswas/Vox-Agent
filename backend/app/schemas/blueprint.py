@@ -7,6 +7,7 @@ class MissingParameter(BaseModel):
     label: str             # e.g., "Google Sheet Name or URL"
     description: str       # e.g., "Which Google Sheet should rows be added to?"
     suggested_type: str    # "text" | "number" | "select" | "url"
+    options: Optional[List[str]] = None
 
 class WorkflowStep(BaseModel):
     step_number: int

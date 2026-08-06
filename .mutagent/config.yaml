@@ -9,6 +9,14 @@ global:
     repo: "SatyaViswas/Vox-Agent"
     path: "."
 
+  sources:
+    - name: "voxagent-planner-eval-traces"
+      platform: "local-jsonl"
+      format: "raw"
+      default: true
+      paths:
+        - ".mutagent/specs/voxagent-planner/traces/planner-eval-traces.jsonl"
+
   models:
     default: "gemini-2.5-flash"
     judge_model: "gemini-2.5-flash"

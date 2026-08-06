@@ -1,0 +1,41 @@
+verify_build_alignment.py — BUILD alignment harness for spec `voxagent-planner`
+repo root : /Users/satyaviswas/Documents/Vox-Agent
+spec      : .mutagent/specs/voxagent-planner/agentspec.yaml
+mode      : static/AST-only — no `import app.*`, no network, no GEMINI_API_KEY
+
+freeze digests (informational — not one of the 13 gates):
+  c99a90a6c840  .mutagent/specs/voxagent-planner/agentspec.yaml  [match]
+  c6fb46ea1864  backend/app/services/planner.py  [match]
+  44ebd461f4a8  backend/app/services/composio_engine.py  [match]
+  365ad85763e9  backend/app/schemas/blueprint.py  [match]
+  efd1104d18e6  backend/app/routers/planner.py  [match]
+  dc2fe655afa6  backend/app/services/orchestrator.py  [match]
+
+PASS  T2  spec.agent.systemPrompt is verbatim-faithful to the operative prompt (PR-014)
+         -> 41 non-schema lines compared, 0 diff hunks (normalizations disclosed: leading newline dropped, per-line trailing whitespace stripped; schema tail excluded)
+PASS  T3  spec.context[0] is a live, call-time schema binding (not a stale copy)
+         -> model_json_schema() called INSIDE get_system_prompt (per call); no module-level WorkflowBlueprint binding except the import
+PASS  T4  spec.context[0].allowedOperations ['schema.read'] is not exceeded
+         -> attrs reached on WorkflowBlueprint = ['model_json_schema', 'model_validate'] subset of {model_json_schema, model_validate} (model_validate = inbound parse, not a source op)
+PASS  T5  spec.actions: [] holds — the planner is read/reason-only
+         -> module imports ['app', 'google', 'json', 'os'] disjoint from ['aiohttp', 'httpx', 'pathlib', 'requests', 'sqlalchemy', 'subprocess', 'supabase']; 0 open()/os.remove/.execute() calls
+PASS  T6  triggers[0] studio-plan-request resolves to a real, reachable entry point
+         -> POST /api/v1/plan mounted -> generate_blueprint; PlanRequest{prompt,user_id}; [T16 guard] generate_blueprint(prompt) takes ['prompt'] only
+PASS  T7  workflow.inline matches the real control flow (1 node, terminal, temp 0.1)
+         -> 1 generate_content call, temperature=0.1, response_mime_type=application/json, 0 loops
+PASS  T8  constraints[1] route enum is structurally enforced (unordered set equality)
+         -> unordered SET equality over 5 members holds; order differs (cosmetic — a Literal's member order has no runtime meaning): code=['browser_agent', 'composio_api', 'http_webhook', 'telegram_client', 'ai_generate'] spec=['composio_api', 'browser_agent', 'http_webhook', 'telegram_client', 'ai_generate']
+PASS  T9  constraints[2] output validates against the live schema on every call
+         -> 1/1 returns are WorkflowBlueprint.model_validate(...); except re-raises ValueError, returns nothing
+PASS  T10  all six spec.intent.sop entries trace to prompt sites + schema affordances
+         -> 6/6 SOP ids anchored in the rendered prompt; MissingParameter fields == the SOP's five; [T14 guard] 'VoxAgent Vault Notes' == vault.VAULT_NOTES_APP_NAME (case-insensitive)
+PASS  T11  schema-aligned-execution's structural half is wired and on the hot path
+         -> all 5 layer functions defined; execute_composio_action reaches slug-resolve -> param-normalize -> id-auto-resolve at statement indices [4, 5, 7] (strictly increasing)
+PASS  T12  coverage-gate disposition for spec.capabilities.code: [] (vacuous, declared)
+         -> capabilities.code/skills/delegates all [] -> 0 required tool ids, 0 missing: coverage PASS (vacuous, declared)
+PASS  T17  planner.py L100-178 is out-of-subject execution-time code (boundary pinned)
+         -> router imports {generate_blueprint} only; generate_ai_content has 1 importer + 1 call site (backend/app/services/orchestrator.py); generate_blueprint's call graph = ['generate_blueprint', 'get_system_prompt'] (reaches neither generate_ai_content nor _strip_markdown_fences); 2 out-of-subject generate_content calls, both temperature=0.7
+PASS  T18  every context[0] schema slot is governed-by-rule or declared unguided
+         -> 28/28 slots enumerated (WB 9 / WS 9 / TS 5 / MP 5) = 20 governed + 6 unguided + 2 benign; all 20 governed anchors present; all 8 unguided/benign at 0 occurrences; 'schedule'=1 (Rule 4 contrast clause) / 'manual'=0; [D8] unguided splits 5 optional-or-defaulted + 1 schema-REQUIRED (needs_human_approval)
+
+13/13 PASS

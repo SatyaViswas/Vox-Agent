@@ -1,0 +1,265 @@
+[
+  {
+    "trace_id": "hpp-01",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Conditional criterion; precondition falsified. Positive field check: output.blueprint.needs_clarification is the literal boolean false, output.blueprint.missing_parameters is the empty array [], and clarification_question is null. With zero clarification entries in existence there is no parameter_key/label to inspect for opaque-ID phrasing, so the criterion has no referent in this trajectory. Not-applicable by the criterion's own precondition — this is not a pass earned by behaviour. (Worth recording as grounding, not as verdict: this is a well-specified-happy-path control, and needs_clarification staying false here is the evidence that the post-optimize Rule 2/Rule 5 clarification changes did not over-trigger on a fully-specified request. That observation belongs to the over-clarification criteria, not this one.)",
+        "refs": [
+          {"obs": "hpp-01", "path": "output.blueprint.needs_clarification", "value": "false"},
+          {"obs": "hpp-01", "path": "output.blueprint.missing_parameters", "value": "[]"},
+          {"obs": "hpp-01", "path": "output.blueprint.clarification_question", "value": "null"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step to judge. The prompt is 'Can you email david@northwind.co with the subject ... and the body ...' — an email send against Gmail. The Rules name Gmail first in their own enumeration of cataloged Composio SaaS apps ('Gmail, Slack, GitHub, Google Sheets, Notion, Trello, ...') and assign that class to composio_api. Step 1 sets route 'composio_api', app 'Gmail', action 'GMAIL_SEND_EMAIL'. The action slug independently corroborates that the composio_api branch was taken deliberately: it matches the Rules' prescribed uppercase {APPNAME}_{VERB}_{OBJECT} convention with spaces removed, and 'GMAIL_SEND_EMAIL' is one of the literal examples the Rules give. No competing route fits — Gmail is not an API-less portal (not browser_agent), the prompt names no raw URL or REST endpoint (not http_webhook), no Telegram identity of either kind is involved (not telegram_client), and the step transmits user-supplied text rather than generating any (not ai_generate; the subject and body were both stated verbatim by the user and appear unchanged in parameters). The route matches its Rule-defined classification for the only step present.",
+        "refs": [
+          {"obs": "hpp-01", "path": "input.prompt", "value": "Can you email david@northwind.co with the subject 'Invoice 4471 - due April 15' and the body 'Hi David, invoice 4471 for March is ready. Payment is due April 15. Thanks, Priya.'"},
+          {"obs": "hpp-01", "path": "output.blueprint.steps.0.route", "value": "composio_api"},
+          {"obs": "hpp-01", "path": "output.blueprint.steps.0.app", "value": "Gmail"},
+          {"obs": "hpp-01", "path": "output.blueprint.steps.0.action", "value": "GMAIL_SEND_EMAIL"},
+          {"obs": "hpp-01", "path": "output.blueprint.steps.0.parameters.to", "value": "david@northwind.co"},
+          {"obs": "hpp-01", "path": "output.blueprint.required_apps", "value": "[\"Gmail\"]"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.96,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Criterion is conditional on at least one step with route 'browser_agent'. Positive field check across the whole steps array: steps has exactly one entry and steps.0.route is the literal 'composio_api'. No browser_agent step exists to assess for concrete site/element/field detail, so the criterion has no referent here. Not-applicable by precondition.",
+        "refs": [
+          {"obs": "hpp-01", "path": "output.blueprint.steps.0.route", "value": "composio_api"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "hpp-02",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Conditional criterion; precondition falsified. Positive field check: output.blueprint.needs_clarification is the literal boolean false, output.blueprint.missing_parameters is the empty array [], clarification_question is null. No clarification entry exists, so there is no parameter_key/label to inspect for opaque-ID phrasing. Not-applicable by precondition, not an earned pass. Grounding note (not the verdict): the step addresses the destination with the human-friendly parameters.target 'me' (the Saved-Messages form) rather than any numeric Telegram chat ID, so the name-based track was held even though nothing was asked.",
+        "refs": [
+          {"obs": "hpp-02", "path": "output.blueprint.needs_clarification", "value": "false"},
+          {"obs": "hpp-02", "path": "output.blueprint.missing_parameters", "value": "[]"},
+          {"obs": "hpp-02", "path": "output.blueprint.clarification_question", "value": "null"},
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.parameters.target", "value": "me"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step to judge. The prompt is 'drop a message in my telegram saved messages' — a first-person reference to the user's OWN Telegram account. Positive absence check on the identity question this criterion turns on: the input.prompt string contains no occurrence of the word 'bot' anywhere, so the explicit-bot condition that would divert to composio_api is not met. The Telegram rule states telegram_client with app 'Telegram Personal Account' is the DEFAULT whenever the request concerns the user's own account, naming 'my telegram' and 'saved messages' as trigger phrases, and reserves composio_api + app 'Telegram' for an EXPLICIT bot mention. Step 1 sets route 'telegram_client', app 'Telegram Personal Account', action 'SEND_MESSAGE', parameters.target 'me' — exactly the Saved-Messages form the rule prescribes, with the mandated action and app literals. The heavy voice-transcript noise did not push the classification off-path: the filler ('hey um can you just') was discarded and the spoken punctuation was normalized into parameters.text 'Renew northwind.co domain before September 12th'. The route matches its Rule-defined classification for the only step present.",
+        "refs": [
+          {"obs": "hpp-02", "path": "input.prompt", "value": "hey um can you just drop a message in my telegram saved messages saying renew northwind dot co domain before september twelfth"},
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.route", "value": "telegram_client"},
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.app", "value": "Telegram Personal Account"},
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.action", "value": "SEND_MESSAGE"},
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.parameters.target", "value": "me"},
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.parameters.text", "value": "Renew northwind.co domain before September 12th"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Precondition falsified: the blueprint has exactly one step and steps.0.route is the literal 'telegram_client'. No browser_agent step exists to assess for context sufficiency. Not-applicable.",
+        "refs": [
+          {"obs": "hpp-02", "path": "output.blueprint.steps.0.route", "value": "telegram_client"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "hpp-03",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Conditional criterion; precondition falsified. Positive field check: needs_clarification is the literal boolean false, missing_parameters is [], clarification_question is null. The request supplied both the endpoint URL and the full JSON body, so nothing was asked of the user and there is no parameter_key/label to inspect. Not-applicable by precondition.",
+        "refs": [
+          {"obs": "hpp-03", "path": "output.blueprint.needs_clarification", "value": "false"},
+          {"obs": "hpp-03", "path": "output.blueprint.missing_parameters", "value": "[]"},
+          {"obs": "hpp-03", "path": "output.blueprint.clarification_question", "value": "null"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step to judge. The prompt names a raw endpoint verbatim — 'POST to https://hooks.acme.io/deploy-notify with the JSON body {...}'. The Rules assign http_webhook to 'custom URLs, REST endpoints, or triggering other external software'. Step 1 sets route 'http_webhook', app 'Webhook', action 'POST_REQUEST', with parameters.url 'https://hooks.acme.io/deploy-notify' and the body preserved as a structured object rather than a flattened string. The misroute this control case probes for is composio_api: a positive check on steps.0.route returns the literal 'http_webhook', and output.blueprint.required_apps is the empty array [] — i.e. no cataloged SaaS app was invented to carry the call. hooks.acme.io is a bare host, not a name in Composio's SaaS catalog, and no other route competes (no API-less portal, no Telegram identity, no text generation). The route matches its Rule-defined classification for the only step present. I note explicitly what I am not folding in: the Rules prescribe an `app` literal for the http_webhook route only in the Rule 1 default-storage case ('VoxAgent Vault Notes'), which does not apply here since the user named their own destination; the generic app label 'Webhook' is therefore unconstrained by the Rules and cannot make the route label wrong.",
+        "refs": [
+          {"obs": "hpp-03", "path": "input.prompt", "value": "POST to https://hooks.acme.io/deploy-notify with the JSON body {\"env\": \"staging\", \"status\": \"deployed\", \"version\": \"2.4.1\"}"},
+          {"obs": "hpp-03", "path": "output.blueprint.steps.0.route", "value": "http_webhook"},
+          {"obs": "hpp-03", "path": "output.blueprint.steps.0.action", "value": "POST_REQUEST"},
+          {"obs": "hpp-03", "path": "output.blueprint.steps.0.parameters.url", "value": "https://hooks.acme.io/deploy-notify"},
+          {"obs": "hpp-03", "path": "output.blueprint.required_apps", "value": "[]"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.96,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Precondition falsified: the blueprint has exactly one step and steps.0.route is the literal 'http_webhook'. No browser_agent step exists, so there is nothing to assess for concrete page/field detail. Not-applicable.",
+        "refs": [
+          {"obs": "hpp-03", "path": "output.blueprint.steps.0.route", "value": "http_webhook"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "srw-01",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Precondition SATISFIED here — needs_clarification is the literal true and missing_parameters holds exactly one entry — so unlike the pre-optimize run of this case the criterion now binds and is decidable on evidence. Inspecting that single entry field by field: parameter_key is 'sheet_name', label is 'Sheet Name', description is 'The name of the specific tab within the Google Sheet.', suggested_type 'string'. Every one of those asks for a human-readable NAME. The opaque-ID forms this criterion exists to catch for a Google Sheets target are the spreadsheet ID (the long opaque string from the document URL), a Drive file ID, or a numeric sheet gid; a positive check across the entry shows parameter_key is the literal 'sheet_name', not any *_id key, and neither the label nor the description carries ID, identifier, gid or URL wording. The clarification_question restates the ask in the same plain-language register — it asks for 'the name of the sheet (tab) within your Gym Log spreadsheet', which is a value the user can read off the tab strip at the bottom of their own document. Corroborating that the planner stayed on the name-based track throughout rather than switching registers between what it keeps and what it asks: the step's own parameters carry the human-friendly spreadsheet_name 'Gym Log' taken verbatim from the prompt, with no spreadsheet ID anywhere in the blueprint. Nothing here asks the user for an internal identifier they would have no way to find. I record the boundary of this verdict: whether asking for the tab name at all was warranted on a prompt that named the spreadsheet is a question about clarification triggering, owned by the no-guessed-required-param criterion and the happy-path controls — this criterion conditions on missing_parameters being populated and asks only whether what is asked for is human-friendly. Importing the triggering question would be a leap past what this criterion states.",
+        "refs": [
+          {"obs": "srw-01", "path": "output.blueprint.needs_clarification", "value": "true"},
+          {"obs": "srw-01", "path": "output.blueprint.missing_parameters.0.parameter_key", "value": "sheet_name"},
+          {"obs": "srw-01", "path": "output.blueprint.missing_parameters.0.label", "value": "Sheet Name"},
+          {"obs": "srw-01", "path": "output.blueprint.missing_parameters.0.description", "value": "The name of the specific tab within the Google Sheet."},
+          {"obs": "srw-01", "path": "output.blueprint.missing_parameters.0.suggested_type", "value": "string"},
+          {"obs": "srw-01", "path": "output.blueprint.clarification_question", "value": "Please specify the name of the sheet (tab) within your 'Gym Log' spreadsheet where the data should be added."},
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.parameters.spreadsheet_name", "value": "Gym Log"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.94,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step to judge. The prompt targets 'my Google Sheet named Gym Log' — Google Sheets is named explicitly in the Rules' own enumeration of cataloged Composio SaaS apps ('Gmail, Slack, GitHub, Google Sheets, Notion, Trello'). Step 1 sets route 'composio_api', app 'Google Sheets', action 'GOOGLESHEETS_ADD_ROW'. The action slug also matches the Rules' stated naming convention (uppercase {APPNAME}_{VERB}_{OBJECT} with spaces removed, so 'Google Sheets' -> 'GOOGLESHEETS'), which corroborates that the composio_api branch was taken deliberately rather than falling out as a default. No competing route applies: there is no portal without an API (not browser_agent), no raw URL in the prompt (not http_webhook), no Telegram identity, and the step's job is writing a row of user-supplied values rather than generating text (not ai_generate). The route matches its Rule-defined classification for the only step present. The step is additionally marked incomplete via missing_parameters.sheet_name, but that concerns parameter completeness rather than route classification and is judged under a different criterion.",
+        "refs": [
+          {"obs": "srw-01", "path": "input.prompt", "value": "log today's workout in my Google Sheet named Gym Log - date August 5, exercise Deadlift, sets 4, reps 6, weight 90kg"},
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.route", "value": "composio_api"},
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.app", "value": "Google Sheets"},
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.action", "value": "GOOGLESHEETS_ADD_ROW"},
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.for_each", "value": "null"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Precondition falsified: the blueprint has exactly one step and steps.0.route is the literal 'composio_api'. No browser_agent step exists. Not-applicable.",
+        "refs": [
+          {"obs": "srw-01", "path": "output.blueprint.steps.0.route", "value": "composio_api"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "srw-02",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Precondition satisfied — needs_clarification is the literal true and missing_parameters holds exactly one entry, so the criterion binds and is decidable. Inspecting that single entry field by field: parameter_key is 'table_name', label is 'Table Name', description is \"The name of the specific table in the 'Freelance Income' base.\", suggested_type 'string'. Every one of those asks for a human-readable NAME. The opaque-ID forms this criterion exists to catch for an Airtable target would be 'base_id' (appXXXXXXXX) or 'table_id' (tblXXXXXXXX); a positive check on the entry shows parameter_key is the literal 'table_name', not any *_id key, and neither label nor description carries ID or identifier wording. The clarification_question reinforces this in plain language, asking for 'the name of the table within your Freelance Income Airtable base'. Corroborating that the planner stayed on the name-based track throughout, the step's own parameters use base_name 'Freelance Income' — the human-friendly name the user actually said — rather than a base ID. Nothing here asks the user for an internal identifier they would have no way to find.",
+        "refs": [
+          {"obs": "srw-02", "path": "output.blueprint.needs_clarification", "value": "true"},
+          {"obs": "srw-02", "path": "output.blueprint.missing_parameters.0.parameter_key", "value": "table_name"},
+          {"obs": "srw-02", "path": "output.blueprint.missing_parameters.0.label", "value": "Table Name"},
+          {"obs": "srw-02", "path": "output.blueprint.missing_parameters.0.description", "value": "The name of the specific table in the 'Freelance Income' base."},
+          {"obs": "srw-02", "path": "output.blueprint.clarification_question", "value": "Please specify the name of the table within your 'Freelance Income' Airtable base where this invoice should be added."},
+          {"obs": "srw-02", "path": "output.blueprint.steps.0.parameters.base_name", "value": "Freelance Income"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.94,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step to judge. The prompt names 'my Airtable base called Freelance Income'. Airtable is a public-API SaaS app of exactly the class the Rules assign to composio_api ('any of the 1000+ SaaS apps with a public API via Composio'), and the Rules' own Rule 2 names the Airtable table-within-a-base case directly, confirming Airtable is treated as a cataloged app rather than an API-less portal. Step 1 sets route 'composio_api', app 'Airtable', action 'AIRTABLE_CREATE_RECORD' — the slug follows the prescribed uppercase {APPNAME}_{VERB}_{OBJECT} convention. No competing route fits: Airtable is not a portal without an API (not browser_agent), the prompt contains no raw URL (not http_webhook), the step writes a record of user-supplied field values rather than generating text (not ai_generate), and no Telegram identity is involved. The route matches its Rule-defined classification for the only step present. The step is additionally marked incomplete via missing_parameters.table_name, but that concerns parameter completeness, not route classification, and is judged under a different criterion.",
+        "refs": [
+          {"obs": "srw-02", "path": "input.prompt", "value": "Can you add this month's invoice to my Airtable base called Freelance Income? Client is Meridian Design, invoice number INV-2026-018, amount 2400 USD, paid on 2026-08-01."},
+          {"obs": "srw-02", "path": "output.blueprint.steps.0.route", "value": "composio_api"},
+          {"obs": "srw-02", "path": "output.blueprint.steps.0.app", "value": "Airtable"},
+          {"obs": "srw-02", "path": "output.blueprint.steps.0.action", "value": "AIRTABLE_CREATE_RECORD"},
+          {"obs": "srw-02", "path": "output.blueprint.required_apps", "value": "[\"Airtable\"]"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.94,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Precondition falsified: the blueprint has exactly one step and steps.0.route is the literal 'composio_api'. No browser_agent step exists. Not-applicable.",
+        "refs": [
+          {"obs": "srw-02", "path": "output.blueprint.steps.0.route", "value": "composio_api"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "srw-03",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "Precondition SATISFIED here — needs_clarification is the literal true and missing_parameters holds exactly one entry (scoped to step_number 2, the Google Sheets write) — so unlike the pre-optimize run of this case the criterion binds and is decidable on evidence. Inspecting that entry field by field: parameter_key is 'sheet_name', label is 'Sheet Name', description is 'The name of the specific tab within the Google Sheet to add rows to.', suggested_type 'string'. All three ask for a human-readable NAME. The opaque-ID forms this criterion guards against for a Google Sheets target — the spreadsheet ID from the document URL, a Drive file ID, a numeric sheet gid — are absent: a positive check across the entry shows parameter_key is the literal 'sheet_name', not any *_id key, and no ID, identifier, gid or URL wording appears in the label or description. The clarification_question asks in the same plain register for 'the name of the sheet (tab) within the Travel Expenses spreadsheet', a value visible on the user's own tab strip. Corroborating the name-based track, step 2's parameters carry the human-friendly spreadsheet_name 'Travel Expenses' verbatim from the prompt with no spreadsheet ID anywhere in the blueprint. No opaque-ID request is present.",
+        "refs": [
+          {"obs": "srw-03", "path": "output.blueprint.needs_clarification", "value": "true"},
+          {"obs": "srw-03", "path": "output.blueprint.missing_parameters.0.parameter_key", "value": "sheet_name"},
+          {"obs": "srw-03", "path": "output.blueprint.missing_parameters.0.label", "value": "Sheet Name"},
+          {"obs": "srw-03", "path": "output.blueprint.missing_parameters.0.description", "value": "The name of the specific tab within the Google Sheet to add rows to."},
+          {"obs": "srw-03", "path": "output.blueprint.missing_parameters.0.step_number", "value": "2"},
+          {"obs": "srw-03", "path": "output.blueprint.clarification_question", "value": "Please specify the name of the sheet (tab) within the 'Travel Expenses' spreadsheet where these rows should be added."},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.parameters.spreadsheet_name", "value": "Travel Expenses"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.93,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Two steps to judge, and this criterion scopes to whether EACH step's route matches the Rules for the work that step performs (the criterion text is 'Each step's route matches the Rules'), not to whether the step set as a whole is the right decomposition. Step 1: route 'ai_generate', app 'VoxAgent AI', action 'GENERATE_TEXT', parameters.prompt \"Extract the following receipt data into a JSON list of objects with keys 'Date', 'Merchant', and 'Amount': ...\". Its job is restructuring text with AI and it requires no external app connection, which is the ai_generate branch as the Rules define it ('generate, draft, summarize, translate, or rewrite text/content with AI ... with NO external app connection required'); it also uses the exact app and action literals the Rules mandate for that route ('VoxAgent AI' / 'GENERATE_TEXT'), and it correctly avoids the anti-pattern the Rules call out by name of routing text work to composio_api with an OpenAI/Gemini app. Step 2: route 'composio_api', app 'Google Sheets', action 'GOOGLESHEETS_ADD_ROW' — Google Sheets is named in the Rules as a cataloged Composio app and the slug follows the {APPNAME}_{VERB}_{OBJECT} convention. Neither step names a raw URL, an API-less portal, or a Telegram identity, so no other route competes for either. Both routes are individually Rule-correct. I record explicitly what I am NOT deciding here, so the verdict is not read as broader than it is: the trace's own metadata.rationale argues the ai_generate + for_each fan-out shape is the wrong decomposition for user-supplied (not AI-generated) rows, and steps.1.for_each is set to '{{step_1_result}}' — the same shape this case produced pre-optimize. That is a decomposition/fan-out defect owned by the fan-out-shape criterion; it does not make either step's route LABEL wrong, and folding it into this verdict would be exactly the inferential leap this criterion's wording forecloses. Confidence is held below the single-step cases to reflect that the ai_generate fit for an extraction (rather than a generation) task is the most arguable route call in this batch.",
+        "refs": [
+          {"obs": "srw-03", "path": "output.blueprint.steps.0.route", "value": "ai_generate"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.0.app", "value": "VoxAgent AI"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.0.action", "value": "GENERATE_TEXT"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.route", "value": "composio_api"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.app", "value": "Google Sheets"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.action", "value": "GOOGLESHEETS_ADD_ROW"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.for_each", "value": "{{step_1_result}}"}
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.82,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "Precondition falsified: the blueprint has two steps, steps.0.route is the literal 'ai_generate' and steps.1.route is the literal 'composio_api'. Neither is browser_agent, so no browser step exists to assess. Not-applicable.",
+        "refs": [
+          {"obs": "srw-03", "path": "output.blueprint.steps.0.route", "value": "ai_generate"},
+          {"obs": "srw-03", "path": "output.blueprint.steps.1.route", "value": "composio_api"}
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  }
+]
