@@ -1,3 +1,4 @@
+import os
 import traceback
 import uuid
 import asyncio
@@ -59,13 +60,22 @@ def _require_config() -> None:
 
 
 def _get_session_path(user_id: str, app_name: str) -> str:
-    import os
+    from app.services.vault import ensure_uuid
+    valid_id = ensure_uuid(user_id) if user_id else "00000000-0000-0000-0000-000000000000"
     sessions_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "telethon_sessions")
     os.makedirs(sessions_dir, exist_ok=True)
-    return os.path.join(sessions_dir, f"{user_id}_{app_name.replace(' ', '_')}.session")
+    return os.path.join(sessions_dir, f"{valid_id}_{app_name.replace(' ', '_')}.session")
+
+def has_saved_session(user_id: str, app_name: str = TELEGRAM_PERSONAL_APP_NAME) -> bool:
+    session_file = _get_session_path(user_id, app_name)
+    if os.path.exists(session_file):
+        return True
+    creds = get_app_credentials(user_id, app_name)
+    if creds and (creds.get("session_string") or creds.get("session_path")):
+        return True
+    return False
 
 def _clear_disk_session(user_id: str, app_name: str) -> None:
-    import os
     session_file = _get_session_path(user_id, app_name)
     session_journal = session_file + "-journal"
     for f in (session_file, session_journal):
@@ -94,7 +104,7 @@ async def start_login(phone_number: str, user_id: str = None) -> str | dict:
     if ":" in phone_number:
         try:
             await client.sign_in(bot_token=phone_number)
-            session_string = client.session.save()
+            session_string = StringSession.save(client.session)
             me = await client.get_me()
             await client.disconnect()
             
@@ -105,6 +115,7 @@ async def start_login(phone_number: str, user_id: str = None) -> str | dict:
                     auth_type="session_cookie",
                     credentials_data={
                         "session_string": session_string,
+                        "session_path": session_file,
                         "phone_number": "bot",
                         "username": getattr(me, "username", None),
                     },
@@ -142,9 +153,11 @@ async def start_login(phone_number: str, user_id: str = None) -> str | dict:
 async def _finish_login(login_id: str, user_id: str) -> dict:
     pending = _pending_logins.pop(login_id)
     client = pending["client"]
-    session_string = client.session.save()
+    session_string = StringSession.save(client.session)
     me = await client.get_me()
     await client.disconnect()
+
+    session_file = _get_session_path(user_id, TELEGRAM_PERSONAL_APP_NAME)
 
     save_app_credentials(
         user_id=user_id,
@@ -152,6 +165,7 @@ async def _finish_login(login_id: str, user_id: str) -> dict:
         auth_type="session_cookie",
         credentials_data={
             "session_string": session_string,
+            "session_path": session_file,
             "phone_number": pending["phone_number"],
             "username": getattr(me, "username", None),
         },
@@ -305,8 +319,10 @@ async def _get_or_start_live_client(user_id: str, app_name: str) -> TelegramClie
                 except Exception:
                     pass
 
+        session_file = _get_session_path(user_id, app_name)
         creds = get_app_credentials(user_id, app_name)
-        if not creds or not creds.get("session_string"):
+        
+        if not os.path.exists(session_file) and not (creds and (creds.get("session_string") or creds.get("session_path"))):
             if app_name == TELEGRAM_BOT_APP_NAME:
                 raise Exception("No Telegram Bot connected for this user — connect it in App Vault first.")
             else:
@@ -315,14 +331,10 @@ async def _get_or_start_live_client(user_id: str, app_name: str) -> TelegramClie
         _require_config()
         
         # Use a persistent SQLite file to prevent AuthKeyDuplicatedError across server restarts
-        import os
         from telethon.sessions import SQLiteSession
         
-        session_file = _get_session_path(user_id, app_name)
-        
-        if not os.path.exists(session_file):
+        if not os.path.exists(session_file) and creds and creds.get("session_string"):
             # If the file was deleted but we have a session string in DB, rebuild it.
-            # (Note: this is a fallback. Normal logins populate the SQLite file directly).
             sqlite_session = SQLiteSession(session_file)
             string_session = StringSession(creds["session_string"])
             sqlite_session.set_dc(string_session.dc_id, string_session.server_address, string_session.port)

@@ -24,6 +24,10 @@ export function connectApp(userId, appSlug) {
   return apiClient.post("/vault/connect", { user_id: userId, app_slug: appSlug });
 }
 
+export function mockConnectApp(userId, appSlug) {
+  return apiClient.post("/vault/mock-connect", { user_id: userId, app_slug: appSlug });
+}
+
 export function getConnectRequirements(appSlug) {
   return apiClient.get("/vault/connect-requirements", { params: { app_slug: appSlug } });
 }

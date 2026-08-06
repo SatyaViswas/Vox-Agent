@@ -3,6 +3,8 @@ import asyncio
 import json
 import re
 import traceback
+import httpx
+from typing import Any
 from app.config import settings
 
 from composio import Composio
@@ -1036,11 +1038,100 @@ def resolve_connected_user_id(user_id: str, app: str) -> str:
     return candidates[0]
 
 
+async def resolve_hacker_news_stories(raw_result: Any, limit: int = 10) -> list[dict]:
+    """Given a raw response from Hacker News (such as a list of integer story IDs),
+    fetches actual story titles, URLs, scores, and content from Hacker News Firebase API."""
+    ids = []
+    if isinstance(raw_result, list):
+        ids = [x for x in raw_result if isinstance(x, (int, str)) and str(x).isdigit()]
+    elif isinstance(raw_result, dict):
+        for k in ("data", "response_data", "items", "stories", "result", "ids"):
+            val = raw_result.get(k)
+            if isinstance(val, list):
+                ids = [x for x in val if isinstance(x, (int, str)) and str(x).isdigit()]
+                if ids:
+                    break
+            elif isinstance(val, dict) and isinstance(val.get("response_data"), list):
+                ids = [x for x in val["response_data"] if isinstance(x, (int, str)) and str(x).isdigit()]
+                if ids:
+                    break
+
+    if not ids:
+        try:
+            async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+                for endpoint in ("https://hacker-news.firebaseio.com/v0/topstories.json", "https://hacker-news.firebaseio.com/v1/topstories.json"):
+                    try:
+                        resp = await client.get(endpoint)
+                        if resp.status_code == 200 and isinstance(resp.json(), list):
+                            ids = [x for x in resp.json() if isinstance(x, (int, str)) and str(x).isdigit()]
+                            if ids:
+                                break
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"Warning: Failed to fetch HackerNews topstories directly: {e}")
+
+    ids = ids[:limit]
+    if not ids:
+        return raw_result
+
+    resolved_stories = []
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        tasks = [client.get(f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json") for story_id in ids]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for story_id, resp in zip(ids, responses):
+            if isinstance(resp, Exception) or not hasattr(resp, "status_code") or resp.status_code != 200:
+                resolved_stories.append({
+                    "id": story_id,
+                    "title": f"HackerNews Story #{story_id}",
+                    "url": f"https://news.ycombinator.com/item?id={story_id}",
+                    "score": 0,
+                    "by": "HN User",
+                    "content": f"HackerNews Story #{story_id}",
+                    "formatted": f"Title: HackerNews Story #{story_id}\nURL: https://news.ycombinator.com/item?id={story_id}"
+                })
+                continue
+
+            item = resp.json() or {}
+            title = item.get("title") or f"HackerNews Story #{story_id}"
+            url = item.get("url") or f"https://news.ycombinator.com/item?id={story_id}"
+            score = item.get("score", 0)
+            by = item.get("by", "anonymous")
+            text_content = item.get("text") or title
+
+            formatted_str = f"Title: {title}\nURL: {url}\nScore: {score} points by {by}"
+            if item.get("text"):
+                formatted_str += f"\nContent: {item.get('text')}"
+
+            resolved_stories.append({
+                "id": story_id,
+                "title": title,
+                "url": url,
+                "score": score,
+                "by": by,
+                "content": text_content,
+                "formatted": formatted_str,
+                "text": formatted_str
+            })
+
+    return resolved_stories
+
+
 async def execute_composio_action(app: str, action: str, parameters: dict, entity_id: str = "default") -> dict:
+    action_name = action.upper().strip()
+    is_hn_action = (
+        "HACKERNEWS" in action_name or
+        "HACKER_NEWS" in action_name or
+        (app or "").lower() in ("hackernews", "hacker_news")
+    )
+
     if not composio:
+        if is_hn_action:
+            resolved_hn = await resolve_hacker_news_stories(None)
+            return {"status": "success", "output": resolved_hn}
         return {"status": "error", "error": "COMPOSIO_API_KEY is not configured or Composio client is uninitialized.", "message": "COMPOSIO_API_KEY is not configured or Composio client is uninitialized."}
 
-    action_name = action.upper().strip()
     if action_name == "GITHUB_GET_ABOUT_THE_AUTHENTICATED_USER":
         action_name = "GITHUB_GET_THE_AUTHENTICATED_USER"
     action_name = _normalize_gmail_action(action_name)
@@ -1073,7 +1164,6 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
         except Exception as e:
             print(f"Warning: Failed to fetch LinkedIn profile for author auto-resolution: {e}")
 
-
     try:
         result = await _execute_composio_with_timeout(
             slug=action_name,
@@ -1081,6 +1171,9 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
             user_id=entity_id,
             dangerously_skip_version_check=True
         )
+        if is_hn_action:
+            result = await resolve_hacker_news_stories(result)
+
         if action_name == "GMAIL_FETCH_EMAILS":
             if isinstance(result, dict) and "data" in result and isinstance(result["data"], dict):
                 messages = result["data"].get("messages", [])
@@ -1094,6 +1187,13 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
         return _build_execution_result(result, app, action_name, parameters, not_found_hint)
     except Exception as e:
         traceback.print_exc()
+        if is_hn_action:
+            try:
+                resolved_hn = await resolve_hacker_news_stories(None)
+                if resolved_hn:
+                    return {"status": "success", "output": resolved_hn}
+            except Exception:
+                pass
         if _looks_like_api_key_permission_error(e):
             error_message = _friendly_permission_message(action_name)
             return {"status": "error", "error": error_message, "message": error_message}
@@ -1215,43 +1315,51 @@ def disconnect_composio_account(connected_account_id: str) -> None:
     composio.connected_accounts.delete(connected_account_id)
 
 
+UNAUTHENTICATED_APP_SLUGS = {
+    "gemini", "voxagent_ai", "voxagent-ai", "voxagent_vault_notes",
+    "duckduckgo", "wikipedia", "calculator", "arxiv", "hackernews",
+    "hacker_news", "public_search", "weather"
+}
+
+
 def get_toolkit_connect_requirements(app_slug: str) -> dict:
-    """Determines how `app_slug` can be connected: Composio-managed OAuth
-    (the existing 1-click redirect/popup flow) or a manual credential — an
-    API key, bot token, etc. — the user has to type in themselves.
-
-    Not every toolkit has Composio-managed OAuth (Telegram is API-key-only,
-    for example — its bot token comes from @BotFather, there's nothing to
-    redirect to). Calling `get_app_connect_url` for one of those 404s with
-    "Default auth config not found for toolkit ... Composio does not have
-    managed credentials for this toolkit." This lets the caller check first
-    and route to the right flow instead of hitting that error.
+    """Determines how `app_slug` can be connected: Composio-managed OAuth,
+    manual credentials, or no_auth (always available).
     """
+    clean_slug = (app_slug or "").lower().strip()
+    if clean_slug in UNAUTHENTICATED_APP_SLUGS or clean_slug.replace("-", "_") in UNAUTHENTICATED_APP_SLUGS:
+        return {"mode": "no_auth", "auth_scheme": "NO_AUTH", "fields": [], "message": "Always Available"}
+
     if not composio:
-        raise Exception("Composio client not initialized")
+        return {"mode": "no_auth", "auth_scheme": "NO_AUTH", "fields": [], "message": "Always Available"}
 
-    toolkit = composio.toolkits.get(slug=app_slug)
-    if list(getattr(toolkit, "composio_managed_auth_schemes", None) or []):
-        return {"mode": "oauth", "auth_scheme": None, "fields": []}
+    try:
+        toolkit = composio.toolkits.get(slug=app_slug)
+        if list(getattr(toolkit, "composio_managed_auth_schemes", None) or []):
+            return {"mode": "oauth", "auth_scheme": None, "fields": []}
 
-    details = list(getattr(toolkit, "auth_config_details", None) or [])
-    if not details:
-        raise Exception(f"Composio has no auth configuration available for '{app_slug}' yet.")
+        details = list(getattr(toolkit, "auth_config_details", None) or [])
+        if not details:
+            return {"mode": "no_auth", "auth_scheme": "NO_AUTH", "fields": [], "message": "Always Available"}
 
-    detail = details[0]
-    auth_scheme = getattr(detail, "mode", None) or "API_KEY"
-    initiation = getattr(detail.fields, "connected_account_initiation", None)
-    required = list(getattr(initiation, "required", None) or []) if initiation else []
-    fields = [
-        {
-            "name": f.name,
-            "display_name": f.display_name,
-            "description": f.description,
-            "is_secret": bool(getattr(f, "is_secret", True)),
-        }
-        for f in required
-    ]
-    return {"mode": "credentials", "auth_scheme": auth_scheme, "fields": fields}
+        detail = details[0]
+        auth_scheme = getattr(detail, "mode", None) or "API_KEY"
+        initiation = getattr(detail.fields, "connected_account_initiation", None)
+        required = list(getattr(initiation, "required", None) or []) if initiation else []
+        fields = [
+            {
+                "name": f.name,
+                "display_name": f.display_name,
+                "description": f.description,
+                "is_secret": bool(getattr(f, "is_secret", True)),
+            }
+            for f in required
+        ]
+        return {"mode": "credentials", "auth_scheme": auth_scheme, "fields": fields}
+    except Exception as e:
+        if _looks_like_no_auth_toolkit_error(e):
+            return {"mode": "no_auth", "auth_scheme": "NO_AUTH", "fields": [], "message": "Always Available"}
+        raise
 
 
 class NoAuthRequiredError(Exception):

@@ -198,6 +198,16 @@ def _extract_result_value(result_data):
 def _stringify(value):
     if value is None:
         return ""
+    if isinstance(value, list):
+        formatted_items = []
+        for item in value:
+            if isinstance(item, dict) and "formatted" in item:
+                formatted_items.append(item["formatted"])
+            elif isinstance(item, dict) and "title" in item:
+                formatted_items.append(f"Title: {item.get('title')}\nURL: {item.get('url', 'N/A')}")
+            else:
+                formatted_items.append(str(item))
+        return "\n\n".join(formatted_items)
     return value if isinstance(value, str) else json.dumps(value)
 
 

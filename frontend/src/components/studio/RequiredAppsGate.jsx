@@ -6,6 +6,7 @@ import {
   connectAppWithCredentials,
   getConnectRequirements,
   getRequiredAppsStatus,
+  mockConnectApp,
 } from "../../api/vault";
 import CredentialConnectModal from "../vault/CredentialConnectModal";
 
@@ -58,6 +59,12 @@ export default function RequiredAppsGate({ requiredApps, userId, onStatusChange 
     setConnectingSlug(app.slug);
     try {
       const requirements = await getConnectRequirements(app.slug);
+      if (requirements.mode === "no_auth") {
+        await mockConnectApp(userId, app.slug);
+        setConnectingSlug(null);
+        refresh();
+        return;
+      }
       if (requirements.mode !== "oauth") {
         setConnectingSlug(null);
         setCredentialTarget({ app: { name: app.app, slug: app.slug }, fields: requirements.fields || [] });

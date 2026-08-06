@@ -8,6 +8,7 @@ import {
   getComposioApps,
   getComposioConnections,
   getConnectRequirements,
+  mockConnectApp,
 } from "../../api/vault";
 import AppIcon from "./AppIcon";
 import CredentialConnectModal from "./CredentialConnectModal";
@@ -95,6 +96,13 @@ export default function ApiAppsTab() {
     setConnectingSlug(app.slug);
     try {
       const requirements = await getConnectRequirements(app.slug);
+      if (requirements.mode === "no_auth") {
+        // Bypasses authentication & redirects for unauthenticated apps — instantly active
+        await mockConnectApp(userId, app.slug);
+        setConnectingSlug(null);
+        setNoAuthSlugs((prev) => new Set(prev).add(app.slug));
+        return;
+      }
       if (requirements.mode !== "oauth") {
         // No Composio-managed OAuth for this toolkit (e.g. Telegram, which
         // is bot-token-only) — there's nothing to redirect a popup to.
@@ -105,9 +113,6 @@ export default function ApiAppsTab() {
 
       const res = await connectApp(userId, app.slug);
       if (res.status === "no_auth_required") {
-        // Not a failure — this toolkit's tools work with no connected
-        // account at all (e.g. Gemini). Mark it as always-available rather
-        // than bouncing the user into a popup that has nothing to show.
         setConnectingSlug(null);
         setNoAuthSlugs((prev) => new Set(prev).add(app.slug));
         return;

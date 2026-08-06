@@ -63,7 +63,11 @@ async def get_composio_connections(user_id: str = Query("00000000-0000-0000-0000
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-_BUILTIN_APPS = {"voxagent ai", "voxagent vault notes"}
+_BUILTIN_APPS = {
+    "voxagent ai", "voxagent vault notes", "gemini", "duckduckgo",
+    "wikipedia", "calculator", "arxiv", "hackernews", "hacker news",
+    "public search", "weather"
+}
 
 
 def _slugify_app(app: str) -> str:
@@ -85,11 +89,12 @@ async def required_apps_status(
     telegram_personal_connected = any(
         (a.get("app_name") or "").strip().lower() == TELEGRAM_PERSONAL_APP_NAME.lower() and a.get("status") == "active"
         for a in list_user_apps(user_id)
-    )
+    ) or telegram_client_engine.has_saved_session(user_id, TELEGRAM_PERSONAL_APP_NAME)
+
     telegram_bot_connected = any(
         (a.get("app_name") or "").strip().lower() == TELEGRAM_BOT_APP_NAME.lower() and a.get("status") == "active"
         for a in list_user_apps(user_id)
-    )
+    ) or telegram_client_engine.has_saved_session(user_id, TELEGRAM_BOT_APP_NAME)
 
     results = []
     for name in names:
@@ -184,9 +189,32 @@ async def get_vault_notes(user_id: str = Query("00000000-0000-0000-0000-00000000
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class MockConnectRequest(BaseModel):
+    user_id: str = "00000000-0000-0000-0000-000000000000"
+    app_slug: str
+
+@router.post("/vault/mock-connect")
+async def mock_connect_app(request: MockConnectRequest):
+    """Instant mock integration handler for unauthenticated / always-available modules.
+    Bypasses credential checks, token fields, and OAuth redirects entirely."""
+    return {
+        "status": "no_auth_required",
+        "app_slug": request.app_slug,
+        "message": f"'{request.app_slug}' requires no authentication or credentials and is Always Available.",
+        "connected": True
+    }
+
 @router.post("/vault/connect")
 async def get_connect_url(request: ConnectAppRequest):
     try:
+        reqs = get_toolkit_connect_requirements(request.app_slug)
+        if reqs.get("mode") == "no_auth":
+            return {
+                "status": "no_auth_required",
+                "app_slug": request.app_slug,
+                "message": reqs.get("message", "Always Available"),
+                "connected": True
+            }
         url = get_app_connect_url(request.user_id, request.app_slug)
         return {"status": "success", "app_slug": request.app_slug, "redirect_url": url}
     except NoAuthRequiredError as e:
