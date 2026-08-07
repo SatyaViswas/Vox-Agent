@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   Brain,
@@ -8,6 +9,7 @@ import {
   FileText,
   Globe,
   Loader2,
+  Mic,
   Plus,
   Sparkles,
   Trash2,
@@ -28,6 +30,11 @@ import {
   updateKnowledgeSource,
 } from "../api/knowledge";
 import { useAuth } from "../context/AuthContext";
+import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
+import { useVoiceLanguage } from "../hooks/useVoiceLanguage";
+import { translateText } from "../api/translate";
+import { needsTranslation } from "../lib/textLanguage";
+import VoiceLanguagePicker from "../components/shared/VoiceLanguagePicker";
 
 /* ─────────────── helpers ─────────────── */
 const URL_RE = /^https?:\/\/.+/i;
@@ -69,6 +76,7 @@ function StatCard({ icon: Icon, label, value, accent }) {
 }
 
 function ViewSourceModal({ sourceName, onClose }) {
+  const { t } = useTranslation();
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -92,7 +100,7 @@ function ViewSourceModal({ sourceName, onClose }) {
       await updateKnowledgeSource(sourceName, content);
       setIsEditing(false);
     } catch (err) {
-      setError(err.message || "Failed to save content.");
+      setError(err.message || t("knowledge.saveContentFailed"));
     } finally {
       setSaving(false);
     }
@@ -111,7 +119,7 @@ function ViewSourceModal({ sourceName, onClose }) {
                 onClick={() => setIsEditing(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
               >
-                <Pencil size={14} /> Edit
+                <Pencil size={14} /> {t("common.edit")}
               </button>
             ) : (
               <button
@@ -120,7 +128,7 @@ function ViewSourceModal({ sourceName, onClose }) {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors disabled:opacity-50"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Save
+                {t("common.save")}
               </button>
             )}
             <button
@@ -148,7 +156,7 @@ function ViewSourceModal({ sourceName, onClose }) {
               value={content}
               onChange={(e) => setContent(e.target.value)}
               className="w-full h-full min-h-[300px] bg-transparent outline-none resize-none font-mono text-sm"
-              placeholder="Source content..."
+              placeholder={t("knowledge.sourceContentPlaceholder")}
             />
           ) : (
             <div className="text-sm font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed select-text">
@@ -162,13 +170,14 @@ function ViewSourceModal({ sourceName, onClose }) {
 }
 
 function SourceRow({ source, onDelete, deleting, onRename, onView }) {
+  const { t } = useTranslation();
   const Icon = sourceTypeIcon(source.source_type);
   const typeLabel =
     source.source_type === "url"
-      ? "Website"
+      ? t("knowledge.typeWebsite")
       : source.source_type === "file"
-      ? "File"
-      : "Text";
+      ? t("knowledge.typeFile")
+      : t("knowledge.typeText");
 
   const [isRenaming, setIsRenaming] = useState(false);
   const [editName, setEditName] = useState(source.source_name);
@@ -211,7 +220,7 @@ function SourceRow({ source, onDelete, deleting, onRename, onView }) {
           </span>
           {source.created_at && (
             <span className="text-[11px] text-slate-400 dark:text-slate-500">
-              Added {formatDate(source.created_at)}
+              {t("knowledge.added", { date: formatDate(source.created_at) })}
             </span>
           )}
         </div>
@@ -223,7 +232,7 @@ function SourceRow({ source, onDelete, deleting, onRename, onView }) {
             e.stopPropagation();
             setIsRenaming(true);
           }}
-          aria-label="Rename source"
+          aria-label={t("knowledge.renameSource")}
           className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-brand-500 hover:bg-brand-500/10 transition-all"
         >
           <Edit3 size={14} />
@@ -250,6 +259,8 @@ function SourceRow({ source, onDelete, deleting, onRename, onView }) {
 
 /* drag-and-drop omni-box */
 function OmniBox({ onSuccess }) {
+  const { t } = useTranslation();
+  const { voiceLanguage, setVoiceLanguage } = useVoiceLanguage();
   const [mode, setMode] = useState("text"); // "text" | "url" | "file"
   const [textInput, setTextInput] = useState("");
   const [urlInput, setUrlInput] = useState("");
@@ -260,6 +271,19 @@ function OmniBox({ onSuccess }) {
   const [toast, setToast] = useState(null); // { type: "success"|"error", msg }
   const fileRef = useRef(null);
   const dragCounter = useRef(0);
+
+  const {
+    isSupported: speechSupported,
+    isRecording,
+    interimTranscript,
+    error: speechError,
+    toggle: toggleRecording,
+  } = useSpeechRecognition({
+    lang: voiceLanguage.speechCode,
+    onFinalTranscript: (finalText) => {
+      setTextInput((prev) => (prev ? prev + " " + finalText : finalText).trim());
+    },
+  });
 
   const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -272,23 +296,32 @@ function OmniBox({ onSuccess }) {
     try {
       setLoading(true);
       if (mode === "text") {
-        if (!textInput.trim()) return showToast("error", "Please enter some text.");
-        await ingestKnowledge({ text: textInput.trim(), name: nameInput.trim() });
+        if (!textInput.trim()) return showToast("error", t("knowledge.enterText"));
+        // Same translate-before-send pattern as Studio's voice mode — the
+        // textarea keeps showing the user's own words; ingestKnowledge only
+        // ever receives English, so knowledge_ingestion.py needs no changes.
+        // Detection is based on the text itself, not just the language
+        // picker, so a mismatched or forgotten selection still translates.
+        const trimmedText = textInput.trim();
+        const englishText = needsTranslation(trimmedText, voiceLanguage.uiCode)
+          ? await translateText(trimmedText, "auto")
+          : trimmedText;
+        await ingestKnowledge({ text: englishText, name: nameInput.trim() });
         setTextInput("");
       } else if (mode === "url") {
-        if (!isUrl(urlInput)) return showToast("error", "Please enter a valid URL (starting with http:// or https://).");
+        if (!isUrl(urlInput)) return showToast("error", t("knowledge.enterValidUrl"));
         await ingestKnowledge({ url: urlInput.trim(), name: nameInput.trim() });
         setUrlInput("");
       } else {
-        if (!file) return showToast("error", "Please select a file.");
+        if (!file) return showToast("error", t("knowledge.selectFile"));
         await ingestKnowledge({ file, name: nameInput.trim() });
         setFile(null);
       }
       setNameInput("");
-      showToast("success", "Knowledge added! AI cache has been refreshed.");
+      showToast("success", t("knowledge.addSuccess"));
       onSuccess();
     } catch (err) {
-      showToast("error", err.message || "Failed to add knowledge. Try again.");
+      showToast("error", err.message || t("knowledge.addFailed"));
     } finally {
       setLoading(false);
     }
@@ -296,12 +329,12 @@ function OmniBox({ onSuccess }) {
 
   const handleFileDrop = (f) => {
     if (f.size > MAX_BYTES) {
-      return showToast("error", "File too large. Maximum 10 MB.");
+      return showToast("error", t("knowledge.fileTooLarge"));
     }
     const allowed = ["application/pdf", "text/csv", "text/plain"];
     const ext = f.name.split(".").pop().toLowerCase();
     if (!allowed.includes(f.type) && !["pdf", "csv", "txt"].includes(ext)) {
-      return showToast("error", "Unsupported format. Use PDF, CSV, or TXT.");
+      return showToast("error", t("knowledge.unsupportedFormat"));
     }
     setFile(f);
     setMode("file");
@@ -356,26 +389,53 @@ function OmniBox({ onSuccess }) {
           <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500">
             <Plus size={16} className="text-white" />
           </div>
-          <span className="font-semibold text-sm">Add Knowledge</span>
+          <span className="font-semibold text-sm">{t("knowledge.addKnowledge")}</span>
         </div>
         {/* mode tabs */}
         <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-white/5">
-          {tabBtn("text", "Text", FileText)}
-          {tabBtn("url", "URL", Globe)}
-          {tabBtn("file", "File", UploadCloud)}
+          {tabBtn("text", t("knowledge.modeText"), FileText)}
+          {tabBtn("url", t("knowledge.modeUrl"), Globe)}
+          {tabBtn("file", t("knowledge.modeFile"), UploadCloud)}
         </div>
       </div>
 
       {/* input area */}
       {mode === "text" && (
-        <textarea
-          id="kb-text-input"
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value)}
-          placeholder="Paste your product info, FAQs, policies, price lists, business rules, scripts — anything your AI should know..."
-          rows={5}
-          className="w-full resize-none rounded-xl border border-slate-200 dark:border-white/10 bg-white/60 dark:bg-black/20 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-400/50 placeholder-slate-400 dark:placeholder-slate-600 transition"
-        />
+        <div className="flex flex-col gap-2">
+          <textarea
+            id="kb-text-input"
+            value={isRecording && interimTranscript ? `${textInput} ${interimTranscript}`.trim() : textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder={t("knowledge.textPlaceholderVoice")}
+            rows={5}
+            disabled={isRecording}
+            className="w-full resize-none rounded-xl border border-slate-200 dark:border-white/10 bg-white/60 dark:bg-black/20 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-400/50 placeholder-slate-400 dark:placeholder-slate-600 transition disabled:opacity-70"
+          />
+          <div className="flex items-center justify-end gap-2">
+            <VoiceLanguagePicker value={voiceLanguage.speechCode} onChange={setVoiceLanguage} />
+            <button
+              type="button"
+              onClick={toggleRecording}
+              disabled={!speechSupported}
+              aria-pressed={isRecording}
+              aria-label={t("voice.toggleRecording")}
+              title={speechSupported ? t("voice.speakPrompt") : t("voice.notSupported")}
+              className={`flex items-center justify-center w-9 h-9 rounded-xl transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
+                isRecording
+                  ? "bg-red-500 text-white animate-pulse"
+                  : "bg-slate-900/5 dark:bg-white/5 text-slate-500 hover:text-brand-500"
+              }`}
+            >
+              <Mic size={16} />
+            </button>
+          </div>
+          {speechError && (
+            <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+              <AlertCircle size={13} className="shrink-0" />
+              {speechError}
+            </div>
+          )}
+        </div>
       )}
 
       {mode === "url" && (
@@ -390,7 +450,7 @@ function OmniBox({ onSuccess }) {
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            placeholder="https://yourwebsite.com/menu"
+            placeholder={t("knowledge.urlPlaceholder")}
             className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white/60 dark:bg-black/20 pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-400/50 placeholder-slate-400 dark:placeholder-slate-600 transition"
           />
         </div>
@@ -442,10 +502,8 @@ function OmniBox({ onSuccess }) {
                 <UploadCloud size={24} className="text-slate-400" />
               </div>
               <div className="text-center">
-                <p className="font-medium text-sm">Drop file here or click to browse</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Supported: PDF, CSV, TXT · Max 10 MB
-                </p>
+                <p className="font-medium text-sm">{t("knowledge.dropOrClick")}</p>
+                <p className="text-xs text-slate-400 mt-1">{t("knowledge.supportedFormats")}</p>
               </div>
             </>
           )}
@@ -455,7 +513,7 @@ function OmniBox({ onSuccess }) {
       {/* drag overlay hint */}
       {dragging && (
         <div className="absolute inset-0 rounded-2xl bg-brand-500/10 flex items-center justify-center pointer-events-none">
-          <p className="font-semibold text-brand-500 text-sm">Drop to add knowledge</p>
+          <p className="font-semibold text-brand-500 text-sm">{t("knowledge.dropHere")}</p>
         </div>
       )}
 
@@ -465,7 +523,7 @@ function OmniBox({ onSuccess }) {
           type="text"
           value={nameInput}
           onChange={(e) => setNameInput(e.target.value)}
-          placeholder="Custom Name (Optional)"
+          placeholder={t("knowledge.namePlaceholder")}
           className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-white/60 dark:bg-black/20 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-400/50 placeholder-slate-400 dark:placeholder-slate-600 transition"
         />
       </div>
@@ -482,7 +540,7 @@ function OmniBox({ onSuccess }) {
         ) : (
           <Sparkles size={16} />
         )}
-        {loading ? "Processing…" : "Add to Knowledge Base"}
+        {loading ? t("knowledge.processing") : t("knowledge.submit")}
       </button>
 
       {/* toast */}
@@ -508,6 +566,7 @@ function OmniBox({ onSuccess }) {
 
 /* ─────────────── main page ─────────────── */
 export default function KnowledgeBase() {
+  const { t } = useTranslation();
   const { userId } = useAuth();
   const [sources, setSources] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -520,7 +579,7 @@ export default function KnowledgeBase() {
     setError(null);
     getKnowledgeSources()
       .then(setSources)
-      .catch((err) => setError(err.message || "Could not load knowledge sources."))
+      .catch((err) => setError(err.message || t("knowledge.loadFailed")))
       .finally(() => setLoading(false));
   }, []);
 
@@ -535,7 +594,7 @@ export default function KnowledgeBase() {
       setSources((prev) => prev.filter((s) => s.source_name !== name));
       setError(null);
     } catch (err) {
-      setError(err.message || "Failed to delete source.");
+      setError(err.message || t("knowledge.deleteFailed"));
     } finally {
       setDeleting(null);
     }
@@ -546,7 +605,7 @@ export default function KnowledgeBase() {
       await renameKnowledgeSource(oldName, newName);
       fetchSources();
     } catch (err) {
-      setError(err.message || "Failed to rename source.");
+      setError(err.message || t("knowledge.renameFailed"));
     }
   };
 
@@ -561,12 +620,10 @@ export default function KnowledgeBase() {
             <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500 text-white shrink-0">
               <Brain size={19} />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">Business Knowledge</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{t("knowledge.title")}</h1>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed max-w-lg">
-            Everything you add here becomes part of your AI's permanent context — it uses
-            this knowledge automatically across all automations, chats, emails, and
-            workflows, on any platform.
+            {t("knowledge.subtitle")}
           </p>
         </div>
       </div>
@@ -575,20 +632,20 @@ export default function KnowledgeBase() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatCard
           icon={Brain}
-          label="Active Sources"
+          label={t("knowledge.activeSources")}
           value={loading ? "—" : totalSources}
           accent="bg-gradient-to-br from-brand-500 to-brand-600"
         />
         <StatCard
           icon={Zap}
-          label="Cache Status"
-          value={totalSources > 0 ? "Live" : "Empty"}
+          label={t("knowledge.cacheStatus")}
+          value={totalSources > 0 ? t("knowledge.live") : t("knowledge.empty")}
           accent="bg-gradient-to-br from-fuchsia-500 to-purple-600"
         />
         <StatCard
           icon={Sparkles}
-          label="AI Mode"
-          value={totalSources > 0 ? "Context-Aware" : "Generic"}
+          label={t("knowledge.aiMode")}
+          value={totalSources > 0 ? t("knowledge.contextAware") : t("knowledge.generic")}
           accent="bg-gradient-to-br from-amber-400 to-orange-500"
         />
       </div>
@@ -600,11 +657,9 @@ export default function KnowledgeBase() {
             <Sparkles size={18} className="text-white" />
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-sm">Your AI is flying blind right now</p>
+            <p className="font-semibold text-sm">{t("knowledge.flyingBlindTitle")}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-              Add your business details below — pricing, policies, product info, FAQs,
-              or your website — and your AI will automatically use them in every
-              task it performs.
+              {t("knowledge.flyingBlindDesc")}
             </p>
           </div>
         </div>
@@ -620,7 +675,7 @@ export default function KnowledgeBase() {
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-2">
             <ChevronRight size={15} className="text-brand-500" />
-            Active Sources
+            {t("knowledge.activeSources")}
             {!loading && totalSources > 0 && (
               <span className="ml-1 text-xs font-normal bg-brand-500/10 text-brand-500 px-2 py-0.5 rounded-full">
                 {totalSources}
@@ -639,11 +694,11 @@ export default function KnowledgeBase() {
         {loading ? (
           <div className="glass-panel p-10 flex items-center justify-center gap-2 text-sm text-slate-400">
             <Loader2 size={16} className="animate-spin" />
-            Loading knowledge sources…
+            {t("common.loading")}
           </div>
         ) : totalSources === 0 ? (
           <div className="glass-panel p-10 text-center text-sm text-slate-500 dark:text-slate-400">
-            No knowledge sources yet. Add your first one above.
+            {t("knowledge.noSources")}
           </div>
         ) : (
           <div className="flex flex-col gap-2">

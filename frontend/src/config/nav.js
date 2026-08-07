@@ -1,9 +1,9 @@
 import { Bot, Brain, KeyRound, Notebook, Zap } from "lucide-react";
 
 export const NAV_ITEMS = [
-  { to: "/studio", label: "Agent Studio", shortLabel: "Studio", icon: Zap },
-  { to: "/agents", label: "My Agents", shortLabel: "Agents", icon: Bot },
-  { to: "/vault", label: "App Vault", shortLabel: "Vault", icon: KeyRound },
-  { to: "/notes", label: "Vault Notes", shortLabel: "Notes", icon: Notebook },
-  { to: "/knowledge", label: "Knowledge Base", shortLabel: "Brain", icon: Brain },
+  { to: "/studio", labelKey: "nav.studio", shortLabelKey: "nav.studioShort", icon: Zap },
+  { to: "/agents", labelKey: "nav.agents", shortLabelKey: "nav.agentsShort", icon: Bot },
+  { to: "/vault", labelKey: "nav.vault", shortLabelKey: "nav.vaultShort", icon: KeyRound },
+  { to: "/notes", labelKey: "nav.notes", shortLabelKey: "nav.notesShort", icon: Notebook },
+  { to: "/knowledge", labelKey: "nav.knowledge", shortLabelKey: "nav.knowledgeShort", icon: Brain },
 ];

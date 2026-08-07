@@ -1,40 +1,48 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CheckCircle2, Clock, History, Loader2, Pencil, PlayCircle, Radio, Trash2, XCircle } from "lucide-react";
 import Switch from "../Switch";
 import RouteBadges from "./RouteBadges";
 import { describeSchedule } from "../../lib/cron";
 
-function describeEventTrigger(blueprint) {
+function useEventTriggerDescription(blueprint) {
+  const { t } = useTranslation();
   const trigger = blueprint?.trigger || {};
   if (trigger.event_app) {
-    return `Watching ${trigger.event_app}${trigger.event_target ? ` for "${trigger.event_target}"` : ""}`;
+    return trigger.event_target
+      ? t("agentCard.watchingFor", { app: trigger.event_app, target: trigger.event_target })
+      : t("agentCard.watching", { app: trigger.event_app });
   }
-  return trigger.details || "Waiting on an event";
+  return trigger.details || t("agentCard.waitingOnEvent");
 }
 
-function timeAgo(isoString) {
+function useTimeAgo(isoString) {
+  const { t } = useTranslation();
   if (!isoString) return null;
   const diffMs = Date.now() - new Date(isoString).getTime();
   const mins = Math.round(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t("agentCard.justNow");
+  if (mins < 60) return t("agentCard.minsAgo", { count: mins });
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t("agentCard.hoursAgo", { count: hours });
   const days = Math.round(hours / 24);
-  return `${days}d ago`;
+  return t("agentCard.daysAgo", { count: days });
 }
 
 function LastRunIndicator({ lastRun, loading }) {
+  const { t } = useTranslation();
+  const timeAgo = useTimeAgo(lastRun?.executed_at);
+
   if (loading) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
         <Loader2 size={12} className="animate-spin" />
-        Checking last run…
+        {t("agentCard.checkingLastRun")}
       </span>
     );
   }
   if (!lastRun) {
-    return <span className="text-xs text-slate-400">Never run yet</span>;
+    return <span className="text-xs text-slate-400">{t("agentCard.neverRunYet")}</span>;
   }
   const isNeedsInput = lastRun.status === "needs_input";
   const success = lastRun.status === "success";
@@ -42,15 +50,15 @@ function LastRunIndicator({ lastRun, loading }) {
   return (
     <span
       className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-        isNeedsInput 
-          ? "text-brand-500 dark:text-brand-400" 
-          : success 
-          ? "text-emerald-600 dark:text-emerald-400" 
+        isNeedsInput
+          ? "text-brand-500 dark:text-brand-400"
+          : success
+          ? "text-emerald-600 dark:text-emerald-400"
           : "text-red-500 dark:text-red-400"
       }`}
     >
       {isNeedsInput ? <Clock size={13} /> : success ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-      {isNeedsInput ? "Paused" : success ? "Success" : "Failed"} · {timeAgo(lastRun.executed_at)}
+      {isNeedsInput ? t("agentCard.paused") : success ? t("agentCard.success") : t("agentCard.failed")} · {timeAgo}
     </span>
   );
 }
@@ -68,10 +76,12 @@ export default function AgentCard({
   onViewHistory,
   onDelete,
 }) {
+  const { t } = useTranslation();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const isActive = agent.status === "active";
   const isScheduled = agent.trigger_type === "scheduled";
   const isEvent = agent.trigger_type === "event_trigger";
+  const eventTriggerDescription = useEventTriggerDescription(agent.json_blueprint);
 
   const handleDeleteClick = () => {
     if (confirmingDelete) {
@@ -94,7 +104,7 @@ export default function AgentCard({
           <Switch
             checked={isActive}
             onChange={() => onToggleStatus(agent)}
-            label={`Toggle ${agent.title} active state`}
+            label={t("agentCard.toggleActiveLabel", { title: agent.title })}
           />
         )}
       </div>
@@ -103,7 +113,7 @@ export default function AgentCard({
 
       <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
         <Clock size={13} />
-        {isEvent ? describeEventTrigger(agent.json_blueprint) : describeSchedule(agent.trigger_type, agent.cron_schedule)}
+        {isEvent ? eventTriggerDescription : describeSchedule(agent.trigger_type, agent.cron_schedule)}
       </div>
 
       {isEvent && isActive && (
@@ -115,7 +125,7 @@ export default function AgentCard({
         >
           <Radio size={12} className={`shrink-0 mt-0.5 ${isListening ? "animate-pulse" : ""}`} />
           <span>
-            {isListening ? "Listening live" : "Not listening"}
+            {isListening ? t("agentCard.listeningLive") : t("agentCard.notListening")}
             {!isListening && listeningReason && (
               <span className="block text-[11px] font-normal text-amber-600/80 dark:text-amber-400/80 mt-0.5">
                 {listeningReason}
@@ -131,29 +141,29 @@ export default function AgentCard({
         <button
           onClick={() => onRunNow(agent)}
           disabled={isRunning}
-          title="Run Now"
+          title={t("agentCard.runNow")}
           className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-xs font-medium py-2 transition-colors"
         >
           {isRunning ? <Loader2 size={13} className="animate-spin" /> : <PlayCircle size={13} />}
-          {isRunning ? "Running…" : "Run Now"}
+          {isRunning ? t("agentCard.running") : t("agentCard.runNow")}
         </button>
         <button
           onClick={() => onEdit(agent)}
-          title="Edit Agent"
+          title={t("agentCard.editAgent")}
           className="flex items-center justify-center w-9 h-9 rounded-lg border border-slate-300/70 dark:border-white/15 text-slate-500 hover:text-brand-500 hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors shrink-0"
         >
           <Pencil size={14} />
         </button>
         <button
           onClick={() => onViewHistory(agent)}
-          title="View History"
+          title={t("agentCard.viewHistory")}
           className="flex items-center justify-center w-9 h-9 rounded-lg border border-slate-300/70 dark:border-white/15 text-slate-500 hover:text-brand-500 hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors shrink-0"
         >
           <History size={14} />
         </button>
         <button
           onClick={handleDeleteClick}
-          title={confirmingDelete ? "Click again to confirm" : "Delete Agent"}
+          title={confirmingDelete ? t("agentCard.confirmDelete") : t("agentCard.deleteAgent")}
           className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-colors shrink-0 ${
             confirmingDelete
               ? "border-red-400 bg-red-500 text-white"

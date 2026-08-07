@@ -43,9 +43,32 @@ logger = logging.getLogger(__name__)
 # that placeholder's whole-match resolves to the raw value verbatim (see
 # _interpolate), and a text-generating step (e.g. an email body) needs the
 # plain message text, not a dict it would have to reach into.
-_PLACEHOLDER_TOKEN = r"\{{1,2}\s*(?:step_(?P<step>\d+)_result|(?P<trigger_field>trigger_result|trigger_chat_id|trigger_data)|(?P<item_field>item))\s*\}{1,2}"
+# Resolves both:
+#   FORM A  {{step_N_result}}.prop  / {step_N_result}.prop    — dot AFTER closing brace
+#   FORM B  {{step_N_result.prop}}  / {step_1_result.prop}    — dot INSIDE braces
+# Single pattern, no duplicate named groups. The trick: capture `prop_b` inside
+# the braces (only present in FORM B), then the closing brace, then optionally
+# capture `prop_a` after (only present in FORM A).  Exactly one of prop_b/prop_a
+# will be set; _get_prop() returns whichever one matched.
+_PLACEHOLDER_TOKEN = (
+    r"\{{1,2}"                                                             # opening {{ or {
+    r"\s*"
+    r"(?:step_(?P<step>\d+)_result"                                        # step_N_result
+    r"|(?P<trigger_field>trigger_result|trigger_chat_id|trigger_data)"     # trigger slots
+    r"|(?P<item_field>item))"                                              # item slot
+    r"\s*"
+    r"(?:\.(?P<prop_b>[a-zA-Z0-9_]+)\s*)?"                                # FORM B: prop inside braces (optional)
+    r"\}{1,2}"                                                             # closing }} or }
+    r"(?:\.(?P<prop_a>[a-zA-Z0-9_]+))?"                                   # FORM A: prop after braces (optional)
+)
 _FULL_PLACEHOLDER_RE = re.compile(rf"^{_PLACEHOLDER_TOKEN}$")
 _INLINE_PLACEHOLDER_RE = re.compile(_PLACEHOLDER_TOKEN)
+
+
+def _get_prop(m: re.Match) -> str | None:
+    """Return the property name from either FORM_B (dot-inside braces) or
+    FORM_A (dot-outside braces), or None when the placeholder has no property."""
+    return m.group("prop_b") or m.group("prop_a") or None
 
 # Runtime responses that read as a clarifying question rather than completed
 # work (e.g. a browser_agent's underlying LLM asking "which platform did you
@@ -201,6 +224,22 @@ def _stringify(value):
     return value if isinstance(value, str) else json.dumps(value)
 
 
+def _resolve_property(base_value, prop: str | None):
+    if not prop:
+        return base_value
+    
+    # Try parsing base_value if it's a JSON string
+    if isinstance(base_value, str):
+        try:
+            base_value = json.loads(base_value)
+        except Exception:
+            pass
+            
+    if isinstance(base_value, dict) and prop in base_value:
+        return base_value[prop]
+    return base_value
+
+
 def _interpolate(value, step_results):
     """Recursively resolve {{step_N_result}} / {{trigger_result}} / {{item}}
     placeholders against prior steps' extracted results (and, for
@@ -213,10 +252,11 @@ def _interpolate(value, step_results):
         stripped = value.strip()
         full_match = _FULL_PLACEHOLDER_RE.match(stripped)
         if full_match:
-            return step_results.get(_resolve_key(full_match), value)
+            base_val = step_results.get(_resolve_key(full_match), value)
+            return _resolve_property(base_val, _get_prop(full_match))
         if _INLINE_PLACEHOLDER_RE.search(value):
             return _INLINE_PLACEHOLDER_RE.sub(
-                lambda m: _stringify(step_results.get(_resolve_key(m))), value
+                lambda m: _stringify(_resolve_property(step_results.get(_resolve_key(m)), _get_prop(m))), value
             )
         return value
     if isinstance(value, dict):
@@ -327,8 +367,14 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
         # reaches parameters the user actually specified.
         prompt = parameters.get("prompt") or parameters.get("text") or parameters.get("content") or ""
         as_list = bool(parameters.get("_as_list"))
+        # An automation may be scoped to specific knowledge sources (e.g. a
+        # bakery bot vs a real estate bot sharing the same user's knowledge
+        # hub) — see EditAgentDrawer.jsx's Knowledge Sources picker. Absent
+        # for agents that haven't set one, which keeps the old "search
+        # everything" behavior for them.
+        knowledge_sources = (blueprint or {}).get("knowledge_sources") or None
         try:
-            content = generate_ai_content(prompt, as_list=as_list)
+            content = generate_ai_content(prompt, as_list=as_list, user_id=user_id, knowledge_sources=knowledge_sources)
             return {"status": "success", "output": content}
         except Exception as e:
             traceback.print_exc()

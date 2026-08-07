@@ -1,8 +1,10 @@
 import { NavLink } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Sparkles, X } from "lucide-react";
 import { NAV_ITEMS } from "../../config/nav";
 
 export default function MobileDrawer({ open, onClose }) {
+  const { t } = useTranslation();
   return (
     <div
       className={`md:hidden fixed inset-0 z-50 transition-opacity ${
@@ -27,13 +29,13 @@ export default function MobileDrawer({ open, onClose }) {
           <button
             onClick={onClose}
             className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-900/5 dark:hover:bg-white/5"
-            aria-label="Close menu"
+            aria-label={t("header.openMenu")}
           >
             <X size={20} />
           </button>
         </div>
         <nav className="p-3 space-y-1">
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+          {NAV_ITEMS.map(({ to, labelKey, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -47,7 +49,7 @@ export default function MobileDrawer({ open, onClose }) {
               }
             >
               <Icon size={19} />
-              <span>{label}</span>
+              <span>{t(labelKey)}</span>
             </NavLink>
           ))}
         </nav>

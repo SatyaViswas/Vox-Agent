@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import supabase
 from app.config import settings
-from app.routers import planner, engines, vault, execution, knowledge
+from app.routers import planner, engines, vault, execution, knowledge, auth, translate
 from app.routers.execution import arm_event_trigger
 from app.services.scheduler import scheduler, add_or_update_job
 
@@ -41,11 +41,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(planner.router, prefix="/api/v1")
 app.include_router(engines.router, prefix="/api/v1")
 app.include_router(vault.router, prefix="/api/v1")
 app.include_router(execution.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
+app.include_router(translate.router, prefix="/api/v1")
 
 import asyncio
 
@@ -94,6 +96,19 @@ async def _rearm_event_trigger_agents():
     except Exception:
         traceback.print_exc()
         return
+
+    # A brief grace period before reconnecting any Telegram-backed listener.
+    # `uvicorn --reload` kills the old worker and starts a new one on every
+    # file save; if the old worker hasn't fully released its Telegram
+    # connection by the time this new one reconnects with the SAME session
+    # file, Telegram sees the same auth key used from two places at once and
+    # permanently revokes it (AuthKeyDuplicatedError — unrecoverable in code,
+    # requires reconnecting in App Vault). This delay gives the old worker's
+    # shutdown handler (below) time to finish disconnecting first, shrinking
+    # that race window. It only matters when reload is actually in play; the
+    # cost on a normal single boot is one harmless second.
+    if any((agent.get("json_blueprint") or {}).get("trigger", {}).get("event_app", "").lower().startswith("telegram") for agent in (response.data or [])):
+        await asyncio.sleep(2)
 
     for agent in response.data or []:
         try:

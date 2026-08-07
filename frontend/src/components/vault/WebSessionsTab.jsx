@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, Globe, Loader2, Pencil, Plus, QrCode, Send, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { disconnectApp, getVaultApps, saveSession } from "../../api/vault";
@@ -15,6 +16,7 @@ const isTelegramBot = (appName) => (appName || "").toLowerCase() === TELEGRAM_BO
 
 export default function WebSessionsTab() {
   const { userId } = useAuth();
+  const { t } = useTranslation();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -30,7 +32,7 @@ export default function WebSessionsTab() {
         setSessions(rows);
         setError(null);
       })
-      .catch((err) => setError(err.message || "Failed to load web sessions."))
+      .catch((err) => setError(err.message || t("vault.webSessionsTab.loadFailed")))
       .finally(() => setLoading(false));
   }, [userId]);
 
@@ -43,7 +45,7 @@ export default function WebSessionsTab() {
     try {
       await disconnectApp(userId, session.app_name);
     } catch (err) {
-      setError(err.message || `Failed to disconnect ${session.app_name}.`);
+      setError(err.message || t("vault.webSessionsTab.disconnectFailed", { name: session.app_name }));
       fetchSessions();
     }
   };
@@ -75,8 +77,7 @@ export default function WebSessionsTab() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Linked browser sessions and personal accounts VoxAgent can act on your behalf through — for portals
-          without a public API, or apps (like Telegram) whose real automation needs your own logged-in account.
+          {t("vault.webSessionsTab.description")}
         </p>
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -84,30 +85,30 @@ export default function WebSessionsTab() {
             className="flex items-center gap-1.5 rounded-xl border border-slate-300/70 dark:border-white/15 text-slate-600 dark:text-slate-300 hover:bg-slate-900/5 dark:hover:bg-white/5 text-sm font-medium px-4 py-2.5 transition-colors shrink-0"
           >
             <Plus size={16} />
-            New Portal Session
+            {t("vault.webSessionsTab.newPortalSession")}
           </button>
           <button
             onClick={() => setTelegramMode("bot")}
             className="flex items-center gap-1.5 rounded-xl border border-slate-300/70 dark:border-white/15 text-slate-600 dark:text-slate-300 hover:bg-slate-900/5 dark:hover:bg-white/5 text-sm font-medium px-4 py-2.5 transition-colors shrink-0"
-            title="Listen and reply to messages sent directly to your Telegram Bot (e.g. customer support)"
+            title={t("vault.webSessionsTab.linkBotTitle")}
           >
             <Send size={16} />
-            Link Telegram Bot
+            {t("vault.webSessionsTab.linkTelegramBot")}
           </button>
           <button
             onClick={() => setTelegramMode("personal")}
             className="flex items-center gap-1.5 rounded-xl border border-slate-300/70 dark:border-white/15 text-slate-600 dark:text-slate-300 hover:bg-slate-900/5 dark:hover:bg-white/5 text-sm font-medium px-4 py-2.5 transition-colors shrink-0"
-            title="Automate your own chats — like reading Saved Messages or replying as you"
+            title={t("vault.webSessionsTab.linkPersonalTitle")}
           >
             <Send size={16} />
-            Link Telegram Account
+            {t("vault.webSessionsTab.linkTelegramAccount")}
           </button>
           <button
             onClick={() => setQrOpen(true)}
             className="flex items-center gap-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 transition-colors shrink-0"
           >
             <QrCode size={16} />
-            Link WhatsApp Web
+            {t("vault.webSessionsTab.linkWhatsApp")}
           </button>
         </div>
       </div>
@@ -122,11 +123,11 @@ export default function WebSessionsTab() {
       {loading ? (
         <div className="glass-panel p-10 flex items-center justify-center gap-2 text-sm text-slate-400">
           <Loader2 size={16} className="animate-spin" />
-          Loading sessions…
+          {t("vault.webSessionsTab.loading")}
         </div>
       ) : sessions.length === 0 ? (
         <div className="glass-panel p-10 text-center text-sm text-slate-500 dark:text-slate-400">
-          No linked sessions yet. Link WhatsApp Web or add a portal session to see it here.
+          {t("vault.webSessionsTab.empty")}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -142,19 +143,19 @@ export default function WebSessionsTab() {
                     session.status === "active" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"
                   }`}
                 >
-                  {session.status === "active" ? "🟢 Active Session" : session.status}
+                  {session.status === "active" ? t("vault.webSessionsTab.activeSession") : session.status}
                 </p>
               </div>
               <button
                 onClick={() => handleEdit(session)}
                 title={
                   isWhatsApp(session.app_name)
-                    ? "Re-link WhatsApp Web"
+                    ? t("vault.webSessionsTab.relinkWhatsApp")
                     : isTelegramPersonal(session.app_name)
-                      ? "Re-link Telegram account"
+                      ? t("vault.webSessionsTab.relinkTelegramAccount")
                       : isTelegramBot(session.app_name)
-                        ? "Re-link Telegram bot"
-                        : "Edit login details"
+                        ? t("vault.webSessionsTab.relinkTelegramBot")
+                        : t("vault.webSessionsTab.editLoginDetails")
                 }
                 className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-brand-500 hover:bg-brand-500/10 transition-colors shrink-0"
               >
@@ -162,7 +163,7 @@ export default function WebSessionsTab() {
               </button>
               <button
                 onClick={() => handleDisconnect(session)}
-                title="Remove session"
+                title={t("vault.webSessionsTab.removeSession")}
                 className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
               >
                 <Trash2 size={14} />

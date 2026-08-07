@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, KeyRound, Loader2, X } from "lucide-react";
 
-export default function CredentialConnectModal({ app, fields, onClose, onSubmit }) {
+export default function CredentialConnectModal({ app, fields, authScheme, onClose, onSubmit }) {
+  const { t } = useTranslation();
   const [values, setValues] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -20,7 +22,7 @@ export default function CredentialConnectModal({ app, fields, onClose, onSubmit 
     try {
       await onSubmit(values);
     } catch (err) {
-      setError(err.message || `Failed to connect ${app.name}.`);
+      setError(err.message || t("vault.credentialModal.connectFailed", { name: app.name }));
     } finally {
       setSaving(false);
     }
@@ -31,20 +33,29 @@ export default function CredentialConnectModal({ app, fields, onClose, onSubmit 
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <form onSubmit={handleSubmit} className="relative glass-panel w-full max-w-md p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Connect {app.name}</h2>
+          <h2 className="font-semibold">{t("vault.credentialModal.connectTitle", { name: app.name })}</h2>
           <button
             type="button"
             onClick={onClose}
             className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-900/5 dark:hover:bg-white/5"
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X size={18} />
           </button>
         </div>
 
         <p className="text-xs text-slate-500 dark:text-slate-400 -mt-1">
-          {app.name} doesn't support one-click OAuth — provide the credential below to connect it.
+          {t("vault.credentialModal.noOauthNotice", { name: app.name })}
         </p>
+
+        {authScheme === "OAUTH2" && (
+          <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400">
+            <AlertCircle size={14} className="shrink-0 mt-0.5" />
+            <span>
+              {t("vault.credentialModal.oauth2Notice", { name: app.name })}
+            </span>
+          </div>
+        )}
 
         {fields.map((field) => (
           <div key={field.name} className="flex flex-col gap-1.5">
@@ -76,7 +87,7 @@ export default function CredentialConnectModal({ app, fields, onClose, onSubmit 
           className="flex items-center justify-center gap-2 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white text-sm font-medium py-2.5 transition-colors"
         >
           {saving ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />}
-          {saving ? "Connecting…" : `Connect ${app.name}`}
+          {saving ? t("vault.credentialModal.connecting") : t("vault.credentialModal.connectTitle", { name: app.name })}
         </button>
       </form>
     </div>

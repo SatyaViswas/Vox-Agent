@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, CheckCircle2, Loader2, Send, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { cancelTelegramLogin, startTelegramLogin, submitTelegramCode, submitTelegramPassword } from "../../api/vault";
 
 export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
   const { userId } = useAuth();
+  const { t } = useTranslation();
   const [step, setStep] = useState("phone"); // phone | code | password | success
   const [phoneNumber, setPhoneNumber] = useState("");
   const [code, setCode] = useState("");
@@ -46,7 +48,7 @@ export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
         setStep("code");
       }
     } catch (err) {
-      setError(err.message || "Failed to send a login code — check the phone number and try again.");
+      setError(err.message || t("vault.telegramModal.sendCodeFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -65,7 +67,7 @@ export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
         onLinked?.();
       }
     } catch (err) {
-      setError(err.message || "That code didn't work — try again.");
+      setError(err.message || t("vault.telegramModal.codeFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -80,7 +82,7 @@ export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
       setStep("success");
       onLinked?.();
     } catch (err) {
-      setError(err.message || "Incorrect password — try again.");
+      setError(err.message || t("vault.telegramModal.passwordFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -91,11 +93,13 @@ export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
       <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
       <div className="relative glass-panel w-full max-w-sm p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Connect {mode === "bot" ? "Telegram Bot" : "Telegram Personal Account"}</h2>
+          <h2 className="font-semibold">
+            {mode === "bot" ? t("vault.telegramModal.connectBotTitle") : t("vault.telegramModal.connectPersonalTitle")}
+          </h2>
           <button
             onClick={handleClose}
             className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-900/5 dark:hover:bg-white/5"
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X size={18} />
           </button>
@@ -106,10 +110,9 @@ export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
             <div className="flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-500">
               <CheckCircle2 size={32} />
             </div>
-            <p className="font-medium text-sm">🟢 Connected</p>
+            <p className="font-medium text-sm">{t("vault.telegramModal.connectedBadge")}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
-              Your Telegram account is linked. VoxAgent can now detect and send messages in any chat, including
-              Saved Messages.
+              {t("vault.telegramModal.linkedDesc")}
             </p>
           </div>
         ) : step === "phone" ? (
@@ -117,12 +120,14 @@ export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {mode === "bot" ? (
                 <>
-                  Paste your Telegram Bot Token (e.g. <span className="font-mono text-slate-400">123456:ABC-DEF1234ghIkl</span>).<br/>
-                  In Telegram, message @BotFather and send /newbot (or /token for existing bots) to get it.
+                  {t("vault.telegramModal.botTokenPrefix")}{" "}
+                  <span className="font-mono text-slate-400">123456:ABC-DEF1234ghIkl</span>
+                  {t("vault.telegramModal.botTokenSuffix")}<br/>
+                  {t("vault.telegramModal.botTokenLine2")}
                 </>
               ) : (
                 <>
-                  Enter your Telegram phone number (with country code) to connect your personal account.
+                  {t("vault.telegramModal.personalPhoneInstructions")}
                 </>
               )}
             </p>
@@ -132,16 +137,16 @@ export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
               type="text"
               required
               autoFocus
-              placeholder={mode === "bot" ? "123456789:ABCDefgh..." : "+15551234567"}
+              placeholder={mode === "bot" ? t("vault.telegramModal.botTokenPlaceholder") : t("vault.telegramModal.phonePlaceholder")}
               className="rounded-lg border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
             />
             {error && <ErrorNote message={error} />}
-            <SubmitButton submitting={submitting} label="Continue" />
+            <SubmitButton submitting={submitting} label={t("vault.telegramModal.continueBtn")} />
           </form>
         ) : step === "code" ? (
           <form onSubmit={handleCodeSubmit} className="flex flex-col gap-3">
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Enter the code Telegram just sent to {phoneNumber}.
+              {t("vault.telegramModal.codeInstructions", { phone: phoneNumber })}
             </p>
             <input
               value={code}
@@ -150,16 +155,16 @@ export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
               inputMode="numeric"
               required
               autoFocus
-              placeholder="12345"
+              placeholder={t("vault.telegramModal.codePlaceholder")}
               className="rounded-lg border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
             />
             {error && <ErrorNote message={error} />}
-            <SubmitButton submitting={submitting} label="Confirm Code" />
+            <SubmitButton submitting={submitting} label={t("vault.telegramModal.confirmCodeBtn")} />
           </form>
         ) : (
           <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-3">
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              This account has two-factor authentication enabled — enter your Telegram password.
+              {t("vault.telegramModal.passwordInstructions")}
             </p>
             <input
               value={password}
@@ -167,11 +172,11 @@ export default function TelegramLoginModal({ mode, open, onClose, onLinked }) {
               type="password"
               required
               autoFocus
-              placeholder="••••••••"
+              placeholder={t("vault.telegramModal.passwordPlaceholder")}
               className="rounded-lg border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
             />
             {error && <ErrorNote message={error} />}
-            <SubmitButton submitting={submitting} label="Confirm Password" />
+            <SubmitButton submitting={submitting} label={t("vault.telegramModal.confirmPasswordBtn")} />
           </form>
         )}
       </div>
@@ -189,6 +194,7 @@ function ErrorNote({ message }) {
 }
 
 function SubmitButton({ submitting, label }) {
+  const { t } = useTranslation();
   return (
     <button
       type="submit"
@@ -196,7 +202,7 @@ function SubmitButton({ submitting, label }) {
       className="flex items-center justify-center gap-2 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white text-sm font-medium py-2.5 transition-colors"
     >
       {submitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-      {submitting ? "Please wait…" : label}
+      {submitting ? t("vault.telegramModal.pleaseWait") : label}
     </button>
   );
 }

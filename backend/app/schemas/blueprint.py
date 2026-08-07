@@ -1,8 +1,8 @@
 from pydantic import BaseModel
-from typing import List, Dict, Optional, Any, Literal
+from typing import List, Dict, Optional, Any, Literal, Union
 
 class MissingParameter(BaseModel):
-    step_number: int
+    step_number: Union[int, str]  # int for step-level params, "trigger" for trigger-level params
     parameter_key: str
     label: str             # e.g., "Google Sheet Name or URL"
     description: str       # e.g., "Which Google Sheet should rows be added to?"

@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, Loader2, Mic, PlayCircle, Radio, SendHorizontal, Sparkles, Workflow } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
+import { useVoiceLanguage } from "../hooks/useVoiceLanguage";
+import { translateText } from "../api/translate";
+import { needsTranslation } from "../lib/textLanguage";
+import VoiceLanguagePicker from "../components/shared/VoiceLanguagePicker";
 import {
   approvePendingAction,
   createAgent,
@@ -47,6 +52,8 @@ import { useStudioStore } from "../store/studioStore";
 export default function AgentStudio() {
   const location = useLocation();
   const { userId } = useAuth();
+  const { t } = useTranslation();
+  const { voiceLanguage, setVoiceLanguage } = useVoiceLanguage();
 
   const {
     prompt, setPrompt,
@@ -326,7 +333,16 @@ export default function AgentStudio() {
       setResumeError(null);
 
       try {
-        const data = await planWorkflow(text, userId);
+        // The visible prompt stays in whatever language the user spoke/typed
+        // it in — translation to English happens here, once, invisibly,
+        // right before the existing (unmodified) planner call. planWorkflow
+        // itself never knows a non-English string was involved. Detection is
+        // based on the text itself (not just the language picker) so a
+        // mismatched or forgotten selection still translates correctly.
+        const englishText = needsTranslation(text, voiceLanguage.uiCode)
+          ? await translateText(text, "auto")
+          : text;
+        const data = await planWorkflow(englishText, userId);
         setBlueprint(data);
         setStepStatuses(Object.fromEntries((data.steps || []).map((s) => [s.step_number, "pending"])));
       } catch (err) {
@@ -335,7 +351,7 @@ export default function AgentStudio() {
         setPlanning(false);
       }
     },
-    [planning, userId, stopPolling, closeSocket]
+    [planning, userId, stopPolling, closeSocket, voiceLanguage]
   );
 
   useEffect(() => {
@@ -351,8 +367,10 @@ export default function AgentStudio() {
     isSupported: speechSupported,
     isRecording,
     interimTranscript,
+    error: speechError,
     toggle: toggleRecording,
   } = useSpeechRecognition({
+    lang: voiceLanguage.speechCode,
     onFinalTranscript: (finalText) => {
       setPrompt((prev) => (prev ? prev + " " + finalText : finalText).trim());
     },
@@ -540,34 +558,32 @@ export default function AgentStudio() {
     runStatus === "saving" || runStatus === "starting" || runStatus === "running" || runStatus === "needs_input";
   const runButtonLabel =
     runStatus === "saving"
-      ? "Saving Agent…"
+      ? t("studio.saving")
       : runStatus === "starting"
-      ? "Starting…"
+      ? t("studio.starting")
       : runStatus === "running"
-      ? "Running…"
+      ? t("studio.running")
       : runStatus === "needs_input"
-      ? "Waiting on your answer…"
+      ? t("studio.waitingOnAnswer")
       : runStatus === "listening"
-      ? "Listening for events…"
+      ? t("studio.listeningForEvents")
       : blockedByRequiredApps
-      ? "Connect required apps first"
-      : "Save & Run Agent";
+      ? t("studio.connectAppsFirst")
+      : t("studio.saveAndRun");
 
   return (
     <div className="flex flex-col gap-5 max-w-7xl mx-auto">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Agent Studio</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Describe a task in plain English and watch VoxAgent plan and execute it live.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("studio.title")}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("studio.subtitle")}</p>
         </div>
         {(blueprint || prompt || logs.length > 0) && (
           <button
             onClick={clearStudio}
             className="text-sm font-medium text-slate-500 hover:text-red-500 dark:text-slate-400 dark:hover:text-red-400 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
           >
-            Clear
+            {t("studio.clear")}
           </button>
         )}
       </div>
@@ -578,17 +594,18 @@ export default function AgentStudio() {
           value={isRecording && interimTranscript ? `${prompt} ${interimTranscript}`.trim() : prompt}
           onChange={(e) => setPrompt(e.target.value)}
           type="text"
-          placeholder="Tell VoxAgent what to do..."
+          placeholder={t("studio.promptPlaceholder")}
           disabled={isRecording}
           className="flex-1 bg-transparent outline-none text-sm md:text-base placeholder:text-slate-400 dark:placeholder:text-slate-500 disabled:opacity-60"
         />
+        <VoiceLanguagePicker value={voiceLanguage.speechCode} onChange={setVoiceLanguage} className="shrink-0" />
         <button
           type="button"
           onClick={toggleRecording}
           disabled={!speechSupported}
           aria-pressed={isRecording}
-          aria-label="Toggle voice recording"
-          title={speechSupported ? "Speak your prompt" : "Voice input isn't supported in this browser"}
+          aria-label={t("voice.toggleRecording")}
+          title={speechSupported ? t("voice.speakPrompt") : t("voice.notSupported")}
           className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
             isRecording
               ? "bg-red-500 text-white animate-pulse"
@@ -603,9 +620,16 @@ export default function AgentStudio() {
           className="flex items-center gap-2 rounded-xl bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 transition-colors shrink-0"
         >
           {planning && <Loader2 size={15} className="animate-spin" />}
-          {planning ? "Generating…" : "Generate Agent"}
+          {planning ? t("studio.generating") : t("studio.generate")}
         </button>
       </form>
+
+      {speechError && (
+        <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+          <AlertCircle size={16} className="shrink-0" />
+          {speechError}
+        </div>
+      )}
 
       {planError && (
         <div className="rounded-xl border border-red-400/40 bg-red-400/10 px-4 py-3 flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
@@ -660,7 +684,7 @@ export default function AgentStudio() {
                 onChange={(e) => setRequireApproval(e.target.checked)}
                 className="w-4 h-4 rounded text-brand-500 bg-slate-100 border-slate-300 dark:border-slate-600 dark:bg-slate-700 focus:ring-brand-500 focus:ring-2 cursor-pointer"
               />
-              Require approval for sensitive actions
+              {t("studio.requireApproval")}
             </label>
           </div>
           <div className="flex items-center gap-3 w-full md:w-auto justify-end">
@@ -682,7 +706,7 @@ export default function AgentStudio() {
         <div className="lg:col-span-3 glass-panel p-5 min-h-[420px] flex flex-col">
           <div className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 mb-4">
             <Workflow size={16} className="text-brand-500" />
-            Visual Blueprint
+            {t("studio.visualBlueprint")}
           </div>
           {planning ? (
             <div className="flex-1 space-y-3 animate-pulse">
@@ -701,7 +725,7 @@ export default function AgentStudio() {
         <div className="lg:col-span-2 glass-panel p-5 min-h-[420px] flex flex-col">
           <div className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 mb-4">
             <Radio size={16} className="text-brand-500" />
-            Live Telemetry
+            {t("studio.liveTelemetry")}
           </div>
           <TelemetryPanel runStatus={runStatus} logs={logs} />
         </div>

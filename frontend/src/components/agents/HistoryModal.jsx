@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   ChevronDown,
@@ -14,8 +15,8 @@ import { getAgentLogs } from "../../api/agents";
 
 const PAGE_SIZE = 10;
 
-function formatRunTimestamp(iso) {
-  if (!iso) return "Unknown time";
+function formatRunTimestamp(iso, unknownLabel) {
+  if (!iso) return unknownLabel;
   return new Date(iso).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
@@ -47,17 +48,19 @@ const STEP_STATUS_CONFIG = {
 };
 
 function StepChip({ entry }) {
+  const { t } = useTranslation();
   const status = stepStatus(entry);
   const { icon: Icon, color } = STEP_STATUS_CONFIG[status];
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-slate-900/5 dark:bg-white/5 ${color}`}>
       <Icon size={11} />
-      Step {entry.step}
+      {t("history.step", { number: entry.step })}
     </span>
   );
 }
 
 function StepDetail({ entry }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const status = stepStatus(entry);
   const { icon: Icon, color } = STEP_STATUS_CONFIG[status];
@@ -77,7 +80,7 @@ function StepDetail({ entry }) {
         <div className={`flex items-center gap-1.5 text-xs font-medium ${color}`}>
           <Icon size={13} className="shrink-0" />
           <span>
-            Step {entry.step}
+            {t("history.step", { number: entry.step })}
             {entry.action ? `: ${entry.action}` : ""}
             {entry.app ? ` on ${entry.app}` : ""}
           </span>
@@ -96,7 +99,7 @@ function StepDetail({ entry }) {
         onClick={() => setExpanded((v) => !v)}
         className="mt-1.5 text-[11px] text-brand-500 hover:text-brand-600 transition-colors"
       >
-        {expanded ? "Hide raw output" : "Show raw output"}
+        {expanded ? t("history.hideRawOutput") : t("history.showRawOutput")}
       </button>
       {expanded && (
         <pre className="mt-1.5 max-h-48 overflow-auto rounded-md bg-slate-900/5 dark:bg-black/30 p-2 text-[11px] leading-relaxed whitespace-pre-wrap break-all">
@@ -108,6 +111,7 @@ function StepDetail({ entry }) {
 }
 
 function RunRow({ run, defaultOpen, onOpenScreenshot }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen);
   const success = run.status === "success";
   const needsInput = run.status === "needs_input";
@@ -126,9 +130,9 @@ function RunRow({ run, defaultOpen, onOpenScreenshot }) {
             }`}
           >
             {success ? <CheckCircle2 size={15} /> : needsInput ? <HelpCircle size={15} /> : <XCircle size={15} />}
-            {success ? "Success" : needsInput ? "Needs Input" : "Failed"}
+            {success ? t("history.success") : needsInput ? t("history.needsInput") : t("history.failed")}
           </span>
-          <span className="text-xs text-slate-400">{formatRunTimestamp(run.executed_at)}</span>
+          <span className="text-xs text-slate-400">{formatRunTimestamp(run.executed_at, t("history.unknownTime"))}</span>
           {steps.length > 0 && (
             <span className="text-xs text-slate-400">
               · {steps.length} step{steps.length === 1 ? "" : "s"}
@@ -150,7 +154,7 @@ function RunRow({ run, defaultOpen, onOpenScreenshot }) {
       {open && (
         <div className="px-4 pb-4 flex flex-col gap-2 border-t border-slate-200/70 dark:border-white/10 pt-3">
           {steps.length === 0 ? (
-            <p className="text-xs text-slate-400">No step detail recorded for this run.</p>
+            <p className="text-xs text-slate-400">{t("history.noStepDetail")}</p>
           ) : (
             steps.map((entry, i) => <StepDetail key={i} entry={entry} />)
           )}
@@ -161,7 +165,7 @@ function RunRow({ run, defaultOpen, onOpenScreenshot }) {
               className="mt-1 flex items-center gap-1.5 text-xs text-brand-500 hover:text-brand-600 transition-colors self-start"
             >
               <ImageIcon size={13} />
-              View proof screenshot
+              {t("history.viewScreenshot")}
             </button>
           )}
         </div>
@@ -171,6 +175,7 @@ function RunRow({ run, defaultOpen, onOpenScreenshot }) {
 }
 
 export default function HistoryModal({ agent, onClose }) {
+  const { t } = useTranslation();
   const [logs, setLogs] = useState([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -190,7 +195,7 @@ export default function HistoryModal({ agent, onClose }) {
         setTotal(res?.total ?? (res?.logs || []).length);
         setHasMore(Boolean(res?.has_more));
       })
-      .catch((err) => setError(err.message || "Failed to load execution history."))
+      .catch((err) => setError(err.message || t("history.loadFailed")))
       .finally(() => setLoading(false));
   }, [agent]);
 
@@ -202,7 +207,7 @@ export default function HistoryModal({ agent, onClose }) {
         setLogs((prev) => [...prev, ...(res?.logs || [])]);
         setHasMore(Boolean(res?.has_more));
       })
-      .catch((err) => setError(err.message || "Failed to load more history."))
+      .catch((err) => setError(err.message || t("history.loadMoreFailed")))
       .finally(() => setLoadingMore(false));
   };
 
@@ -214,7 +219,7 @@ export default function HistoryModal({ agent, onClose }) {
       <div className="relative glass-panel w-full max-w-2xl max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-5 h-16 border-b border-slate-200/70 dark:border-white/10 shrink-0">
           <div>
-            <h2 className="font-semibold">Execution History</h2>
+            <h2 className="font-semibold">{t("history.title")}</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {agent.title}
               {total > 0 && ` · ${total} run${total === 1 ? "" : "s"}`}
@@ -223,7 +228,7 @@ export default function HistoryModal({ agent, onClose }) {
           <button
             onClick={onClose}
             className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-900/5 dark:hover:bg-white/5"
-            aria-label="Close"
+            aria-label={t("history.close")}
           >
             <X size={20} />
           </button>
@@ -233,7 +238,7 @@ export default function HistoryModal({ agent, onClose }) {
           {loading && (
             <div className="flex items-center justify-center gap-2 text-sm text-slate-400 py-10">
               <Loader2 size={16} className="animate-spin" />
-              Loading history…
+              {t("history.loading")}
             </div>
           )}
 
@@ -245,7 +250,7 @@ export default function HistoryModal({ agent, onClose }) {
           )}
 
           {!loading && !error && logs.length === 0 && (
-            <p className="text-center text-sm text-slate-400 py-10">No runs recorded yet for this agent.</p>
+            <p className="text-center text-sm text-slate-400 py-10">{t("history.noRuns")}</p>
           )}
 
           {logs.map((run, i) => (
@@ -259,7 +264,7 @@ export default function HistoryModal({ agent, onClose }) {
               className="w-full flex items-center justify-center gap-2 rounded-xl border border-slate-300/70 dark:border-white/15 text-sm font-medium py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-900/5 dark:hover:bg-white/5 disabled:opacity-60 transition-colors"
             >
               {loadingMore && <Loader2 size={14} className="animate-spin" />}
-              {loadingMore ? "Loading…" : "Load Older Runs"}
+              {loadingMore ? t("history.loadingMore") : t("history.loadOlder")}
             </button>
           )}
         </div>
@@ -272,13 +277,13 @@ export default function HistoryModal({ agent, onClose }) {
         >
           <img
             src={lightboxUrl}
-            alt="Execution proof screenshot"
+            alt={t("history.viewScreenshot")}
             className="max-w-full max-h-full rounded-xl shadow-2xl"
           />
           <button
             onClick={() => setLightboxUrl(null)}
             className="absolute top-6 right-6 flex items-center justify-center w-10 h-10 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
-            aria-label="Close screenshot"
+            aria-label={t("history.closeScreenshot")}
           >
             <X size={20} />
           </button>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertTriangle, Check, ExternalLink, Loader2, Send, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -33,6 +34,7 @@ export default function PendingActionCard({
   onApprove,
   onReject,
 }) {
+  const { t } = useTranslation();
   const [answer, setAnswer] = useState("");
   const { text, json } = splitJsonPreview(question);
 
@@ -51,7 +53,7 @@ export default function PendingActionCard({
     <div className="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4 md:p-5 shadow-[0_0_30px_rgba(245,158,11,0.08)]">
       <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-medium text-sm mb-1">
         <AlertTriangle size={16} className="shrink-0" />
-        Needs your input to continue
+        {t("pendingAction.needsInput")}
       </div>
       <p className="text-xs text-amber-700/80 dark:text-amber-300/80 mb-3 whitespace-pre-wrap">{text}</p>
 
@@ -72,7 +74,7 @@ export default function PendingActionCard({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium px-4 py-2 transition-colors"
           >
-            Connect {reconnectApp} in App Vault <ExternalLink size={13} />
+            {t("pendingAction.connectAppInVault", { app: reconnectApp })} <ExternalLink size={13} />
           </Link>
           <button
             onClick={handleRetry}
@@ -80,7 +82,7 @@ export default function PendingActionCard({
             className="flex items-center gap-1.5 rounded-lg border border-amber-400/50 hover:bg-amber-400/10 disabled:opacity-40 text-amber-700 dark:text-amber-300 text-sm font-medium px-4 py-2 transition-colors"
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            {busy ? "Retrying…" : "I've reconnected it — retry"}
+            {busy ? t("pendingAction.retrying") : t("pendingAction.reconnectedRetry")}
           </button>
           <button
             type="button"
@@ -88,7 +90,7 @@ export default function PendingActionCard({
             disabled={busy}
             className="flex items-center gap-1.5 rounded-lg border border-red-400/50 hover:bg-red-400/10 disabled:opacity-40 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 transition-colors ml-auto"
           >
-            <X size={14} /> Cancel
+            <X size={14} /> {t("common.cancel")}
           </button>
         </div>
       ) : inputType === "confirm" ? (
@@ -101,7 +103,7 @@ export default function PendingActionCard({
             className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 transition-colors"
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-            Approve
+            {t("pendingAction.approve")}
           </button>
           <button
             onClick={onReject}
@@ -109,7 +111,7 @@ export default function PendingActionCard({
             className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-amber-400/50 hover:bg-amber-400/10 disabled:opacity-40 text-amber-700 dark:text-amber-300 text-sm font-medium px-4 py-2 transition-colors"
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
-            Reject
+            {t("pendingAction.reject")}
           </button>
         </div>
       ) : inputType === "select" && options?.length ? (
@@ -130,7 +132,7 @@ export default function PendingActionCard({
             disabled={busy}
             className="flex items-center gap-1.5 rounded-lg border border-red-400/50 hover:bg-red-400/10 disabled:opacity-40 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 transition-colors ml-auto"
           >
-            <X size={14} /> Cancel
+            <X size={14} /> {t("common.cancel")}
           </button>
         </div>
       ) : (
@@ -139,7 +141,7 @@ export default function PendingActionCard({
             autoFocus
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
-            placeholder="Type your answer…"
+            placeholder={t("pendingAction.answerPlaceholder")}
             disabled={busy}
             className="flex-1 rounded-lg border border-amber-400/40 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400/50 disabled:opacity-60"
           />
@@ -149,7 +151,7 @@ export default function PendingActionCard({
             className="flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 transition-colors shrink-0"
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            {busy ? "Resuming…" : "Resume"}
+            {busy ? t("pendingAction.resuming") : t("pendingAction.resume")}
           </button>
           <button
             type="button"
@@ -157,7 +159,7 @@ export default function PendingActionCard({
             disabled={busy}
             className="flex items-center gap-1.5 rounded-lg border border-red-400/50 hover:bg-red-400/10 disabled:opacity-40 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 transition-colors shrink-0"
           >
-            <X size={14} /> Cancel
+            <X size={14} /> {t("common.cancel")}
           </button>
         </form>
       )}

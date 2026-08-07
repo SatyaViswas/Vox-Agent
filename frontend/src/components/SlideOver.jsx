@@ -1,6 +1,8 @@
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 
 export default function SlideOver({ open, onClose, title, children }) {
+  const { t } = useTranslation();
   return (
     <div className={`fixed inset-0 z-50 transition-opacity ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -14,7 +16,7 @@ export default function SlideOver({ open, onClose, title, children }) {
           <button
             onClick={onClose}
             className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-900/5 dark:hover:bg-white/5"
-            aria-label="Close panel"
+            aria-label={t("slideOver.closePanel")}
           >
             <X size={20} />
           </button>

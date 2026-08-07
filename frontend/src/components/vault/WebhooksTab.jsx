@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, Loader2, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { disconnectApp, getVaultApps, saveSession } from "../../api/vault";
@@ -6,6 +7,7 @@ import WebhookFormModal from "./WebhookFormModal";
 
 export default function WebhooksTab() {
   const { userId } = useAuth();
+  const { t } = useTranslation();
   const [webhooks, setWebhooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -19,7 +21,7 @@ export default function WebhooksTab() {
         setWebhooks(rows);
         setError(null);
       })
-      .catch((err) => setError(err.message || "Failed to load webhooks."))
+      .catch((err) => setError(err.message || t("vault.webhooksTab.loadFailed")))
       .finally(() => setLoading(false));
   };
 
@@ -39,7 +41,7 @@ export default function WebhooksTab() {
     try {
       await disconnectApp(userId, webhook.app_name);
     } catch (err) {
-      setError(err.message || `Failed to remove ${webhook.app_name}.`);
+      setError(err.message || t("vault.webhooksTab.removeFailed", { name: webhook.app_name }));
       fetchWebhooks();
     }
   };
@@ -48,14 +50,14 @@ export default function WebhooksTab() {
     <div className="flex flex-col gap-4 max-w-2xl">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Register custom REST endpoints and keys VoxAgent's HTTP engine can call directly.
+          {t("vault.webhooksTab.description")}
         </p>
         <button
           onClick={() => setFormState({ mode: "create" })}
           className="flex items-center gap-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 transition-colors shrink-0"
         >
           <Plus size={16} />
-          New Webhook
+          {t("vault.webhooksTab.newWebhook")}
         </button>
       </div>
 
@@ -69,11 +71,11 @@ export default function WebhooksTab() {
       {loading ? (
         <div className="glass-panel p-10 flex items-center justify-center gap-2 text-sm text-slate-400">
           <Loader2 size={16} className="animate-spin" />
-          Loading webhooks…
+          {t("vault.webhooksTab.loading")}
         </div>
       ) : webhooks.length === 0 ? (
         <div className="glass-panel p-10 text-center text-sm text-slate-500 dark:text-slate-400">
-          No custom webhooks yet. Add one to let agents call it directly.
+          {t("vault.webhooksTab.empty")}
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -85,19 +87,21 @@ export default function WebhooksTab() {
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm truncate">{webhook.app_name}</p>
                 <p className="text-xs text-slate-400">
-                  Updated {webhook.updated_at ? new Date(webhook.updated_at).toLocaleDateString() : "recently"}
+                  {t("vault.webhooksTab.updated", {
+                    date: webhook.updated_at ? new Date(webhook.updated_at).toLocaleDateString() : t("vault.webhooksTab.recently"),
+                  })}
                 </p>
               </div>
               <button
                 onClick={() => setFormState({ mode: "edit", name: webhook.app_name })}
-                title="Edit webhook"
+                title={t("vault.webhooksTab.editWebhook")}
                 className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-brand-500 hover:bg-brand-500/10 transition-colors shrink-0"
               >
                 <Pencil size={14} />
               </button>
               <button
                 onClick={() => handleRemove(webhook)}
-                title="Remove webhook"
+                title={t("vault.webhooksTab.removeWebhook")}
                 className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
               >
                 <Trash2 size={14} />

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Search, Unplug } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -16,6 +17,7 @@ const SEARCH_DEBOUNCE_MS = 400;
 
 export default function ApiAppsTab() {
   const { userId } = useAuth();
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [apps, setApps] = useState([]);
   const [nextCursor, setNextCursor] = useState(null);
@@ -62,7 +64,7 @@ export default function ApiAppsTab() {
         setNextCursor(res?.next_cursor || null);
         setTotalItems(res?.total_items ?? null);
       })
-      .catch((err) => setCatalogError(err.message || "Failed to load the app catalog."))
+      .catch((err) => setCatalogError(err.message || t("vault.apiAppsTab.loadCatalogFailed")))
       .finally(() => setLoading(false));
   }, []);
 
@@ -84,22 +86,39 @@ export default function ApiAppsTab() {
         setApps((prev) => [...prev, ...(res?.apps || [])]);
         setNextCursor(res?.next_cursor || null);
       })
-      .catch((err) => setCatalogError(err.message || "Failed to load more apps."))
+      .catch((err) => setCatalogError(err.message || t("vault.apiAppsTab.loadMoreFailed")))
       .finally(() => setLoadingMore(false));
   };
 
   const isConnected = (app) => Boolean(connections[app.slug]);
+
+  // The catalog itself already reports auth_mode (read straight from
+  // Composio's bulk toolkit metadata, no extra calls) — an app whose tools
+  // work with no connected account at all (e.g. Hacker News's public read
+  // API) is known the moment the catalog loads. `noAuthSlugs` remains as a
+  // fallback for the rare case a connect attempt reveals this dynamically
+  // (see NoAuthRequiredError) even though the catalog didn't flag it.
+  const isNoAuthAlways = (app) => app.auth_mode === "none" || noAuthSlugs.has(app.slug);
 
   const handleConnect = async (app) => {
     setError(null);
     setConnectingSlug(app.slug);
     try {
       const requirements = await getConnectRequirements(app.slug);
+      if (requirements.mode === "none") {
+        // Defense-in-depth: the catalog's auth_mode should already have
+        // routed this app to the "Always Available" branch below without
+        // ever reaching a click handler, but if it's ever stale, don't
+        // open a credential form with nothing to fill in.
+        setConnectingSlug(null);
+        setNoAuthSlugs((prev) => new Set(prev).add(app.slug));
+        return;
+      }
       if (requirements.mode !== "oauth") {
         // No Composio-managed OAuth for this toolkit (e.g. Telegram, which
         // is bot-token-only) — there's nothing to redirect a popup to.
         setConnectingSlug(null);
-        setCredentialTarget({ app, fields: requirements.fields || [] });
+        setCredentialTarget({ app, fields: requirements.fields || [], authScheme: requirements.auth_scheme });
         return;
       }
 
@@ -117,7 +136,7 @@ export default function ApiAppsTab() {
       const popup = window.open(res.redirect_url, "voxagent-oauth", "width=520,height=680");
 
       if (!popup) {
-        setError(`Your browser blocked the popup. Allow popups for this site, then try connecting ${app.name} again.`);
+        setError(t("vault.apiAppsTab.popupBlocked", { name: app.name }));
         setConnectingSlug(null);
         return;
       }
@@ -131,7 +150,7 @@ export default function ApiAppsTab() {
         }
       }, 700);
     } catch (err) {
-      setError(err.message || `Failed to start the connection for ${app.name}.`);
+      setError(err.message || t("vault.apiAppsTab.connectStartFailed", { name: app.name }));
       setConnectingSlug(null);
     }
   };
@@ -160,7 +179,7 @@ export default function ApiAppsTab() {
         return next;
       });
     } catch (err) {
-      setError(err.message || `Failed to disconnect the current ${app.name} account.`);
+      setError(err.message || t("vault.apiAppsTab.disconnectFailed", { name: app.name }));
     } finally {
       setConnectingSlug(null);
     }
@@ -183,7 +202,7 @@ export default function ApiAppsTab() {
       });
       await handleConnect(app);
     } catch (err) {
-      setError(err.message || `Failed to disconnect the current ${app.name} account.`);
+      setError(err.message || t("vault.apiAppsTab.disconnectFailed", { name: app.name }));
       setConnectingSlug(null);
     }
   };
@@ -196,12 +215,14 @@ export default function ApiAppsTab() {
           <input
             value={query}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Search 1,000+ apps via Composio..."
+            placeholder={t("vault.apiAppsTab.searchPlaceholder")}
             className="w-full rounded-xl border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 pl-9 pr-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
           />
         </div>
         {totalItems != null && (
-          <span className="text-xs text-slate-400">{totalItems.toLocaleString()} apps available</span>
+          <span className="text-xs text-slate-400">
+            {t("vault.apiAppsTab.appsAvailable", { count: totalItems.toLocaleString() })}
+          </span>
         )}
       </div>
 
@@ -215,18 +236,18 @@ export default function ApiAppsTab() {
       {loading ? (
         <div className="glass-panel p-10 flex items-center justify-center gap-2 text-sm text-slate-400">
           <Loader2 size={16} className="animate-spin" />
-          Loading app catalog…
+          {t("vault.apiAppsTab.loadingCatalog")}
         </div>
       ) : apps.length === 0 ? (
         <div className="glass-panel p-10 text-center text-sm text-slate-500 dark:text-slate-400">
-          No apps match your search.
+          {t("vault.apiAppsTab.noMatch")}
         </div>
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {apps.map((app) => {
               const connected = isConnected(app);
-              const noAuthNeeded = noAuthSlugs.has(app.slug);
+              const noAuthNeeded = isNoAuthAlways(app);
               const connecting = connectingSlug === app.slug;
               return (
                 <div key={app.slug} className="glass-panel p-4 flex flex-col gap-3">
@@ -242,7 +263,11 @@ export default function ApiAppsTab() {
                           connected || noAuthNeeded ? "bg-emerald-500" : "bg-slate-400"
                         }`}
                       />
-                      {connected ? "Connected" : noAuthNeeded ? "Always Available" : "Not Connected"}
+                      {connected
+                        ? t("vault.apiAppsTab.connected")
+                        : noAuthNeeded
+                          ? t("vault.apiAppsTab.alwaysAvailable")
+                          : t("vault.apiAppsTab.notConnected")}
                     </span>
                   </div>
                   <div>
@@ -251,7 +276,7 @@ export default function ApiAppsTab() {
                   </div>
                   {noAuthNeeded ? (
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center py-2">
-                      No connection needed — its tools work right away.
+                      {t("vault.apiAppsTab.noConnectionNeeded")}
                     </p>
                   ) : connected ? (
                     <div className="flex items-center gap-1.5">
@@ -260,12 +285,12 @@ export default function ApiAppsTab() {
                         className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium py-2"
                       >
                         <CheckCircle2 size={12} />
-                        Connected
+                        {t("vault.apiAppsTab.connected")}
                       </button>
                       <button
                         onClick={() => handleChangeAccount(app)}
                         disabled={connecting}
-                        title={`Change the ${app.name} account`}
+                        title={t("vault.apiAppsTab.changeAccountTitle", { name: app.name })}
                         className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-300/70 dark:border-white/15 text-slate-500 hover:text-brand-500 hover:bg-slate-900/5 dark:hover:bg-white/5 disabled:opacity-60 text-xs font-medium py-2 px-2.5 transition-colors shrink-0"
                       >
                         {connecting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
@@ -273,7 +298,7 @@ export default function ApiAppsTab() {
                       <button
                         onClick={() => handleDisconnect(app)}
                         disabled={connecting}
-                        title={`Disconnect the ${app.name} account`}
+                        title={t("vault.apiAppsTab.disconnectAccountTitle", { name: app.name })}
                         className="flex items-center justify-center gap-1.5 rounded-lg border border-red-300/70 dark:border-red-500/15 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-60 text-xs font-medium py-2 px-2.5 transition-colors shrink-0"
                       >
                         {connecting ? <Loader2 size={12} className="animate-spin" /> : <Unplug size={12} />}
@@ -288,10 +313,10 @@ export default function ApiAppsTab() {
                       {connecting ? (
                         <>
                           <Loader2 size={12} className="animate-spin" />
-                          Connecting…
+                          {t("vault.apiAppsTab.connecting")}
                         </>
                       ) : (
-                        "Connect (1-Click)"
+                        t("vault.apiAppsTab.connectOneClick")
                       )}
                     </button>
                   )}
@@ -307,7 +332,7 @@ export default function ApiAppsTab() {
               className="self-center flex items-center gap-2 rounded-xl border border-slate-300/70 dark:border-white/15 text-sm font-medium px-5 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-900/5 dark:hover:bg-white/5 disabled:opacity-60 transition-colors"
             >
               {loadingMore && <Loader2 size={14} className="animate-spin" />}
-              {loadingMore ? "Loading…" : "Load More Apps"}
+              {loadingMore ? t("common.loading") : t("vault.apiAppsTab.loadMore")}
             </button>
           )}
         </>
@@ -316,6 +341,7 @@ export default function ApiAppsTab() {
       <CredentialConnectModal
         app={credentialTarget?.app}
         fields={credentialTarget?.fields || []}
+        authScheme={credentialTarget?.authScheme}
         onClose={() => setCredentialTarget(null)}
         onSubmit={handleCredentialSubmit}
       />

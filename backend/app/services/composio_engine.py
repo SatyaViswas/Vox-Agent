@@ -226,7 +226,7 @@ def _resolve_schema_key(properties: dict, key: str) -> str | None:
         if len(candidates) == 1:
             return candidates[0]
         elif len(candidates) > 1:
-            exact_matches = [p for p in candidates if _normalize_key_token(p) in bucket]
+            exact_matches = [p for p in candidates if p in bucket or _normalize_key_token(p) in bucket]
             if len(exact_matches) == 1:
                 return exact_matches[0]
             
@@ -549,6 +549,33 @@ def generate_sample_trigger_payload(blueprint: dict) -> dict:
 
     message_text = data.get("message_text") or fallback["message_text"]
     sender = data.get("sender") or fallback["sender"]
+
+    # Guarantee the sender is always a well-formed address for test runs so
+    # Gmail and other email actions never reject it with "invalid string".
+    # We replace any AI-invented fictional email (e.g. "sarah.j@creativepulse.io")
+    # with a known-safe placeholder — the message_text body can still carry
+    # realistic synthetic content for extraction steps to work on.
+    TEST_EMAIL = "test-voxagent@example.com"
+    steps = blueprint.get("steps") or []
+    has_email_send = any(
+        "SEND_EMAIL" in (s.get("action") or "").upper() or "SEND_MAIL" in (s.get("action") or "").upper()
+        for s in steps
+    )
+    if has_email_send:
+        # Inject the guaranteed test email into the message body so that
+        # any "extract the prospect_email from this data" AI step finds it.
+        if "prospect_email" not in message_text.lower() and "@" not in message_text:
+            message_text = f"{message_text}\nProspect Email: {TEST_EMAIL}"
+        elif "@" in message_text:
+            # Replace any fictional email address in the body with the safe test one
+            import re as _re
+            message_text = _re.sub(
+                r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
+                TEST_EMAIL,
+                message_text,
+            )
+        sender = TEST_EMAIL
+
     payload_data = {"is_test": True, "subject": data.get("subject"), "sender": sender, "message_text": message_text}
     return {"message_text": f"[TEST RUN] {message_text}", "sender": sender, "payload_data": payload_data}
 
@@ -1036,9 +1063,178 @@ def resolve_connected_user_id(user_id: str, app: str) -> str:
     return candidates[0]
 
 
+# --- Thin-reference-list enrichment ------------------------------------
+#
+# Many toolkits' "list" actions return bare references (IDs) rather than
+# content — e.g. HACKERNEWS_GET_TOP_STORIES returns up to 500 integer
+# story_ids, and its own output schema says outright: "Use these IDs with
+# the get_item_with_id action to retrieve full story details." A blueprint
+# step built around one such action hands a downstream ai_generate step
+# (or any {{step_N_result}} reference) a list of numbers with nothing to
+# summarize — the model then either correctly refuses or hallucinates.
+#
+# This is not a Hacker News problem specifically: the same "list returns
+# references, a sibling action resolves one reference into full content"
+# shape recurs across many REST-ish APIs Composio wraps. Rather than
+# hardcode per-app fixes, detect the SHAPE generically and resolve the
+# matching detail action within the same toolkit — via Composio's own
+# schema-hint text first (free), falling back to the same AI-assisted
+# action-disambiguation `_resolve_action_slug` already uses elsewhere in
+# this file. Every step here is deliberately conservative and fails open:
+# any ambiguity, missing data, or error just leaves the original result
+# untouched — this must never turn a working call into a broken one.
+
+_ENRICHMENT_CAP = 10  # hard ceiling on per-item detail calls, independent of how many references came back
+_ENRICHMENT_CONCURRENCY = 5
+_RICH_CONTENT_HINT_KEYS = {"title", "text", "content", "body", "description", "name", "summary", "message", "caption"}
+
+
+def _find_thin_reference_field(output) -> tuple[str, list] | None:
+    """Looks for a field in a composio_api result that is a non-empty array
+    of bare scalars (int/str) with no sibling field that already looks like
+    real content — Composio's shape for "list of references, no inline
+    detail". Returns (field_name, values) or None. Deliberately narrow: an
+    array of objects, or one sitting next to a title/text/body/etc. field,
+    is left alone rather than guessed at."""
+    if not isinstance(output, dict):
+        return None
+    candidates = output.get("data") if isinstance(output.get("data"), dict) else output
+    if not isinstance(candidates, dict):
+        return None
+
+    other_keys = set(candidates.keys())
+    for key, value in candidates.items():
+        if not isinstance(value, list) or not value:
+            continue
+        if not all(isinstance(v, (int, str)) and not isinstance(v, bool) for v in value):
+            continue
+        if (other_keys - {key}) & _RICH_CONTENT_HINT_KEYS:
+            continue
+        return key, value
+    return None
+
+
+_ACTION_NAME_HINT_RE = re.compile(r"(?:use|with|via|call)\s+(?:the\s+)?([a-z][a-z0-9_]{3,})\s+action", re.IGNORECASE)
+
+
+def _resolve_detail_action(toolkit_slug: str, list_action_name: str, field_name: str, field_description: str | None) -> tuple[str, str] | None:
+    """Finds (action_slug, id_param_name) for the action that resolves ONE
+    reference from `field_name` into full content, within the same
+    toolkit. Returns None if nothing suitable can be found — callers treat
+    that as "leave the data as-is", never as an error."""
+    try:
+        candidates = composio.tools.get_raw_composio_tools(toolkits=[toolkit_slug], limit=60)
+    except Exception:
+        return None
+    if not candidates:
+        return None
+
+    resolved_slug = None
+
+    # Fast, free pass: Composio's own schema descriptions sometimes name the
+    # follow-up action outright (confirmed for Hacker News). No API/LLM cost
+    # if this matches.
+    hint_match = _ACTION_NAME_HINT_RE.search(field_description or "")
+    if hint_match:
+        hinted = hint_match.group(1).replace("_", "")
+        for c in candidates:
+            if hinted.lower() in c.slug.replace("_", "").lower():
+                resolved_slug = c.slug
+                break
+
+    # Fallback: ask the existing AI-disambiguation helper to pick from this
+    # toolkit's own action list by intent, same mechanism _resolve_action_slug
+    # already relies on for a different guess-vs-real-tool gap.
+    if not resolved_slug:
+        narrowed = [c for c in candidates if c.slug != list_action_name] or candidates
+        resolved_slug = ai_pick_best_match(
+            f"An automation needs to resolve ONE reference (a single '{field_name}' value returned by "
+            f"{list_action_name}) into its full details/content.",
+            [(c.slug, getattr(c, "description", None)) for c in narrowed],
+        )
+
+    if not resolved_slug or resolved_slug == list_action_name:
+        return None
+
+    schema = _get_action_schema(resolved_slug)
+    required = (schema or {}).get("required") or []
+    if len(required) == 1:
+        return resolved_slug, required[0]
+    id_candidates = [r for r in required if _looks_like_id_field(r)]
+    if len(id_candidates) == 1:
+        return resolved_slug, id_candidates[0]
+    # More than one required field and no unambiguous id-shaped one — can't
+    # safely guess which one the reference value belongs in.
+    return None
+
+
+async def _enrich_thin_composio_result(app: str, action_name: str, output: dict, entity_id: str, result_limit: int | None) -> dict:
+    """Best-effort, additive enrichment — never raises, never removes
+    anything from `output`. On success, adds `<field>_resolved: [...]`
+    alongside the original bare reference list so anything already
+    depending on that original shape keeps working unchanged."""
+    try:
+        found = _find_thin_reference_field(output)
+        if not found:
+            return output
+        field_name, values = found
+
+        schema = _get_action_schema(action_name)
+        field_description = ((schema or {}).get("properties") or {}).get(field_name, {}).get("description")
+
+        toolkit_slug = _slugify_app(app)
+        resolved = _resolve_detail_action(toolkit_slug, action_name, field_name, field_description)
+        if not resolved:
+            return output
+        detail_action, id_param = resolved
+
+        cap = min(result_limit, _ENRICHMENT_CAP) if result_limit else _ENRICHMENT_CAP
+        targets = values[:cap]
+
+        semaphore = asyncio.Semaphore(_ENRICHMENT_CONCURRENCY)
+
+        async def _fetch_one(ref_value):
+            async with semaphore:
+                try:
+                    detail = await _execute_composio_with_timeout(
+                        slug=detail_action,
+                        arguments={id_param: ref_value},
+                        user_id=entity_id,
+                        dangerously_skip_version_check=True,
+                    )
+                except Exception:
+                    return None
+                if _tool_result_unsuccessful(detail):
+                    return None
+                return detail.get("data") if isinstance(detail, dict) else getattr(detail, "data", None)
+
+        enriched = await asyncio.gather(*(_fetch_one(v) for v in targets))
+        enriched = [item for item in enriched if item is not None]
+        if not enriched:
+            return output
+
+        container = output["data"] if isinstance(output.get("data"), dict) else output
+        container[f"{field_name}_resolved"] = enriched
+        return output
+    except Exception as e:
+        traceback.print_exc()
+        print(f"Warning: thin-result enrichment skipped for {app}/{action_name}: {e}")
+        return output
+
+
 async def execute_composio_action(app: str, action: str, parameters: dict, entity_id: str = "default") -> dict:
     if not composio:
         return {"status": "error", "error": "COMPOSIO_API_KEY is not configured or Composio client is uninitialized.", "message": "COMPOSIO_API_KEY is not configured or Composio client is uninitialized."}
+
+    parameters = dict(parameters or {})
+    # An internal-only hint the planner may set when the user's prompt names
+    # a count ("top 5", "latest 10") — stripped before real params reach the
+    # target action, same convention as `_is_test_run`/`_as_list` elsewhere.
+    # Enrichment always applies its own hard cap regardless of whether this
+    # is set, so its absence changes nothing about safety, only precision.
+    result_limit = parameters.pop("_result_limit", None)
+    if not isinstance(result_limit, int) or result_limit <= 0:
+        result_limit = None
 
     action_name = action.upper().strip()
     if action_name == "GITHUB_GET_ABOUT_THE_AUTHENTICATED_USER":
@@ -1090,8 +1286,13 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
                             # Remove the massive raw payload to save tokens (we already have messageText)
                             msg.pop("payload", None)
                             msg.pop("raw", None)
-        
-        return _build_execution_result(result, app, action_name, parameters, not_found_hint)
+
+        execution_result = _build_execution_result(result, app, action_name, parameters, not_found_hint)
+        if execution_result.get("status") == "success":
+            execution_result["output"] = await _enrich_thin_composio_result(
+                app, action_name, execution_result["output"], entity_id, result_limit
+            )
+        return execution_result
     except Exception as e:
         traceback.print_exc()
         if _looks_like_api_key_permission_error(e):
@@ -1115,6 +1316,27 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
             }
         error_message = str(e)
         return {"status": "error", "error": error_message, "message": error_message}
+
+
+def _derive_auth_mode(item) -> str:
+    """Classifies a toolkit's connection requirement straight from Composio's
+    own bulk catalog metadata (`no_auth` / `composio_managed_auth_schemes` /
+    `auth_schemes`) — no per-app detail call needed, since the bulk listing
+    already carries this. Three modes:
+    - "none": the toolkit's tools work with no connected account at all
+      (e.g. Hacker News's public read API) — nothing to connect, ever.
+    - "oauth": Composio manages the OAuth flow itself — the existing
+      1-click redirect/popup.
+    - "credentials": everything else — a manual API key/token, or (for the
+      `oauth2_self_managed` subset) the user's own OAuth2 client
+      credentials. See `get_toolkit_connect_requirements` for the detailed
+      field list once a specific app is chosen.
+    """
+    if getattr(item, "no_auth", False):
+        return "none"
+    if list(getattr(item, "composio_managed_auth_schemes", None) or []):
+        return "oauth"
+    return "credentials"
 
 
 def list_composio_apps(search: str | None = None, cursor: str | None = None, limit: int = 30) -> dict:
@@ -1147,6 +1369,12 @@ def list_composio_apps(search: str | None = None, cursor: str | None = None, lim
             "name": item.name,
             "category": category,
             "logo": logo or f"https://logos.composio.dev/api/{item.slug}",
+            # Lets the UI proactively render "no connection needed" or the
+            # right connect flow straight from the catalog listing, instead
+            # of reactively learning it only after a connect attempt (which
+            # never persisted past a page refresh) or misrendering a
+            # credential form with nothing in it (see auth_mode == "none").
+            "auth_mode": _derive_auth_mode(item),
         })
 
     return {
@@ -1174,14 +1402,27 @@ def list_composio_connected_accounts(user_id: str) -> list[dict]:
         return []
 
     candidates = _candidate_user_ids(user_id)
+    items = []
+    cursor = None
     try:
-        response = composio.connected_accounts.list(user_ids=candidates, statuses=["ACTIVE"])
+        # Composio paginates (10/page by default) — a user with more than one
+        # page of connections would otherwise silently lose their OLDEST
+        # connections from this list (whichever falls past page 1), showing
+        # as "not connected" in the UI even though the account is genuinely
+        # active. Loop until there's no next_cursor rather than assuming
+        # everything fits on one page.
+        while True:
+            response = composio.connected_accounts.list(
+                user_ids=candidates, statuses=["ACTIVE"], cursor=cursor
+            )
+            items.extend(getattr(response, "items", response) or [])
+            cursor = getattr(response, "next_cursor", None)
+            if not cursor:
+                break
     except Exception as e:
         traceback.print_exc()
         print(f"Warning: Failed to list connected accounts for {candidates}: {e}")
         return []
-
-    items = list(getattr(response, "items", response) or [])
 
     # Multiple active accounts can exist for the same toolkit (e.g. after a
     # "change account" reconnect that didn't clean up the old one) — keep
@@ -1240,6 +1481,15 @@ def get_toolkit_connect_requirements(app_slug: str) -> dict:
 
     detail = details[0]
     auth_scheme = getattr(detail, "mode", None) or "API_KEY"
+    if auth_scheme == "NO_AUTH":
+        # Composio's bulk catalog already flags these via `no_auth` (see
+        # `_derive_auth_mode`), but this per-app detail lookup doesn't
+        # expose that field directly — the auth scheme itself is the
+        # equivalent signal here. Without this check, a toolkit like
+        # Hacker News falls through to the "credentials" branch below with
+        # zero required fields, opening a connect form with nothing to
+        # fill in.
+        return {"mode": "none", "auth_scheme": "NO_AUTH", "fields": []}
     initiation = getattr(detail.fields, "connected_account_initiation", None)
     required = list(getattr(initiation, "required", None) or []) if initiation else []
     fields = [

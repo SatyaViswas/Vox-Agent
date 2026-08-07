@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { ChevronsLeft, ChevronsRight, Sparkles, LogOut, LogIn } from "lucide-react";
 import { NAV_ITEMS } from "../../config/nav";
 import { useAuth } from "../../context/AuthContext";
@@ -6,6 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 export default function Sidebar({ collapsed, onToggle }) {
   const { isGuest, signOut } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const handleAuthAction = async () => {
     if (isGuest) {
@@ -33,11 +35,11 @@ export default function Sidebar({ collapsed, onToggle }) {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-none">
-        {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+        {NAV_ITEMS.map(({ to, labelKey, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
-            title={collapsed ? label : undefined}
+            title={collapsed ? t(labelKey) : undefined}
             className={({ isActive }) =>
               `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive
@@ -47,7 +49,7 @@ export default function Sidebar({ collapsed, onToggle }) {
             }
           >
             <Icon size={19} className="shrink-0" />
-            {!collapsed && <span className="truncate">{label}</span>}
+            {!collapsed && <span className="truncate">{t(labelKey)}</span>}
           </NavLink>
         ))}
       </nav>
@@ -55,10 +57,10 @@ export default function Sidebar({ collapsed, onToggle }) {
       <button
         onClick={handleAuthAction}
         className="flex items-center gap-2 px-4 h-12 border-t border-slate-200/70 dark:border-white/10 text-slate-500 hover:text-brand-500 text-sm transition-colors shrink-0"
-        title={collapsed ? (isGuest ? "Sign In" : "Log Out") : undefined}
+        title={collapsed ? (isGuest ? t("nav.signIn") : t("nav.logOut")) : undefined}
       >
         {isGuest ? <LogIn size={18} /> : <LogOut size={18} />}
-        {!collapsed && <span>{isGuest ? "Sign In" : "Log Out"}</span>}
+        {!collapsed && <span>{isGuest ? t("nav.signIn") : t("nav.logOut")}</span>}
       </button>
 
       <button
@@ -66,7 +68,7 @@ export default function Sidebar({ collapsed, onToggle }) {
         className="flex items-center gap-2 px-4 h-12 border-t border-slate-200/70 dark:border-white/10 text-slate-500 hover:text-brand-500 text-sm transition-colors"
       >
         {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
-        {!collapsed && <span>Collapse</span>}
+        {!collapsed && <span>{t("nav.collapse")}</span>}
       </button>
     </aside>
   );

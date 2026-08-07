@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { AlertTriangle, CheckCircle2, Sparkles } from "lucide-react";
 
 export function paramKey(param) {
@@ -13,6 +14,7 @@ export default function DisambiguationPanel({
   onApprovedChange,
   resolved,
 }) {
+  const { t } = useTranslation();
   const missingParameters = blueprint?.missing_parameters || [];
   const needsApproval = Boolean(blueprint?.needs_human_approval);
   const needsClarification = Boolean(blueprint?.needs_clarification) || missingParameters.length > 0;
@@ -23,7 +25,7 @@ export default function DisambiguationPanel({
     return (
       <div className="rounded-2xl border border-emerald-400/40 bg-emerald-400/10 px-4 py-3 flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
         <CheckCircle2 size={16} />
-        Blueprint updated with your details — ready to run.
+        {t("disambiguation.updatedReady")}
       </div>
     );
   }
@@ -35,7 +37,7 @@ export default function DisambiguationPanel({
     <div className="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4 md:p-5 shadow-[0_0_30px_rgba(245,158,11,0.08)]">
       <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-medium text-sm mb-1">
         <AlertTriangle size={16} className="shrink-0" />
-        VoxAgent needs a few details before it can continue
+        {t("disambiguation.needsDetails")}
       </div>
       {blueprint.clarification_question && (
         <p className="text-xs text-amber-700/80 dark:text-amber-300/80 mb-3">{blueprint.clarification_question}</p>
@@ -49,7 +51,9 @@ export default function DisambiguationPanel({
               <div key={key} className="flex flex-col gap-1.5">
                 <label htmlFor={key} className="text-xs font-medium text-slate-600 dark:text-slate-300">
                   {param.label}{" "}
-                  <span className="text-slate-400 dark:text-slate-500 font-normal">— Step {param.step_number}</span>
+                  <span className="text-slate-400 dark:text-slate-500 font-normal">
+                    {t("disambiguation.stepSuffix", { number: param.step_number })}
+                  </span>
                 </label>
                 {param.suggested_type === "select" && param.options ? (
                   <select
@@ -58,7 +62,7 @@ export default function DisambiguationPanel({
                     onChange={(e) => onChange(key, e.target.value)}
                     className="rounded-lg border border-amber-400/40 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400/50 appearance-none"
                   >
-                    <option value="" disabled>Select an option...</option>
+                    <option value="" disabled>{t("disambiguation.selectOption")}</option>
                     {param.options.map(opt => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
@@ -87,7 +91,7 @@ export default function DisambiguationPanel({
             onChange={(e) => onApprovedChange(e.target.checked)}
             className="w-4 h-4 accent-amber-500"
           />
-          I've reviewed this workflow and approve it to run.
+          {t("disambiguation.approvalConfirm")}
         </label>
       )}
 
@@ -97,7 +101,7 @@ export default function DisambiguationPanel({
         className="mt-4 flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 transition-colors"
       >
         <Sparkles size={14} />
-        Update Blueprint
+        {t("disambiguation.updateBlueprint")}
       </button>
     </div>
   );

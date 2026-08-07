@@ -156,7 +156,7 @@ def _event_matches_intent(payload, event_target: str | None, intent_description:
     condition) instead of exact/substring matching — handles wording
     variation for ANY app's payload, not just email subjects.
     """
-    condition = event_target or intent_description
+    condition = intent_description
     if not condition:
         return True
     return ai_content_matches_condition(condition, _payload_text_blob(payload))
@@ -216,13 +216,19 @@ def start_event_trigger(
     either, every event from this toolkit for this account does.
     """
     trigger_slug = discover_trigger_slug(toolkit_slug, intent_description)
-    _ensure_trigger_instance(user_id, trigger_slug, trigger_config)
+    trigger_instance = _ensure_trigger_instance(user_id, trigger_slug, trigger_config)
     subscription = _get_subscription()
 
     @subscription.handle(user_id=user_id, trigger_slug=trigger_slug)
     def _on_event(event):
         if agent_id not in _active_agents:
             return
+            
+        event_id = event.get("id") if isinstance(event, dict) else getattr(event, "id", None)
+        if event_id and event_id != trigger_instance.trigger_id:
+            # Another agent's trigger for the same user and app fired this event
+            return
+            
         payload = dict(event.get("payload") or {}) if hasattr(event, "get") else {}
         # Callback runs on Composio's own listener thread — hop back onto
         # the FastAPI event loop to run the (async) reaction steps.

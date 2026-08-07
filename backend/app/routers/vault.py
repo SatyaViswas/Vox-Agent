@@ -102,7 +102,25 @@ async def required_apps_status(
             results.append({"app": name, "connected": telegram_bot_connected, "connect_via": "telegram_bot"})
         else:
             slug = _slugify_app(name)
-            results.append({"app": name, "connected": slug in connected_slugs, "slug": slug})
+            connected = slug in connected_slugs
+            no_auth = False
+            if not connected:
+                # A toolkit whose tools work with no connected account at all
+                # (e.g. Hacker News's public read API) has nothing to be
+                # "connected" in the first place — checking connected_slugs
+                # alone would permanently show it as needing a connection it
+                # can never actually gain, blocking or warning on agent
+                # creation for an app that already works.
+                try:
+                    no_auth = get_toolkit_connect_requirements(slug).get("mode") == "none"
+                except Exception:
+                    no_auth = False
+            results.append({
+                "app": name,
+                "connected": connected or no_auth,
+                "slug": slug,
+                "no_auth_required": no_auth,
+            })
 
     return {"status": "success", "apps": results}
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, CheckCircle2, ExternalLink, Loader2, Plug } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -19,6 +20,7 @@ import CredentialConnectModal from "../vault/CredentialConnectModal";
  * what to connect.
  */
 export default function RequiredAppsGate({ requiredApps, userId, onStatusChange }) {
+  const { t } = useTranslation();
   const [apps, setApps] = useState(null); // null while loading
   const [error, setError] = useState(null);
   const [connectingSlug, setConnectingSlug] = useState(null);
@@ -37,7 +39,7 @@ export default function RequiredAppsGate({ requiredApps, userId, onStatusChange 
     setError(null);
     return getRequiredAppsStatus(userId, names)
       .then((res) => setApps(res?.apps || []))
-      .catch((err) => setError(err.message || "Failed to check which apps are connected."));
+      .catch((err) => setError(err.message || t("requiredApps.checkFailed")));
   }, [userId, namesKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function RequiredAppsGate({ requiredApps, userId, onStatusChange 
 
       const popup = window.open(res.redirect_url, "voxagent-oauth", "width=520,height=680");
       if (!popup) {
-        setConnectError(`Your browser blocked the popup. Allow popups for this site, then try connecting ${app.app} again.`);
+        setConnectError(t("requiredApps.popupBlocked", { app: app.app }));
         setConnectingSlug(null);
         return;
       }
@@ -87,7 +89,7 @@ export default function RequiredAppsGate({ requiredApps, userId, onStatusChange 
         }
       }, 700);
     } catch (err) {
-      setConnectError(err.message || `Failed to start the connection for ${app.app}.`);
+      setConnectError(err.message || t("requiredApps.connectStartFailed", { app: app.app }));
       setConnectingSlug(null);
     }
   };
@@ -105,7 +107,7 @@ export default function RequiredAppsGate({ requiredApps, userId, onStatusChange 
     <div className="glass-panel p-4 flex flex-col gap-3">
       <div className="flex items-center gap-2 text-sm font-medium">
         <Plug size={16} className="text-brand-500" />
-        Required apps
+        {t("requiredApps.title")}
       </div>
 
       {error && (
@@ -124,7 +126,7 @@ export default function RequiredAppsGate({ requiredApps, userId, onStatusChange 
       {apps === null ? (
         <div className="flex items-center gap-2 text-xs text-slate-400">
           <Loader2 size={13} className="animate-spin" />
-          Checking connections…
+          {t("requiredApps.checkingConnections")}
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -147,14 +149,14 @@ export default function RequiredAppsGate({ requiredApps, userId, onStatusChange 
                 {a.connected ? (
                   <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
                     <CheckCircle2 size={12} />
-                    {a.builtin ? "Always available" : "Connected"}
+                    {a.builtin || a.no_auth_required ? t("requiredApps.alwaysAvailable") : t("requiredApps.connected")}
                   </span>
                 ) : a.connect_via === "telegram_personal" ? (
                   <Link
                     to="/vault"
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-500 hover:text-brand-600"
                   >
-                    Connect in App Vault <ExternalLink size={11} />
+                    {t("requiredApps.connectInVault")} <ExternalLink size={11} />
                   </Link>
                 ) : (
                   <button
@@ -163,7 +165,7 @@ export default function RequiredAppsGate({ requiredApps, userId, onStatusChange 
                     className="flex items-center gap-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white text-[11px] font-medium px-3 py-1.5 transition-colors"
                   >
                     {connecting ? <Loader2 size={11} className="animate-spin" /> : null}
-                    {connecting ? "Connecting…" : "Connect"}
+                    {connecting ? t("requiredApps.connecting") : t("requiredApps.connect")}
                   </button>
                 )}
               </div>

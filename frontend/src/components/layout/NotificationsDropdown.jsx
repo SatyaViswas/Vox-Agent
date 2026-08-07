@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Bell } from "lucide-react";
 import { approvePendingAction, getPausedRuns, rejectPendingAction, resumeAgent } from "../../api/agents";
 import PendingActionCard from "../studio/PendingActionCard";
@@ -8,6 +9,7 @@ import PendingActionCard from "../studio/PendingActionCard";
 // GET /paused). Renders each item with the same PendingActionCard used
 // for a live in-Studio pause, instead of a bespoke free-text-only form.
 export default function NotificationsDropdown() {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [busyId, setBusyId] = useState(null);
@@ -54,7 +56,7 @@ export default function NotificationsDropdown() {
       const newArr = await fetchNotifications();
       if (newArr && newArr.length === 0) setIsOpen(false);
     } catch (e) {
-      setErrors((prev) => ({ ...prev, [notif.id]: e.message || "Something went wrong." }));
+      setErrors((prev) => ({ ...prev, [notif.id]: e.message || t("notifications.somethingWrong") }));
     } finally {
       setBusyId(null);
     }
@@ -80,13 +82,13 @@ export default function NotificationsDropdown() {
         <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200/70 dark:border-white/10 overflow-hidden z-50">
           <div className="px-4 py-3 border-b border-slate-200/70 dark:border-white/10 bg-slate-50/50 dark:bg-slate-800/50">
             <h3 className="font-semibold text-sm text-slate-900 dark:text-white">
-              Action Center ({notifications.length})
+              {t("notifications.actionCenter", { count: notifications.length })}
             </h3>
           </div>
 
           <div className="max-h-[70vh] overflow-y-auto p-3 space-y-3">
             {notifications.length === 0 ? (
-              <div className="px-4 py-6 text-center text-sm text-slate-500">No pending tasks</div>
+              <div className="px-4 py-6 text-center text-sm text-slate-500">{t("notifications.noPendingTasks")}</div>
             ) : (
               notifications.map((notif) => (
                 <PendingActionCard

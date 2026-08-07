@@ -1,11 +1,13 @@
 import { NavLink } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { NAV_ITEMS } from "../../config/nav";
 
 export default function BottomNav() {
+  const { t } = useTranslation();
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 glass border-t border-slate-200/70 dark:border-white/10 pb-[env(safe-area-inset-bottom)]">
       <div className="flex items-stretch justify-between">
-        {NAV_ITEMS.map(({ to, shortLabel, icon: Icon }) => (
+        {NAV_ITEMS.map(({ to, shortLabelKey, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -16,7 +18,7 @@ export default function BottomNav() {
             }
           >
             <Icon size={20} />
-            <span className="truncate">{shortLabel}</span>
+            <span className="truncate">{t(shortLabelKey)}</span>
           </NavLink>
         ))}
       </div>

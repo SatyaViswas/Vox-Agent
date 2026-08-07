@@ -1,19 +1,20 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, CheckCircle2, Circle, HelpCircle, ImageIcon, Loader2, Radio } from "lucide-react";
 
 const RUN_STATUS_CONFIG = {
-  idle: { label: "Idle", icon: Circle, classes: "text-slate-400" },
-  saving: { label: "Saving Agent…", icon: Loader2, classes: "text-brand-400", spin: true },
-  starting: { label: "Starting…", icon: Loader2, classes: "text-brand-400", spin: true },
-  running: { label: "Executing", icon: Loader2, classes: "text-brand-400 animate-pulse", spin: true },
+  idle: { labelKey: "telemetry.idle", icon: Circle, classes: "text-slate-400" },
+  saving: { labelKey: "telemetry.saving", icon: Loader2, classes: "text-brand-400", spin: true },
+  starting: { labelKey: "telemetry.starting", icon: Loader2, classes: "text-brand-400", spin: true },
+  running: { labelKey: "telemetry.running", icon: Loader2, classes: "text-brand-400 animate-pulse", spin: true },
   // Previously fell through to the "idle" entry below (no matching key
   // existed here), so the header pill showed "Idle" styling during a live
   // pause even though the rest of the page correctly showed the amber
   // pending-action card and the step's "Needs Input" ring.
-  needs_input: { label: "Needs Your Input", icon: HelpCircle, classes: "text-amber-400" },
-  listening: { label: "Listening for events", icon: Radio, classes: "text-emerald-400 animate-pulse" },
-  success: { label: "Complete", icon: CheckCircle2, classes: "text-emerald-400" },
-  failed: { label: "Failed", icon: AlertCircle, classes: "text-red-400" },
+  needs_input: { labelKey: "telemetry.needsInput", icon: HelpCircle, classes: "text-amber-400" },
+  listening: { labelKey: "telemetry.listening", icon: Radio, classes: "text-emerald-400 animate-pulse" },
+  success: { labelKey: "telemetry.success", icon: CheckCircle2, classes: "text-emerald-400" },
+  failed: { labelKey: "telemetry.failed", icon: AlertCircle, classes: "text-red-400" },
 };
 
 const LEVEL_DOT = {
@@ -24,6 +25,7 @@ const LEVEL_DOT = {
 };
 
 export default function TelemetryPanel({ runStatus, logs }) {
+  const { t } = useTranslation();
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -41,12 +43,12 @@ export default function TelemetryPanel({ runStatus, logs }) {
       <div className="flex items-center justify-between mb-3">
         <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${statusConfig.classes}`}>
           <StatusIcon size={13} className={statusConfig.spin ? "animate-spin" : ""} />
-          {statusConfig.label}
+          {t(statusConfig.labelKey)}
         </span>
         {runStatus === "running" && (
           <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
             <Radio size={11} className="animate-pulse text-brand-400" />
-            polling live
+            {t("telemetry.pollingLive")}
           </span>
         )}
       </div>
@@ -56,7 +58,7 @@ export default function TelemetryPanel({ runStatus, logs }) {
         className="flex-1 min-h-[220px] max-h-[360px] overflow-y-auto rounded-xl bg-slate-900/90 dark:bg-black/40 p-3 font-mono text-xs space-y-1.5"
       >
         {logs.length === 0 ? (
-          <p className="text-slate-500 text-center py-8">Live browser feed and execution logs will stream here.</p>
+          <p className="text-slate-500 text-center py-8">{t("telemetry.emptyFeed")}</p>
         ) : (
           logs.map((log, i) => (
             <div key={i} className="flex items-start gap-2 text-slate-300">
@@ -74,7 +76,7 @@ export default function TelemetryPanel({ runStatus, logs }) {
         <div className="mt-3">
           <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
             <ImageIcon size={12} />
-            Proof Screenshots
+            {t("telemetry.proofScreenshots")}
           </p>
           <div className="flex gap-2 overflow-x-auto scrollbar-none">
             {screenshots.map((log, i) => (
@@ -85,7 +87,7 @@ export default function TelemetryPanel({ runStatus, logs }) {
                 rel="noreferrer"
                 className="shrink-0 w-20 h-16 rounded-lg overflow-hidden border border-slate-200/70 dark:border-white/10"
               >
-                <img src={log.screenshotUrl} alt="Execution proof" className="w-full h-full object-cover" />
+                <img src={log.screenshotUrl} alt={t("telemetry.executionProofAlt")} className="w-full h-full object-cover" />
               </a>
             ))}
           </div>

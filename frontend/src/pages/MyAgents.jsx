@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, Clock, Loader2, Plus, Webhook, Zap } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -15,10 +16,10 @@ import AgentCard from "../components/agents/AgentCard";
 import EditAgentDrawer from "../components/agents/EditAgentDrawer";
 import HistoryModal from "../components/agents/HistoryModal";
 
-const TABS = [
-  { id: "on-demand", label: "On-Demand Agents", icon: Zap },
-  { id: "scheduled", label: "Scheduled Autopilot", icon: Clock },
-  { id: "event", label: "Event Triggers", icon: Webhook },
+const TAB_DEFS = [
+  { id: "on-demand", labelKey: "myAgents.onDemand", icon: Zap },
+  { id: "scheduled", labelKey: "myAgents.scheduled", icon: Clock },
+  { id: "event", labelKey: "myAgents.eventTriggers", icon: Webhook },
 ];
 
 const STATUS_FILTERS = ["all", "active", "paused"];
@@ -37,6 +38,7 @@ function matchesAgent(agent, query) {
 export default function MyAgents() {
   const navigate = useNavigate();
   const { userId } = useAuth();
+  const { t } = useTranslation();
 
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -95,7 +97,7 @@ export default function MyAgents() {
       fetchLastRuns(list);
       fetchTriggerStatuses(list);
     } catch (err) {
-      setLoadError(err.message || "Failed to load agents.");
+      setLoadError(err.message || t("myAgents.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -141,7 +143,7 @@ export default function MyAgents() {
       }
     } catch (err) {
       setAgents((prev) => prev.map((a) => (a.id === agent.id ? { ...a, status: agent.status } : a)));
-      setActionError(err.message || "Failed to update agent status.");
+      setActionError(err.message || t("myAgents.statusFailed"));
     }
   };
 
@@ -152,7 +154,7 @@ export default function MyAgents() {
       await executeAgent(agent.id, userId);
       setTimeout(() => fetchLastRuns([agent]), 4000);
     } catch (err) {
-      setActionError(err.message || "Failed to start agent execution.");
+      setActionError(err.message || t("myAgents.runFailed"));
     } finally {
       setRunningIds((prev) => {
         const next = new Set(prev);
@@ -170,7 +172,7 @@ export default function MyAgents() {
       await deleteAgent(agent.id);
     } catch (err) {
       setAgents(prevAgents);
-      setActionError(err.message || "Failed to delete agent.");
+      setActionError(err.message || t("myAgents.deleteFailed"));
     }
   };
 
@@ -184,23 +186,21 @@ export default function MyAgents() {
     <div className="flex flex-col gap-5 max-w-6xl mx-auto">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">My Agents</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Manage the agents you've built, on-demand or running on autopilot.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("myAgents.title")}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("myAgents.subtitle")}</p>
         </div>
         <button
           onClick={() => navigate("/studio")}
           className="flex items-center gap-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 transition-colors"
         >
           <Plus size={16} />
-          New Agent
+          {t("myAgents.newAgent")}
         </button>
       </div>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="inline-flex glass-panel p-1 gap-1 w-fit">
-          {TABS.map(({ id, label, icon: Icon }) => (
+          {TAB_DEFS.map(({ id, labelKey, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
@@ -211,7 +211,7 @@ export default function MyAgents() {
               }`}
             >
               <Icon size={15} />
-              {label}
+              {t(labelKey)}
             </button>
           ))}
         </div>
@@ -220,7 +220,7 @@ export default function MyAgents() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title or app…"
+            placeholder={t("myAgents.searchPlaceholder")}
             className="rounded-xl border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400/50 w-56"
           />
           <div className="inline-flex glass-panel p-1 gap-1">
@@ -234,7 +234,7 @@ export default function MyAgents() {
                     : "text-slate-600 dark:text-slate-300 hover:bg-slate-900/5 dark:hover:bg-white/5"
                 }`}
               >
-                {s}
+                {t(`common.${s}`)}
               </button>
             ))}
           </div>
@@ -251,7 +251,7 @@ export default function MyAgents() {
       {loading ? (
         <div className="glass-panel p-10 flex items-center justify-center gap-2 text-sm text-slate-400">
           <Loader2 size={16} className="animate-spin" />
-          Loading agents…
+          {t("myAgents.loadingAgents")}
         </div>
       ) : loadError ? (
         <div className="rounded-xl border border-red-400/40 bg-red-400/10 px-4 py-3 flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
@@ -260,7 +260,7 @@ export default function MyAgents() {
         </div>
       ) : filteredAgents.length === 0 ? (
         <div className="glass-panel p-10 text-center text-sm text-slate-500 dark:text-slate-400">
-          No agents in this category yet.
+          {t("myAgents.noAgents")}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

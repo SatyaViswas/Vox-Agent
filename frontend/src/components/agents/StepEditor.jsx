@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { getRouteConfig } from "../../lib/routeConfig";
 
 export default function StepEditor({ step, onFieldChange, onParamChange, onParamRemove, onParamAdd }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
@@ -40,7 +42,7 @@ export default function StepEditor({ step, onFieldChange, onParamChange, onParam
       {expanded && (
         <div className="p-3 pt-1 border-t border-slate-200/70 dark:border-white/10 space-y-3">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Action</label>
+            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">{t("stepEditor.action")}</label>
             <input
               value={step.action}
               onChange={(e) => onFieldChange(step.step_number, "action", e.target.value)}
@@ -48,7 +50,7 @@ export default function StepEditor({ step, onFieldChange, onParamChange, onParam
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Target App / Output Location</label>
+            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">{t("stepEditor.targetApp")}</label>
             <input
               value={step.app}
               onChange={(e) => onFieldChange(step.step_number, "app", e.target.value)}
@@ -57,7 +59,7 @@ export default function StepEditor({ step, onFieldChange, onParamChange, onParam
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">Parameters</label>
+            <label className="text-xs font-medium text-slate-600 dark:text-slate-300">{t("stepEditor.parameters")}</label>
             {Object.entries(step.parameters || {}).map(([key, value]) => (
               <div key={key} className="flex items-center gap-2">
                 <span className="text-xs font-mono text-slate-500 dark:text-slate-400 w-1/3 truncate shrink-0">{key}</span>
@@ -69,7 +71,7 @@ export default function StepEditor({ step, onFieldChange, onParamChange, onParam
                 <button
                   onClick={() => onParamRemove(step.step_number, key)}
                   className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
-                  aria-label={`Remove ${key}`}
+                  aria-label={t("stepEditor.removeParam", { key })}
                 >
                   <X size={13} />
                 </button>
@@ -80,19 +82,19 @@ export default function StepEditor({ step, onFieldChange, onParamChange, onParam
               <input
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
-                placeholder="new_param_key"
+                placeholder={t("stepEditor.newParamKeyPlaceholder")}
                 className="w-1/3 rounded-lg border border-dashed border-slate-300/70 dark:border-white/15 bg-transparent px-2.5 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-brand-400/50 shrink-0"
               />
               <input
                 value={newValue}
                 onChange={(e) => setNewValue(e.target.value)}
-                placeholder="value"
+                placeholder={t("stepEditor.valuePlaceholder")}
                 className="flex-1 rounded-lg border border-dashed border-slate-300/70 dark:border-white/15 bg-transparent px-2.5 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-brand-400/50"
               />
               <button
                 onClick={handleAddParam}
                 className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-brand-500 hover:bg-brand-500/10 transition-colors shrink-0"
-                aria-label="Add parameter"
+                aria-label={t("stepEditor.addParameter")}
               >
                 <Plus size={14} />
               </button>

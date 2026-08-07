@@ -76,6 +76,23 @@ def _clear_disk_session(user_id: str, app_name: str) -> None:
                 pass
 
 
+def _derive_string_session(client: "TelegramClient") -> str:
+    """Builds a portable StringSession-format string from a client's actual
+    session state, regardless of whether that client's underlying session is
+    file-backed (SQLiteSession, used for the live connection — see
+    `_get_session_path`). `client.session.save()` only returns a usable
+    string for a `StringSession`; SQLiteSession.save()/MemorySession.save()
+    always return None (they just persist to their own backing store). Every
+    Session subclass exposes the same dc_id/server_address/port/auth_key
+    fields, so a StringSession can always be constructed from them — this is
+    the vault's only portable record of the login (used to rebuild the local
+    session file if it's ever missing, e.g. a fresh deploy)."""
+    string_session = StringSession()
+    string_session.set_dc(client.session.dc_id, client.session.server_address, client.session.port)
+    string_session.auth_key = client.session.auth_key
+    return string_session.save()
+
+
 async def start_login(phone_number: str, user_id: str = None) -> str | dict:
     """Step 1: sends a login code to `phone_number` via Telegram. Returns a
     login_id the frontend carries through submit_code / submit_password.
@@ -94,7 +111,7 @@ async def start_login(phone_number: str, user_id: str = None) -> str | dict:
     if ":" in phone_number:
         try:
             await client.sign_in(bot_token=phone_number)
-            session_string = client.session.save()
+            session_string = _derive_string_session(client)
             me = await client.get_me()
             await client.disconnect()
             
@@ -142,7 +159,7 @@ async def start_login(phone_number: str, user_id: str = None) -> str | dict:
 async def _finish_login(login_id: str, user_id: str) -> dict:
     pending = _pending_logins.pop(login_id)
     client = pending["client"]
-    session_string = client.session.save()
+    session_string = _derive_string_session(client)
     me = await client.get_me()
     await client.disconnect()
 
@@ -305,32 +322,39 @@ async def _get_or_start_live_client(user_id: str, app_name: str) -> TelegramClie
                 except Exception:
                     pass
 
-        creds = get_app_credentials(user_id, app_name)
-        if not creds or not creds.get("session_string"):
-            if app_name == TELEGRAM_BOT_APP_NAME:
-                raise Exception("No Telegram Bot connected for this user — connect it in App Vault first.")
-            else:
-                raise Exception("No Telegram personal account connected for this user — connect it in App Vault first.")
-
-        _require_config()
-        
         # Use a persistent SQLite file to prevent AuthKeyDuplicatedError across server restarts
         import os
         from telethon.sessions import SQLiteSession
-        
+
         session_file = _get_session_path(user_id, app_name)
-        
-        if not os.path.exists(session_file):
-            # If the file was deleted but we have a session string in DB, rebuild it.
-            # (Note: this is a fallback. Normal logins populate the SQLite file directly).
+
+        if os.path.exists(session_file):
+            # The local session file is itself a complete, valid credential —
+            # it does not need (and must not require) a vault session_string
+            # to be usable. Requiring both was the bug: any time this file
+            # had to be reloaded (a dropped connection, a server restart),
+            # the vault's session_string was checked FIRST and unconditionally,
+            # so a perfectly good local session was reported as "not connected".
+            _require_config()
+            client = TelegramClient(session_file, settings.TELEGRAM_API_ID, settings.TELEGRAM_API_HASH)
+        else:
+            # No local file (fresh machine/container, or it was deleted) — the
+            # vault's session_string is the only way to rebuild it, so it's
+            # required only on this path.
+            creds = get_app_credentials(user_id, app_name)
+            if not creds or not creds.get("session_string"):
+                if app_name == TELEGRAM_BOT_APP_NAME:
+                    raise Exception("No Telegram Bot connected for this user — connect it in App Vault first.")
+                else:
+                    raise Exception("No Telegram personal account connected for this user — connect it in App Vault first.")
+
+            _require_config()
             sqlite_session = SQLiteSession(session_file)
             string_session = StringSession(creds["session_string"])
             sqlite_session.set_dc(string_session.dc_id, string_session.server_address, string_session.port)
             sqlite_session.auth_key = string_session.auth_key
             sqlite_session.save()
             client = TelegramClient(sqlite_session, settings.TELEGRAM_API_ID, settings.TELEGRAM_API_HASH)
-        else:
-            client = TelegramClient(session_file, settings.TELEGRAM_API_ID, settings.TELEGRAM_API_HASH)
             
         try:
             await client.connect()

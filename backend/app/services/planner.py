@@ -160,11 +160,24 @@ def _inject_url_content(prompt: str) -> str:
         return prompt + appended_content
     return prompt
 
-def generate_ai_content(prompt: str, as_list: bool = False):
+def generate_ai_content(prompt: str, as_list: bool = False, user_id: str | None = None, knowledge_sources: list[str] | None = None):
     """Runs a plain AI text-generation step directly against Gemini for the
     'ai_generate' route — drafting/summarizing/rewriting content with no
-    external app connection required (unlike routing to e.g. an OpenAI
-    Composio action, which needs a connected account the user may not have).
+    external app connection required (see planner.py's 'ai_generate' rule).
+
+    If `user_id` is provided, relevant chunks from the user's knowledge base
+    are retrieved via semantic search and injected into the prompt BEFORE
+    calling Gemini — so any reference like "use template from knowledge base"
+    or "use my outreach template" automatically gets the right content,
+    and the model can fill in placeholders (e.g. {company name}) with data
+    already present in the prompt from prior steps.
+
+    `knowledge_sources`, when given, restricts retrieval to only those named
+    knowledge sources — a user's knowledge hub is a single pool per account,
+    so an automation dedicated to one business (e.g. a bakery bot) needs this
+    to avoid pulling in an unrelated business's content (e.g. a real estate
+    listing) that happens to be a closer semantic match for a given message.
+    Omit it to search the user's whole knowledge hub (the old behavior).
 
     as_list=True asks for a JSON array of discrete items instead of one block
     of text, for a step whose result a downstream step fans out over via
@@ -173,6 +186,29 @@ def generate_ai_content(prompt: str, as_list: bool = False):
     """
     if not client:
         raise ValueError("GEMINI_API_KEY is not configured.")
+
+    # --- Knowledge Base injection ---
+    # Retrieve relevant chunks from the user's knowledge hub and prepend them
+    # so the model has the right context (templates, SOPs, brand guidelines,
+    # etc.) without any hardcoding per prompt type.
+    if user_id:
+        try:
+            from app.services.context_injector import retrieve_business_context
+            knowledge = retrieve_business_context(user_id, prompt, threshold=0.5, limit=5, source_names=knowledge_sources)
+            if knowledge:
+                prompt = (
+                    f"--- KNOWLEDGE BASE CONTEXT ---\n"
+                    f"{knowledge}\n"
+                    f"--- END KNOWLEDGE BASE CONTEXT ---\n\n"
+                    f"Use the above knowledge base context where relevant to complete the following task. "
+                    f"If a template is provided, use it directly and replace any placeholders (like "
+                    f"{{{{company name}}}}, {{{{first name}}}}, {{{{product}}}}, etc.) with the actual "
+                    f"values present in the task data. Do NOT ask for information that is already "
+                    f"available in either the knowledge base context or the task data below.\n\n"
+                    f"{prompt}"
+                )
+        except Exception as _kb_err:
+            print(f"[ai_generate] Knowledge base retrieval skipped: {_kb_err}")
 
     # Automatically fetch URLs in the prompt so Gemini can summarize them
     prompt = _inject_url_content(prompt)
@@ -197,10 +233,15 @@ def generate_ai_content(prompt: str, as_list: bool = False):
         return [str(items)]
 
     system_instruction = (
-        "If you cannot fulfill the user's request because you are missing context or data, "
-        "and you must ask the user a clarifying question, keep your question EXTREMELY simple, "
-        "concise, and non-technical. Do not explain the underlying data structures, metadata, "
-        "or integrations. Just state what you need in plain English."
+        "You are a helpful AI assistant executing a step in an automated workflow. "
+        "Your input may include a KNOWLEDGE BASE CONTEXT section — if it does, use it. "
+        "If a template or document is provided in the knowledge base, use it as-is and replace any "
+        "placeholders (like {company name}, {first name}, {product}, {recipient}, etc.) with the "
+        "actual values present in the task data. Never ask for values that are already available "
+        "in either the knowledge base context or the task data. "
+        "Only ask the user for clarification if information is genuinely missing from BOTH the "
+        "knowledge base context AND the task data, and even then keep your question EXTREMELY simple, "
+        "concise, and non-technical — just state plainly what single piece of information is needed."
     )
 
     response = client.models.generate_content(

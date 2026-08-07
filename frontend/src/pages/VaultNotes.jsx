@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   Check,
@@ -17,6 +18,7 @@ import { getVaultNotes } from "../api/vault";
 import { downloadFile, normalizeNote, notesToCsv, notesToJson } from "../lib/vaultNotes";
 
 function ViewNoteModal({ note, onClose }) {
+  const { t } = useTranslation();
   if (!note) return null;
 
   return (
@@ -42,7 +44,7 @@ function ViewNoteModal({ note, onClose }) {
         </div>
         <div className="p-4 border-t border-slate-300/70 dark:border-white/10 flex items-center justify-between text-xs text-slate-400 bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-2">
-            <span>Agent: {note.agentName}</span>
+            <span>{t("notes.agent")}: {note.agentName}</span>
             {note.createdAt && (
               <>
                 <span>·</span>
@@ -54,7 +56,7 @@ function ViewNoteModal({ note, onClose }) {
             onClick={() => navigator.clipboard.writeText(note.contentText)}
             className="flex items-center gap-1.5 hover:text-brand-500 transition-colors"
           >
-            <Clipboard size={14} /> Copy
+            <Clipboard size={14} /> {t("common.copy")}
           </button>
         </div>
       </div>
@@ -63,6 +65,7 @@ function ViewNoteModal({ note, onClose }) {
 }
 
 function NoteCard({ note, selected, onToggleSelect, onView, view }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -88,7 +91,7 @@ function NoteCard({ note, selected, onToggleSelect, onView, view }) {
         </label>
         <button
           onClick={handleCopy}
-          title="Copy content"
+          title={t("notes.copyContent")}
           className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-brand-500 hover:bg-brand-500/10 transition-colors shrink-0"
         >
           {copied ? <Check size={14} className="text-emerald-500" /> : <Clipboard size={14} />}
@@ -114,6 +117,7 @@ function NoteCard({ note, selected, onToggleSelect, onView, view }) {
 
 export default function VaultNotes() {
   const { userId } = useAuth();
+  const { t } = useTranslation();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -129,7 +133,7 @@ export default function VaultNotes() {
     setLoading(true);
     getVaultNotes(userId)
       .then((res) => setNotes((res?.notes || []).map(normalizeNote)))
-      .catch((err) => setError(err.message || "Failed to load vault notes."))
+      .catch((err) => setError(err.message || t("notes.loadFailed")))
       .finally(() => setLoading(false));
   }, [userId]);
 
@@ -180,9 +184,9 @@ export default function VaultNotes() {
   return (
     <div className="flex flex-col gap-5 max-w-6xl mx-auto">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Vault Notes</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("notes.title")}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Extracted DOM summaries and scraped data from your agents' runs.
+          {t("notes.subtitle")}
         </p>
       </div>
 
@@ -192,7 +196,7 @@ export default function VaultNotes() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by keyword or agent name..."
+            placeholder={t("notes.searchPlaceholder")}
             className="w-full rounded-xl border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 pl-9 pr-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
           />
         </div>
@@ -202,7 +206,7 @@ export default function VaultNotes() {
           onChange={(e) => setDateFrom(e.target.value)}
           className="rounded-xl border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
         />
-        <span className="text-xs text-slate-400">to</span>
+        <span className="text-xs text-slate-400">{t("common.to")}</span>
         <input
           type="date"
           value={dateTo}
@@ -234,21 +238,23 @@ export default function VaultNotes() {
       {filtered.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500 dark:text-slate-400">
           <span>
-            {selectedIds.size > 0 ? `${exportCount} selected` : `Export all ${exportCount} visible`}
+            {selectedIds.size > 0
+              ? `${exportCount} ${t("notes.selected")}`
+              : t("notes.exportAllVisible", { count: exportCount })}
           </span>
           <button
             onClick={() => handleExport("csv")}
             className="flex items-center gap-1.5 rounded-lg border border-slate-300/70 dark:border-white/15 px-3 py-1.5 font-medium hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
           >
             <Download size={13} />
-            CSV
+            {t("notes.exportCsv")}
           </button>
           <button
             onClick={() => handleExport("json")}
             className="flex items-center gap-1.5 rounded-lg border border-slate-300/70 dark:border-white/15 px-3 py-1.5 font-medium hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
           >
             <FileJson size={13} />
-            JSON
+            {t("notes.exportJson")}
           </button>
         </div>
       )}
@@ -263,11 +269,11 @@ export default function VaultNotes() {
       {loading ? (
         <div className="glass-panel p-10 flex items-center justify-center gap-2 text-sm text-slate-400">
           <Loader2 size={16} className="animate-spin" />
-          Loading notes…
+          {t("notes.loading")}
         </div>
       ) : filtered.length === 0 ? (
         <div className="glass-panel p-10 text-center text-sm text-slate-500 dark:text-slate-400">
-          No notes match your search.
+          {t("notes.noMatch")}
         </div>
       ) : (
         <div className={view === "grid" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" : "flex flex-col gap-3"}>
