@@ -13,7 +13,7 @@
 
 ---
 
-Demo Video:
+Demo video:
 
 
 https://github.com/user-attachments/assets/3c9e659f-1fef-4a67-86bc-1a95efd1ce44

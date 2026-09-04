@@ -7,7 +7,7 @@ VoxAgent AI converts casual speech or plain-text descriptions into fully execute
 - Engine 3 (Autonomous HTTP): FastAPI / n8n HTTP requests for custom webhooks and REST endpoints.
 
 ## 2. Full Tech Stack
-- **Backend**: FastAPI (Python 3.10+), Uvicorn, Playwright, `browser-use`, Composio SDK, Google Gemini 1.5/2.0 Flash API, Groq Whisper API, Supabase Python Client.
+- **Backend**: FastAPI (Python 3.10+), Uvicorn, Playwright, `browser-use`, Composio SDK, Google gemini 1.5/2.0 Flash API, Groq Whisper API, Supabase Python Client.
 - **Frontend**: React + Vite + Tailwind CSS.
 - **Database & Vault**: Supabase PostgreSQL.
 
