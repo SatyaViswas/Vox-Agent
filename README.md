@@ -13,6 +13,15 @@
 
 ---
 
+Demo Video:
+
+
+https://github.com/user-attachments/assets/3c9e659f-1fef-4a67-86bc-1a95efd1ce44
+
+
+
+---
+
 ## 📖 Table of Contents
 1. [Core Vision & Architecture](#-core-vision--architecture)
 2. [Project Directory Structure](#%EF%B8%8F-project-directory-structure)
