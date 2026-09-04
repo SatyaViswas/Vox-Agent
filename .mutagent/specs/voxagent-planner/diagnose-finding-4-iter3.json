@@ -1,0 +1,264 @@
+{
+  "clusterId": "F-fanout-invented-literal-iter3",
+  "iteration": 3,
+  "loop": "voxagent-planner-pass1",
+  "what": "hallucination",
+  "why": "prompt-underspec",
+  "where": "system-prompt",
+  "confidence": "high",
+  "verdict": "HYPOTHESIS CONFIRMED, BUT THE PREMISE IS STALE — AND THE APPLIED FIX SHIPPED A SILENT REGRESSION. (1) The stated hypothesis is CORRECT: Rule 5's step-N+1 'constant literal' clause was an unqualified competing instruction that overrode Rule 2 inside a fan-out consumer step, which is why srw-02 (plain Rule-2 step) was clean while fan-01 (Rule-5 step) was not. (2) However the fan-01 3/3 failure was measured against planner.py at commit 0754784 (Rule 2 amended, Rule 5 NOT yet amended). The exact carve-out the brief asks me to draft was ALREADY WRITTEN 30 minutes later at 6ab9faa, and a strictly better tightened version landed on main at 71fb7b1. Re-running fan-01 against the CURRENT worktree would very likely pass; the residual failure is a measurement-snapshot artifact of an already-remedied defect. (3) The live defect now is the OPPOSITE direction: main's tightening commit 71fb7b1 silently DELETED the sentence 'Do NOT split this into 5 separate ai_generate steps.' from Rule 5's step-N bullet in BOTH planner.py and agentspec.yaml — the guard against fan-01's own primary documented failure mode. (4) The harness still cannot measure any of this: tier0_code_checks.py:19-30 never implements the criterion's clause-2 (invented-literal) check, so neither the fix nor the regression is observable from a tier-0 re-run.",
+  "problem": "Rule 5's step-N+1 'constant literal' clause overrode Rule 2 inside fan-out consumer steps, leaving an invented `table_name: \"Blog Posts\"` in fan-01's step 2 on 3/3 deterministic runs while srw-02's single-step form was clean — and the remediation of that clause (main 71fb7b1) deleted Rule 5's anti-split guard from both planner.py:49 and agentspec.yaml:131, removing protection against fan-01's primary documented failure mode (8 separate ai_generate steps) with no eval criterion able to detect either condition.",
+  "hypothesisAssessment": {
+    "stated": "Rule 5's 'Any other parameter that should stay the same across every iteration (e.g. a fixed spreadsheet name) stays a normal literal value' is read as license to fill ALL non-for_each parameters as literals, competing with and overriding Rule 2 inside a fan-out consumer step.",
+    "verdict": "CONFIRMED — with the correction that it was already fixed before this diagnosis ran.",
+    "supportingReasoning": [
+      "Scope asymmetry is decisive: Rule 2 is a GENERAL rule; Rule 5's step-N+1 bullet is a SPECIFIC rule about what belongs inside a fan-out step's `parameters`. Under ordinary specific-beats-general reading, a model resolving the conflict inside a Rule-5 step follows Rule 5. That exactly predicts the observed split — srw-02 (no Rule 5 in play, Rule 2 unopposed) clean, fan-01 (Rule 5 in play) violating.",
+      "The clause was UNQUALIFIED at the measured snapshot: `git show 0754784:backend/app/services/planner.py` line 50 ends the sentence at '...stays a normal literal value.' with no carve-out and no reference to Rule 2 or missing_parameters.",
+      "The clause's own example ('a fixed spreadsheet name') is a NAME-shaped constant — the same shape as `table_name`. It reads as a positive instruction to supply exactly the class of value Rule 2 wants withheld.",
+      "Independent corroboration: the loop's own next action was to write precisely this carve-out (6ab9faa, 22:29:02), and then to tighten it further (71fb7b1, 22:49:16). Two successive human/agent edits converged on the same causal locus."
+    ]
+  },
+  "timeline": [
+    {
+      "at": "2026-08-05 21:59:01",
+      "commit": "0754784",
+      "event": "Rule 2 amended — 'LEAVE THAT PARAMETER OUT of the step's parameters object entirely'. Rule 5 line 50 still ends at '...stays a normal literal value.' with NO exception."
+    },
+    {
+      "at": "between 21:59 and 22:29",
+      "commit": "0754784 (worktree state)",
+      "event": "fan-01 measured 3/3 FAIL — step 2 parameters.table_name='Blog Posts' co-existing with missing_parameters[table_name]. srw-02 measured CLEAN. THIS IS THE SNAPSHOT THE BRIEF DESCRIBES."
+    },
+    {
+      "at": "2026-08-05 22:29:02",
+      "commit": "6ab9faa",
+      "event": "Rule 5 exception ADDED to worktree planner.py:50 — the exact remedy this diagnosis was asked to draft."
+    },
+    {
+      "at": "2026-08-05 22:30:16",
+      "commit": "f340db0",
+      "event": "agentspec.yaml:132 SSoT-synced with the exception. This is the worktree's current HEAD."
+    },
+    {
+      "at": "2026-08-05 22:34:39",
+      "commit": "69d238f",
+      "event": "Rules 2/5/7 merged to main. 'Do NOT split this into 5 separate ai_generate steps.' STILL PRESENT at planner.py:49."
+    },
+    {
+      "at": "2026-08-05 22:49:16",
+      "commit": "71fb7b1",
+      "event": "main: Rule 5 exception TIGHTENED (better text, adds the fan-01 worked example) BUT the anti-split sentence is DELETED from planner.py:49 and agentspec.yaml:131. REGRESSION INTRODUCED."
+    }
+  ],
+  "evidence": [
+    "MEASURED SNAPSHOT (root cause of the 3/3 failure): `git show 0754784:backend/app/services/planner.py` line 50 — 'Any other parameter that should stay the same across every iteration (e.g. a fixed spreadsheet name) stays a normal literal value.' Sentence terminates there. No EXCEPTION clause, no cross-reference to Rule 2, no mention of missing_parameters. Meanwhile Rule 2 at lines 30-36 of the same revision DOES carry the 'LEAVE THAT PARAMETER OUT' bullet. Two instructions, directly contradictory, and the narrower one (Rule 5) governs the step where the violation occurred.",
+    "SCOPE ASYMMETRY EXPLAINS THE srw-02 / fan-01 SPLIT: srw-02's prompt (eval-dataset-candidates.json, id srw-02) is 'Can you add this month's invoice to my Airtable base called Freelance Income? ...' — complexity 'single-step', scenario 'spreadsheet-row-write'. No fan-out, so Rule 5 never engages and Rule 2 applies unopposed → clean. fan-01's prompt is 'generate 8 blog post title ideas about remote employee onboarding and add each one as its own record in my Airtable base Content Calendar' — complexity 'multi-step', scenario 'fan-out-batch'. Step 2 IS a Rule-5 step-N+1, so the competing clause engages → table_name='Blog Posts' invented. Identical missing-parameter class, opposite outcome, and the ONLY differing variable is whether Rule 5's clause was in scope.",
+    "REMEDY ALREADY LANDED: /tmp/voxagent-optimize-worktree/backend/app/services/planner.py:50 (commit 6ab9faa) now reads '... stays a normal literal value — EXCEPTION: this \"constant literal\" allowance applies only to parameters whose values the user actually stated in their request. If a constant parameter's value was never given by the user (e.g. the user named an Airtable base but not the table inside it), do NOT invent a stand-in value — treat it as missing under Rule 2: add it to `missing_parameters`, set `needs_clarification: true`, and leave that key out of `parameters` entirely.' This is the brief's proposed remedy, verbatim in intent.",
+    "SUPERSEDING VERSION ON MAIN: `git show 71fb7b1:backend/app/services/planner.py` line 50 replaces the EXCEPTION phrasing with a positive bidirectional rule plus a fan-01-specific worked example: '... The rule is: any name or value the user literally said belongs in `parameters` as a concrete literal; only identities the user never gave at all are flagged as missing. Concrete example — \"add each title to my Airtable base Content Calendar\": `base_name: \"Content Calendar\"` is a literal (user said it); `table_name` is missing (user never named the table inside that base) → flag `table_name` in `missing_parameters`, keep `base_name: \"Content Calendar\"` in `parameters`.' This is strictly stronger than 6ab9faa: it names fan-01's exact prompt, and it guards the OVER-correction direction (dropping base_name too) that a bare 'EXCEPTION' framing invites.",
+    "REGRESSION (the live defect): `git show 69d238f:backend/app/services/planner.py` line 49 ends '... (e.g. `parameters.prompt` = \"Write 5 engaging Instagram captions for ...\"). Do NOT split this into 5 separate ai_generate steps.' `git show 71fb7b1:backend/app/services/planner.py` line 49 ends '... \"Write 5 engaging Instagram captions for ...\").' — the final sentence is gone. `git show 71fb7b1:backend/app/services/planner.py | grep -c 'Do NOT split'` returns 0; the worktree copy returns 1.",
+    "REGRESSION PROPAGATED TO SSoT: agentspec.yaml:131 in the main repo ends '... \"Write 5 engaging Instagram captions for ...\").' with no anti-split sentence; `grep -c 'Do NOT split' .mutagent/specs/voxagent-planner/agentspec.yaml` returns 0 in main vs 1 in /tmp/voxagent-optimize-worktree/.mutagent/specs/voxagent-planner/agentspec.yaml. Both artifacts lost it together, so this is a deliberate-looking deletion rather than SSoT drift — and no criterion covers it.",
+    "REGRESSION SEVERITY IS FIRST-ORDER FOR THIS EXACT TRACE: eval-dataset-candidates.json, fan-01.rationale — 'Failure modes are 8 separate ai_generate steps or one record containing all 8 titles.' The deleted sentence is the ONLY text in the entire system prompt that guards fan-01's first-named failure mode. Removing it while fixing fan-01's other defect trades one fan-01 failure for a different fan-01 failure.",
+    "DEFECT IS UNMEASURABLE BY THE HARNESS: tier0_code_checks.py:19-30 (`check_no_guessed_required_param`) computes `should_need = scenario == AMBIGUOUS_SCENARIO` and branches only on `needs_clarification`. It never iterates `steps[].parameters`, never cross-references `missing_parameters[].parameter_key`, and never counts ai_generate steps. Remedy 1 of diagnose-finding-1.json (implement criterion clause 2) was never applied — the file was last modified 2026-08-05 23:22, AFTER that finding was written at 21:30, and still contains the original predicate. Consequence: the 3/3 fan-01 result was established by manual inspection, and re-running tier-0 will NOT confirm the fix nor catch the anti-split regression.",
+    "RULE 6 IS UNAFFECTED BY EITHER COMMIT: `diff <(git show 71fb7b1:backend/app/services/planner.py) /tmp/voxagent-optimize-worktree/backend/app/services/planner.py` reports exactly `49,50c49,50` — Rule 6 (headers, line 53) is byte-identical across main and the worktree. The `{{item}}`, `{{step_N_result}}`, `for_each` and headers machinery is untouched by the proposed change."
+  ],
+  "whyChain": [
+    {
+      "why": "fan-01 step 2 shipped `\"table_name\": \"Blog Posts\"` while also listing table_name in missing_parameters, 3/3 runs",
+      "evidence": "brief-reported blueprint, identical across 3 real Gemini calls at temperature=0.1 (planner.py:78)",
+      "whatHappened": "The planner correctly set needs_clarification=true and correctly added a table_name entry to missing_parameters for step 2, then also wrote a plausible invented table name into that same step's parameters object — the exact self-contradiction Rule 2's iteration-2 amendment was written to eliminate."
+    },
+    {
+      "why": "The same defect class was already fixed for srw-02, a single-step Airtable write with the identical missing table_name",
+      "evidence": "eval-dataset-candidates.json srw-02 (complexity 'single-step') vs fan-01 (complexity 'multi-step', scenario 'fan-out-batch')",
+      "whatHappened": "srw-02 emitted table_name only in missing_parameters and omitted it from parameters, proving Rule 2's amendment does work — so the differentiator is structural, not a weakness in Rule 2's wording."
+    },
+    {
+      "why": "Only fan-01's step 2 is governed by Rule 5's step-N+1 bullet, which carried an unqualified instruction to fill constant parameters as literals",
+      "evidence": "git show 0754784:backend/app/services/planner.py line 50",
+      "whatHappened": "At the measured revision the bullet read '...Any other parameter that should stay the same across every iteration (e.g. a fixed spreadsheet name) stays a normal literal value.' and stopped. Inside a fan-out step the model faced a general rule (Rule 2: omit it) against a specific rule (Rule 5: make it a literal), and followed the specific one — table_name is precisely an 'other parameter that stays the same across every iteration', and the clause's own example is a NAME.",
+      "example": "Any other parameter that should stay the same across every iteration (e.g. a fixed spreadsheet name) stays a normal literal value.",
+      "isOrigin": true
+    },
+    {
+      "why": "That exact carve-out was authored 30 minutes after the failing measurement and is already in the worktree",
+      "evidence": "commit 6ab9faa 2026-08-05 22:29:02 → /tmp/voxagent-optimize-worktree/backend/app/services/planner.py:50",
+      "whatHappened": "The optimize loop had already independently reached the same conclusion and appended an EXCEPTION clause routing never-supplied constants to Rule 2, so the 3/3 fan-01 result the brief treats as residual is stale relative to the code on disk."
+    },
+    {
+      "why": "The follow-up tightening on main improved the exception but deleted Rule 5's anti-split guard",
+      "evidence": "git show 69d238f:planner.py:49 vs git show 71fb7b1:planner.py:49; grep -c 'Do NOT split' → 1 vs 0",
+      "whatHappened": "Commit 71fb7b1 rewrote both bullets of Rule 5 and, in doing so, dropped the sentence 'Do NOT split this into 5 separate ai_generate steps.' from the step-N bullet in planner.py AND in agentspec.yaml, removing the sole safeguard against fan-01's primary documented failure mode while fixing its secondary one.",
+      "isOrigin": true
+    },
+    {
+      "why": "No eval criterion can observe either the fix or the regression",
+      "evidence": "tier0_code_checks.py:19-30",
+      "whatHappened": "check_no_guessed_required_param still decides purely from the scenario label and needs_clarification; it never compares missing_parameters[].parameter_key against steps[].parameters keys, and nothing anywhere counts ai_generate steps for a fan-out scenario. Clause 2 of the criterion (agentspec.yaml:164) remains unimplemented despite being remedy 1 of diagnose-finding-1.json.",
+      "isOrigin": true
+    }
+  ],
+  "assumptions": [
+    {
+      "text": "The fan-01 3/3 failure was measured against planner.py at commit 0754784 (Rule 2 amended, Rule 5 not yet), not against the current worktree HEAD f340db0.",
+      "status": "verified",
+      "basis": "The brief quotes Rule 5's step-N+1 clause terminating at '...stays a normal literal value' with no EXCEPTION continuation, and frames the carve-out as something still to be drafted. That wording exists ONLY at revisions at or before 0754784; every revision from 6ab9faa onward carries the continuation. Commit timestamps (0754784 21:59:01, 6ab9faa 22:29:02) bracket the measurement window."
+    },
+    {
+      "text": "Re-running fan-01 against the current worktree HEAD (f340db0) or against main HEAD (71fb7b1) would no longer place an invented table_name in step 2's parameters.",
+      "status": "hypothesis-pending",
+      "basis": "The competing instruction identified as the origin has been explicitly carved out at both revisions, and main additionally supplies fan-01's own prompt as a worked example. Not yet executed — requires run_dataset_through_planner.py against a live GEMINI_API_KEY, which was not run as part of this diagnosis."
+    },
+    {
+      "text": "Deleting 'Do NOT split this into 5 separate ai_generate steps.' materially raises the probability that fan-01 emits 8 separate ai_generate steps.",
+      "status": "unverified",
+      "basis": "Causally motivated (it is the only text in the prompt addressing that failure mode, and eval-dataset-candidates.json fan-01.rationale names it as the primary expected failure) but NOT empirically measured — no post-71fb7b1 run of fan-01 exists. The remedy restores the sentence, which is a strict re-addition of previously-shipped text, so it is safe to apply regardless of whether the regression has yet manifested."
+    },
+    {
+      "text": "Restoring the anti-split sentence and adopting main's tightened step-N+1 text cannot regress srw-02, bpt-02, bpt-03, or amb-01/02/03.",
+      "status": "verified",
+      "basis": "Rule 5 is scope-gated on 'If the user asks for MULTIPLE discrete generated items to each be stored/sent individually' (planner.py:48). srw-02 is single-step (eval-dataset-candidates.json complexity 'single-step'), bpt-02/bpt-03 are browser-portal-task governed by Rules 1/7, and amb-01/02/03 are ambiguous-recipient-or-target governed by Rule 2 — none engages Rule 5's step-N+1 bullet. The restored sentence is verbatim text that shipped at 69d238f and every revision before it."
+    },
+    {
+      "text": "Rule 6 (headers), the {{item}} placeholder, the {{step_N_result}} placeholder and the for_each mechanics are unaffected by the proposed change.",
+      "status": "verified",
+      "basis": "diff of git show 71fb7b1:backend/app/services/planner.py against the worktree copy reports exactly `49,50c49,50`; Rule 6 at line 53 is byte-identical, and both candidate texts for line 50 retain the for_each / {{item}} / {{step_N_result}} language verbatim."
+    },
+    {
+      "text": "tier0_code_checks.py as currently written will report fan-01 as a 'fail' on no-guessed-required-param even after the invented literal is gone, because needs_clarification=true remains correct-but-flagged for a non-ambiguous scenario.",
+      "status": "verified",
+      "basis": "tier0_code_checks.py:27-30 — the else branch returns 'fail' whenever needs_clar is true for any scenario other than ambiguous-recipient-or-target, independent of parameter contents. This is the same harness artifact diagnosed in diagnose-finding-1.json remedy 1, still unremediated."
+    }
+  ],
+  "remedies": [
+    {
+      "rank": 1,
+      "remedyId": "R-iter3-1",
+      "target": "system-prompt",
+      "applyTarget": "/Users/satyaviswas/Documents/Vox-Agent/backend/app/services/planner.py",
+      "targetClass": "code-construct",
+      "cost": "low",
+      "correctness": "high",
+      "title": "Converge Rule 5 on main's tightened step-N+1 text WITH the anti-split guard restored",
+      "rationale": "Two independent defects meet in Rule 5's two bullets and the correct text for each already exists in a different revision. The worktree (f340db0) has the anti-split guard on line 49 but the weaker EXCEPTION phrasing on line 50; main (71fb7b1) has the stronger bidirectional phrasing with fan-01's worked example on line 50 but has DELETED the anti-split guard from line 49. Neither revision is correct on its own. The fan-01 trace needs both: eval-dataset-candidates.json fan-01.rationale names '8 separate ai_generate steps' as its primary failure mode (guarded only by line 49's deleted sentence) and the 3/3 measured defect was the invented table_name (guarded only by line 50's carve-out). Taking line 49 from the worktree and line 50 from main yields the single text that guards both.",
+      "whyWorks": "The invented literal arose because Rule 5's step-N+1 bullet was an unqualified specific instruction that outranked Rule 2's general one inside a fan-out step; main's line-50 text removes the conflict at its source by making Rule 5 itself state the boundary bidirectionally — 'any name or value the user literally said belongs in `parameters` as a concrete literal; only identities the user never gave at all are flagged as missing' — so the model no longer has to arbitrate between two rules, and the appended Content Calendar worked example resolves fan-01's exact base_name-vs-table_name case by demonstration rather than by inference. The bidirectional framing also forecloses the over-correction failure (dropping base_name as well) that a bare 'EXCEPTION' invites. Restoring line 49's sentence re-establishes the only prompt text opposing the 8-separate-steps decomposition, so fixing the literal no longer costs the fan-out shape.",
+      "applyInstructions": [
+        "Step 1: In /Users/satyaviswas/Documents/Vox-Agent/backend/app/services/planner.py, inside get_system_prompt(), locate Rule 5's step-N bullet at line 49 and append the deleted sentence back to the end of it, so it terminates with: ...\"Write 5 engaging Instagram captions for ...\"). Do NOT split this into 5 separate ai_generate steps.",
+        "Step 2: Leave line 50 (the step-N+1 bullet) exactly as main HEAD 71fb7b1 already has it — it is the tightened text and is already correct. Make NO change to it.",
+        "Step 3: Mirror Step 1 into the SSoT at /Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml line 131 (spec.agent.systemPrompt, Rule 5 step-N bullet), appending the identical sentence.",
+        "Step 4: Verify with `grep -c 'Do NOT split' backend/app/services/planner.py .mutagent/specs/voxagent-planner/agentspec.yaml` — both must return 1.",
+        "Step 5: Verify no other line moved with `git diff --stat` — expect exactly 2 files, 1 insertion and 1 deletion each.",
+        "Step 6: If the isolated worktree /tmp/voxagent-optimize-worktree is still the measurement target, port main's line-50 text into it as well so both trees carry identical prompts before any re-measurement (the worktree currently holds the older EXCEPTION phrasing).",
+        "Step 7: Re-run run_dataset_through_planner.py for fan-01 x3 and confirm: exactly 2 steps, step 1 route 'ai_generate' (NOT 8 of them), step 2 with for_each='{{step_1_result}}', parameters containing base_name='Content Calendar' and headers, and table_name ABSENT from parameters while present in missing_parameters."
+      ],
+      "assumptions": [
+        {
+          "text": "Line numbers 49/50 in planner.py and 131/132 in agentspec.yaml are current as of main HEAD 71fb7b1 and will shift if any earlier rule is edited first.",
+          "status": "verified",
+          "basis": "Read directly from git show 71fb7b1:backend/app/services/planner.py and from .mutagent/specs/voxagent-planner/agentspec.yaml on disk during this diagnosis."
+        },
+        {
+          "text": "Restoring the sentence is behaviourally safe because it is verbatim text that shipped in every revision up to and including 69d238f.",
+          "status": "verified",
+          "basis": "git show 69d238f:backend/app/services/planner.py line 49 contains it; it was removed only at 71fb7b1."
+        }
+      ],
+      "diff": {
+        "before": "- Step N: route 'ai_generate', producing the whole batch at once (e.g. `parameters.prompt` = \"Write 5 engaging Instagram captions for ...\").",
+        "after": "- Step N: route 'ai_generate', producing the whole batch at once (e.g. `parameters.prompt` = \"Write 5 engaging Instagram captions for ...\"). Do NOT split this into 5 separate ai_generate steps."
+      },
+      "note": "Line 50 requires NO edit on main — main's existing tightened text IS the recommended text. It is reproduced under `recommendedRule5Text` for the worktree port (Step 6) and for reference."
+    },
+    {
+      "rank": 2,
+      "remedyId": "R-iter3-2",
+      "target": "eval-criterion",
+      "applyTarget": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/tier0_code_checks.py",
+      "targetClass": "code-construct",
+      "cost": "low",
+      "correctness": "high",
+      "title": "Implement criterion clause 2 (contradicted-parameter check) plus a fan-out step-shape check, so both the fix and the regression become measurable",
+      "rationale": "The entire iteration-3 diagnose step ran on a manually-inspected 3/3 result because the harness cannot see this defect: tier0_code_checks.py:19-30 decides no-guessed-required-param from the scenario label and needs_clarification alone, and never compares missing_parameters[].parameter_key against steps[].parameters keys. agentspec.yaml:164 explicitly specifies that second clause ('AND no step's parameters contain an invented value for that field') and it has never been implemented — this was remedy 1 of diagnose-finding-1.json and the file has been modified since (mtime 2026-08-05 23:22, after that finding at 21:30) without it landing. Symmetrically, nothing counts ai_generate steps, so the 71fb7b1 anti-split deletion could regress fan-01 into 8 generate steps and every criterion would still report green.",
+      "whyWorks": "A deterministic key-intersection between missing_parameters and the same step's parameters is exactly the invariant Rule 2 and Rule 5 now jointly assert, so the check fails precisely when the prompt fix has failed — converting a manual 3-run inspection into a zero-cost regression gate that runs on every trace, not just fan-01. Adding an ai_generate-step-count assertion for fan-out-batch scenarios closes the symmetric blind spot, so a future prompt edit cannot silently trade one fan-01 failure for the other the way 71fb7b1 did.",
+      "applyInstructions": [
+        "Step 1: In tier0_code_checks.py, before the existing scenario-label branch in check_no_guessed_required_param (currently lines 22-30), insert a scenario-independent clause-2 check that intersects each missing_parameters entry's parameter_key with the parameters dict of the step whose step_number matches, and returns 'fail' naming every contradicted key.",
+        "Step 2: Add a separate check_fanout_shape(bp, scenario) that returns 'n/a' unless scenario == 'fan-out-batch', then fails if the count of steps with route 'ai_generate' is not exactly 1, or if no step carries a for_each field.",
+        "Step 3: Register check_fanout_shape in the module's check dispatch table alongside the existing checks and re-run `python3 tier0_code_checks.py`.",
+        "Step 4: Re-run aggregate_scorecard.py and confirm fan-01 now reports on parameter-contradiction and fan-out shape as distinct, independently-decidable signals."
+      ],
+      "assumptions": [
+        {
+          "text": "Blueprint steps carry a `step_number` field that matches the `step_number` recorded on missing_parameters entries, making the join well-defined.",
+          "status": "verified",
+          "basis": "diagnose-finding-1.json evidence records fan-01 as `missing_parameters[0] = {step_number: 2, parameter_key: \"table_name\", ...}` against step 2, and the brief's quoted step 2 blueprint carries \"step_number\": 2."
+        },
+        {
+          "text": "The scenario-label over-trigger artifact (diagnose-finding-1.json remedy 1) should be fixed in the same edit, otherwise fan-01 keeps reporting a spurious clause-1 fail even once clause 2 passes.",
+          "status": "verified",
+          "basis": "tier0_code_checks.py:27-30 returns fail for any needs_clarification=true outside ambiguous-recipient-or-target, and fan-01's clarification is correct behaviour per agentspec.yaml:164 clause 1."
+        }
+      ],
+      "diffStatus": "origin-unknown",
+      "diffStatusReason": "The clause-2 insertion point depends on the module's check dispatch table, which was not read in full during this diagnosis; the change is specified as prose steps rather than a fabricated line-edit."
+    },
+    {
+      "rank": 3,
+      "remedyId": "R-iter3-3",
+      "target": "process",
+      "applyTarget": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/run_dataset_through_planner.py",
+      "targetClass": "code-construct",
+      "cost": "low",
+      "correctness": "medium",
+      "title": "Stamp the planner.py revision into every trace record so a diagnosis can never again be run against a stale snapshot",
+      "rationale": "This diagnosis consumed its budget establishing WHICH revision the 3/3 fan-01 failure was measured against, because no trace artifact records it. The answer (0754784, superseded 30 minutes later by 6ab9faa) inverted the finding entirely — the requested remedy had already shipped and the real live defect was a regression introduced by that shipping. traces/planner-eval-traces.jsonl is timestamped 21:09 while the prompt was edited at 21:46, 21:59, 22:29 and 22:49; nothing in the trace file distinguishes them.",
+      "whyWorks": "Recording `git rev-parse HEAD` and the sha256 of get_system_prompt()'s output alongside each trace makes staleness a mechanically checkable precondition rather than an archaeological inference — a diagnose step can assert the trace revision equals the current revision and abort with a clear message instead of root-causing an already-fixed defect.",
+      "applyInstructions": [
+        "Step 1: In run_dataset_through_planner.py, capture `subprocess.run(['git','rev-parse','HEAD'])` and `hashlib.sha256(get_system_prompt().encode()).hexdigest()` once at start-up.",
+        "Step 2: Write both values into every record emitted to traces/planner-eval-traces.jsonl as `planner_git_rev` and `system_prompt_sha256`.",
+        "Step 3: At the top of the diagnose step, compare the trace file's recorded values against the current checkout and emit a loud STALE-TRACES warning when they differ."
+      ],
+      "assumptions": [
+        {
+          "text": "run_dataset_through_planner.py is the sole producer of traces/planner-eval-traces.jsonl.",
+          "status": "unverified",
+          "basis": "Inferred from its filename, its co-location in the spec directory, and its mtime (21:04:51) immediately preceding the trace file's (21:09:07). The script body was not read during this diagnosis."
+        }
+      ],
+      "diffStatus": "source-unavailable",
+      "diffStatusReason": "run_dataset_through_planner.py was not read during this diagnosis; the change is described in prose rather than as a fabricated line-edit."
+    }
+  ],
+  "recommendedRule5Text": {
+    "description": "The converged Rule 5 text. Line 49 = worktree/69d238f (anti-split guard intact). Line 50 = main 71fb7b1 (tightened, with fan-01 worked example). This pair is the recommended state for BOTH planner.py (lines 49-50) and agentspec.yaml (lines 131-132, with the f-string {{{{...}}}} escaping reduced to {{...}}).",
+    "stepN_line49": "- Step N: route 'ai_generate', producing the whole batch at once (e.g. `parameters.prompt` = \"Write 5 engaging Instagram captions for ...\"). Do NOT split this into 5 separate ai_generate steps.",
+    "stepNplus1_line50": "- Step N+1: the storage/send action (e.g. Google Sheets row-add, an email-send), with its top-level `for_each` field set to the exact placeholder `\"{{{{step_N_result}}}}\"` (referencing the ai_generate step). Inside THIS step's `parameters`, use the placeholder `{{{{item}}}}` (not `{{{{step_N_result}}}}`) wherever the single per-iteration value belongs (e.g. the row's text cell, or the email body) — the execution engine runs this step once per generated item, substituting `{{{{item}}}}` with that item each time. Any other parameter that should stay the same across every iteration stays a normal literal value drawn from the user's request. IMPORTANT: do NOT invent a value for a constant parameter whose identity the user never gave — if the user named a parent resource but never named a required sub-resource inside it, the sub-resource must go to `missing_parameters` under Rule 2 (leave it out of `parameters` entirely). The rule is: any name or value the user literally said belongs in `parameters` as a concrete literal; only identities the user never gave at all are flagged as missing. Concrete example — \"add each title to my Airtable base Content Calendar\": `base_name: \"Content Calendar\"` is a literal (user said it); `table_name` is missing (user never named the table inside that base) → flag `table_name` in `missing_parameters`, keep `base_name: \"Content Calendar\"` in `parameters`. You do NOT need to know or care whether the target action actually calls once per item or batches all items into one call — the execution engine detects that from the target's real schema and adapts automatically; always express the fan-out the same way regardless."
+  },
+  "revisionTexts": {
+    "line50_at_0754784_MEASURED_SNAPSHOT_defective": "- Step N+1: the storage/send action (e.g. Google Sheets row-add, an email-send), with its top-level `for_each` field set to the exact placeholder `\"{{{{step_N_result}}}}\"` (referencing the ai_generate step). Inside THIS step's `parameters`, use the placeholder `{{{{item}}}}` (not `{{{{step_N_result}}}}`) wherever the single per-iteration value belongs (e.g. the row's text cell, or the email body) — the execution engine runs this step once per generated item, substituting `{{{{item}}}}` with that item each time. Any other parameter that should stay the same across every iteration (e.g. a fixed spreadsheet name) stays a normal literal value. You do NOT need to know or care whether the target action actually calls once per item or batches all items into one call — the execution engine detects that from the target's real schema and adapts automatically; always express the fan-out the same way regardless.",
+    "line50_at_worktree_f340db0_exception_form": "- Step N+1: the storage/send action (e.g. Google Sheets row-add, an email-send), with its top-level `for_each` field set to the exact placeholder `\"{{{{step_N_result}}}}\"` (referencing the ai_generate step). Inside THIS step's `parameters`, use the placeholder `{{{{item}}}}` (not `{{{{step_N_result}}}}`) wherever the single per-iteration value belongs (e.g. the row's text cell, or the email body) — the execution engine runs this step once per generated item, substituting `{{{{item}}}}` with that item each time. Any other parameter that should stay the same across every iteration (e.g. a fixed spreadsheet name) stays a normal literal value — EXCEPTION: this \"constant literal\" allowance applies only to parameters whose values the user actually stated in their request. If a constant parameter's value was never given by the user (e.g. the user named an Airtable base but not the table inside it), do NOT invent a stand-in value — treat it as missing under Rule 2: add it to `missing_parameters`, set `needs_clarification: true`, and leave that key out of `parameters` entirely. You do NOT need to know or care whether the target action actually calls once per item or batches all items into one call — the execution engine detects that from the target's real schema and adapts automatically; always express the fan-out the same way regardless.",
+    "line50_at_main_71fb7b1_tightened_RECOMMENDED": "- Step N+1: the storage/send action (e.g. Google Sheets row-add, an email-send), with its top-level `for_each` field set to the exact placeholder `\"{{{{step_N_result}}}}\"` (referencing the ai_generate step). Inside THIS step's `parameters`, use the placeholder `{{{{item}}}}` (not `{{{{step_N_result}}}}`) wherever the single per-iteration value belongs (e.g. the row's text cell, or the email body) — the execution engine runs this step once per generated item, substituting `{{{{item}}}}` with that item each time. Any other parameter that should stay the same across every iteration stays a normal literal value drawn from the user's request. IMPORTANT: do NOT invent a value for a constant parameter whose identity the user never gave — if the user named a parent resource but never named a required sub-resource inside it, the sub-resource must go to `missing_parameters` under Rule 2 (leave it out of `parameters` entirely). The rule is: any name or value the user literally said belongs in `parameters` as a concrete literal; only identities the user never gave at all are flagged as missing. Concrete example — \"add each title to my Airtable base Content Calendar\": `base_name: \"Content Calendar\"` is a literal (user said it); `table_name` is missing (user never named the table inside that base) → flag `table_name` in `missing_parameters`, keep `base_name: \"Content Calendar\"` in `parameters`. You do NOT need to know or care whether the target action actually calls once per item or batches all items into one call — the execution engine detects that from the target's real schema and adapts automatically; always express the fan-out the same way regardless.",
+    "line49_at_worktree_f340db0_CORRECT": "- Step N: route 'ai_generate', producing the whole batch at once (e.g. `parameters.prompt` = \"Write 5 engaging Instagram captions for ...\"). Do NOT split this into 5 separate ai_generate steps.",
+    "line49_at_main_71fb7b1_REGRESSED": "- Step N: route 'ai_generate', producing the whole batch at once (e.g. `parameters.prompt` = \"Write 5 engaging Instagram captions for ...\")."
+  },
+  "sourceTraceIds": [
+    "fan-01",
+    "srw-02"
+  ],
+  "referenceIds": {
+    "criterionId": "no-guessed-required-param",
+    "findingId": "F-fanout-invented-literal-iter3",
+    "precedentFindingPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/diagnose-finding-1.json",
+    "precedentSubCaseId": "A-airtable-table-name",
+    "plannerPathMain": "/Users/satyaviswas/Documents/Vox-Agent/backend/app/services/planner.py",
+    "plannerPathWorktree": "/tmp/voxagent-optimize-worktree/backend/app/services/planner.py",
+    "specPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml",
+    "datasetPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/eval-dataset-candidates.json",
+    "checkPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/tier0_code_checks.py",
+    "commits": {
+      "measuredSnapshot": "0754784",
+      "rule5ExceptionAdded": "6ab9faa",
+      "worktreeHead": "f340db0",
+      "mergedToMain": "69d238f",
+      "tightenedAndRegressed": "71fb7b1"
+    }
+  }
+}

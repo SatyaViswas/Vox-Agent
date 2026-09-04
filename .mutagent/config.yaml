@@ -1,0 +1,38 @@
+config_version: "0.3.0"
+
+global:
+  providers:
+    - name: google
+      credentials_ref: "GEMINI_API_KEY"
+
+  workspace:
+    repo: "SatyaViswas/Vox-Agent"
+    path: "."
+
+  sources:
+    - name: "voxagent-planner-eval-traces"
+      platform: "local-jsonl"
+      format: "raw"
+      default: true
+      paths:
+        - ".mutagent/specs/voxagent-planner/traces/planner-eval-traces.jsonl"
+
+  models:
+    default: "gemini-2.5-flash"
+    judge_model: "gemini-2.5-flash"
+
+  targets:
+    - name: "vox-agent-repo"
+      platform: "local-claude"
+      subject: "agent"
+      artifact_format: "code"
+      mode: "local"
+      root: "."
+      apply:
+        kind: "code-pr"
+
+lifecycle:
+  evaluator:
+    judge_runtime: "in-house"
+  diagnostics:
+    apply: "code-pr"

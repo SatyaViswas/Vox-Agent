@@ -1,0 +1,577 @@
+[
+  {
+    "trace_id": "amb-01",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "APPLICABLE: output.blueprint.needs_clarification is true and missing_parameters carries exactly one entry (step_number 1), so the criterion binds. That entry's parameter_key is \"channel\" and its label is \"Slack Channel Name\" — the key is the bare human word, not \"channel_id\"/\"conversation_id\", and the label states \"Name\" explicitly. The description reinforces it: \"The name of the channel where the message should be posted.\" The clarification_question likewise asks for \"the name of the Slack channel\", not an identifier. ABSENCE CHECK (positive, not inferred from silence): missing_parameters has length 1, and I read that one entry's parameter_key, label and description in full — there is no second entry that could carry an opaque ask, and none of the three read fields contains an ID-shaped token (no *_id key, no Slack C-prefixed channel id, no raw snowflake). Note (out of scope for THIS criterion): step 1's parameters.channel holds the sentinel \"REPLACE_WITH_CHANNEL_NAME\" — that concerns whether a value was invented/left unresolved (no-guessed-required-param), not whether an opaque ID was ASKED FOR; the sentinel is itself name-shaped and asks for nothing. Minimal premise P: \"a parameter_key/label naming the channel's human NAME is a human-friendly ask\" — grounded directly in the systemPrompt's Rule 2, which gives exactly this contrast (spreadsheet_name/\"Google Sheet Name\", not spreadsheet_id). Decide: pass.",
+        "refs": [
+          {
+            "obs": "amb-01",
+            "path": "output.blueprint.needs_clarification",
+            "value": "true"
+          },
+          {
+            "obs": "amb-01",
+            "path": "output.blueprint.missing_parameters.0.parameter_key",
+            "value": "channel"
+          },
+          {
+            "obs": "amb-01",
+            "path": "output.blueprint.missing_parameters.0.label",
+            "value": "Slack Channel Name"
+          },
+          {
+            "obs": "amb-01",
+            "path": "output.blueprint.missing_parameters.0.description",
+            "value": "The name of the channel where the message should be posted."
+          },
+          {
+            "obs": "amb-01",
+            "path": "output.blueprint.clarification_question",
+            "value": "Please specify the name of the Slack channel where you would like me to post this update."
+          },
+          {
+            "obs": "agentspec:voxagent-planner",
+            "path": "spec.agent.systemPrompt",
+            "value": "NEVER ask the user for an internal ID (a spreadsheet ID, channel ID, database ID, file ID, or similar opaque identifier)"
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.93,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step only (steps has a single element, step_number 1). Its route is \"composio_api\" with app \"Slack\" and action \"SLACK_SEND_MESSAGE\". The Rules define composio_api as the route for \"any of the 1000+ SaaS apps with a public API via Composio\" and name Slack in that very enumeration, so the app→route binding is grounded in the ground-truth prompt rather than my own catalogue belief. The action slug also matches the prescribed {APPNAME}_{VERB}_{OBJECT} convention (SLACK_SEND_MESSAGE), which is corroborating evidence that the planner classified this as a cataloged-SaaS call rather than, say, a raw endpoint. Cross-check against the competing routes: the request names a SaaS app, not a portal without an API (so not browser_agent); it names no URL or REST endpoint (so not http_webhook); it is not about the user's own Telegram account (so not telegram_client); and the message body \"The deploy went out and everything's green!\" is a literal copied from the user's own words rather than content to be AI-drafted (so ai_generate would have been wrong). ABSENCE CHECK: I enumerated the whole steps array — one element — and read its route field directly, so \"no other step is misrouted\" is a positive read of the full array, not an inference from silence. Decide: pass.",
+        "refs": [
+          {
+            "obs": "amb-01",
+            "path": "input.prompt",
+            "value": "um so can you post a message in the channel saying the deploy went out and everything's green"
+          },
+          {
+            "obs": "amb-01",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "amb-01",
+            "path": "output.blueprint.steps.0.app",
+            "value": "Slack"
+          },
+          {
+            "obs": "amb-01",
+            "path": "output.blueprint.steps.0.action",
+            "value": "SLACK_SEND_MESSAGE"
+          },
+          {
+            "obs": "amb-01",
+            "path": "output.blueprint.steps.0.parameters.text",
+            "value": "The deploy went out and everything's green!"
+          },
+          {
+            "obs": "agentspec:voxagent-planner",
+            "path": "spec.agent.systemPrompt",
+            "value": "'composio_api': For any of the 1000+ SaaS apps with a public API via Composio (e.g. Gmail, Slack, GitHub, Google Sheets, Notion, Trello, ...)"
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "NOT APPLICABLE — the criterion's precondition (at least one step with route \"browser_agent\") is falsified here by a positive field read, not by silence: steps contains exactly one element and steps.0.route is \"composio_api\". With no browser_agent step there is no action/parameters payload for a browser agent to be under- or over-specified against, so there is nothing to score. n/a is a coverage state, not a pass.",
+        "refs": [
+          {
+            "obs": "amb-01",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "amb-02",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "APPLICABLE: needs_clarification is true and missing_parameters is populated with one entry. That entry (step_number 2) has parameter_key \"spreadsheet_name\" and label \"Google Sheet Name\" — this is verbatim the human-friendly form Rule 2 prescribes (\"`parameter_key` \\\"spreadsheet_name\\\" with label \\\"Google Sheet Name\\\", not \\\"spreadsheet_id\\\"\"), so the ask is maximally aligned. The description \"The name of the spreadsheet to add the order data to.\" and the clarification_question \"Please provide the name of the Google Sheet...\" both reinforce name-not-ID. ABSENCE CHECK (positive): missing_parameters has exactly one element, which I read in full; no *_id key, no Google Drive file-ID-shaped string, no opaque token appears in any of its fields. Corroborating downstream read: step 2's own parameters key is \"spreadsheet_name\" holding the placeholder \"{spreadsheet_name}\" — the value the user will supply is wired to a name-shaped key, so satisfying this clarification cannot smuggle an ID back in. SCOPE NOTE (deliberately NOT folded into this verdict): step 1 (http_webhook \"Internal API\") has parameters {} — the endpoint URL the prompt never supplied is neither present nor clarified, and the metadata rationale expects a per-step entry for it. That is a MISSING ask, and this criterion is scoped to the CONTENT of the entries that exist (\"every entry's parameter_key/label asks for a human-friendly name\"), not to their completeness — completeness is no-guessed-required-param's. Judging the gap here would be scope creep, so I judge only what was asked: it was asked human-friendly. Decide: pass.",
+        "refs": [
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.needs_clarification",
+            "value": "true"
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.missing_parameters.0.parameter_key",
+            "value": "spreadsheet_name"
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.missing_parameters.0.label",
+            "value": "Google Sheet Name"
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.missing_parameters.0.description",
+            "value": "The name of the spreadsheet to add the order data to."
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.clarification_question",
+            "value": "Please provide the name of the Google Sheet where you would like the orders to be saved."
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.steps.1.parameters.spreadsheet_name",
+            "value": "{spreadsheet_name}"
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.steps.0.parameters",
+            "value": "{}"
+          }
+        ],
+        "assumptions": [
+          {
+            "text": "The criterion scores the human-friendliness of the missing_parameters entries that exist, not whether every genuinely-missing parameter got an entry (the latter is no-guessed-required-param's scope).",
+            "kind": "scope",
+            "status": "hypothesis"
+          }
+        ],
+        "result": "pass",
+        "confidence": 0.85,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Two steps, both read directly. Step 1: route \"http_webhook\", app \"Internal API\", action \"GET_ORDERS\" — the prompt says \"Grab the latest orders from our internal API\", and the Rules assign http_webhook to \"custom URLs, REST endpoints, or triggering other external software\". A first-party, unnamed internal REST API is the textbook case for that route: it is by construction not a public-catalog SaaS app (composio_api), not a no-API web portal to drive with a browser (browser_agent), not the user's Telegram, and not text generation. Step 2: route \"composio_api\", app \"Google Sheets\", action \"GOOGLESHEETS_ADD_ROW\" — Google Sheets is named in the Rules' own composio_api enumeration, and the slug follows the prescribed convention (\"Google Sheets\" → prefix GOOGLESHEETS with spaces removed), which is exactly the shape the Rules specify. Neither step is a text-generation step, so the ai_generate mis-route the Rules warn about does not arise. ABSENCE CHECK: the steps array has exactly two elements and I read both route fields, so the claim that no step is misrouted is a full enumeration, not an inference. Out of scope for THIS criterion: step 1 carries no URL parameter at all (parameters {}) — that is a parameter-completeness defect, not a route-classification one; the route chosen for the described target is still the Rule-correct one. Decide: pass.",
+        "refs": [
+          {
+            "obs": "amb-02",
+            "path": "input.prompt",
+            "value": "Grab the latest orders from our internal API and drop them into one of my spreadsheets"
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.steps.0.route",
+            "value": "http_webhook"
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.steps.0.app",
+            "value": "Internal API"
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.steps.1.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.steps.1.app",
+            "value": "Google Sheets"
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.steps.1.action",
+            "value": "GOOGLESHEETS_ADD_ROW"
+          },
+          {
+            "obs": "agentspec:voxagent-planner",
+            "path": "spec.agent.systemPrompt",
+            "value": "'http_webhook': For custom URLs, REST endpoints, or triggering other external software."
+          }
+        ],
+        "assumptions": [
+          {
+            "text": "The user's \"our internal API\" denotes a private first-party REST endpoint rather than a Composio-cataloged SaaS product; the prompt never names a vendor, so this reading is inferred from the possessive phrasing.",
+            "kind": "factual-intent",
+            "status": "hypothesis"
+          }
+        ],
+        "result": "pass",
+        "confidence": 0.88,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "NOT APPLICABLE — precondition falsified by a positive read of every element: steps has two entries, steps.0.route is \"http_webhook\" and steps.1.route is \"composio_api\". No browser_agent step exists, so there is no browser task payload whose concreteness could be assessed.",
+        "refs": [
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.steps.0.route",
+            "value": "http_webhook"
+          },
+          {
+            "obs": "amb-02",
+            "path": "output.blueprint.steps.1.route",
+            "value": "composio_api"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "amb-03",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "APPLICABLE: needs_clarification is true with one missing_parameters entry (step_number 1). parameter_key is \"target\" and label is \"Contact Name\". \"target\" is the Rules' own prescribed telegram_client parameter name (\"parameters `target` (a chat name/username, or \\\"me\\\" for Saved Messages)\"), so the key is the API-neutral slot name, not an identifier — and crucially the label and description disambiguate it toward the human form: \"The name or username of the person you want to message on Telegram.\" A username (@handle) is a human-chooseable, human-knowable identifier, categorically unlike the numeric Telegram chat_id the metadata rationale flags as the failure mode; the entry never mentions chat_id, user_id or any numeric identifier. The clarification_question — \"Who is the contact you would like to send this message to?\" — is phrased in person terms, which is the strongest possible signal it is asking a human a human question. ABSENCE CHECK (positive): the array has exactly one element, all five of its fields read, and no ID-shaped token appears in any of them. Minimal premise P: \"contact name or @username counts as human-friendly, not opaque\" — grounded in the Rules, which name exactly \"a chat name/username\" as the value this parameter should carry. Decide: pass.",
+        "refs": [
+          {
+            "obs": "amb-03",
+            "path": "output.blueprint.needs_clarification",
+            "value": "true"
+          },
+          {
+            "obs": "amb-03",
+            "path": "output.blueprint.missing_parameters.0.parameter_key",
+            "value": "target"
+          },
+          {
+            "obs": "amb-03",
+            "path": "output.blueprint.missing_parameters.0.label",
+            "value": "Contact Name"
+          },
+          {
+            "obs": "amb-03",
+            "path": "output.blueprint.missing_parameters.0.description",
+            "value": "The name or username of the person you want to message on Telegram."
+          },
+          {
+            "obs": "amb-03",
+            "path": "output.blueprint.clarification_question",
+            "value": "Who is the contact you would like to send this message to?"
+          },
+          {
+            "obs": "agentspec:voxagent-planner",
+            "path": "spec.agent.systemPrompt",
+            "value": "Actions: \"SEND_MESSAGE\" with parameters `target` (a chat name/username, or \"me\" for Saved Messages) and `text`."
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.92,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step, route \"telegram_client\", app \"Telegram Personal Account\", action \"SEND_MESSAGE\". The criterion's hard edge for this route is \"telegram_client only for the user's own account (never the bot identity unless explicitly named)\". Both halves check out. (a) Own-account side: the prompt is \"text him on telegram that I'll be about 20 minutes late\" — texting a person from the user's own account, which the Rules call \"the overwhelmingly common case\" and instruct to default to telegram_client with app \"Telegram Personal Account\"; the app string matches that prescription verbatim. (b) Bot side — this is an ABSENCE claim, so I ground it positively rather than by silence: I read input.prompt in full (16 words, cited verbatim below) and the token \"bot\" occurs nowhere in it, so the Rules' explicit escape hatch (\"Only use 'composio_api' with `app` \\\"Telegram\\\"... when the user EXPLICITLY says \\\"bot\\\"\") is not triggered — routing to composio_api/Telegram here would have been the failure. The action and parameter shape corroborate the personal-account reading: SEND_MESSAGE with target/text, which is the telegram_client signature, not the bot's chat_id/text. Competing routes are all excluded: no portal (browser_agent), no URL (http_webhook), and the message text is the user's own literal words, not content to draft (ai_generate). Full enumeration: steps has one element, read. Decide: pass.",
+        "refs": [
+          {
+            "obs": "amb-03",
+            "path": "input.prompt",
+            "value": "text him on telegram that I'll be about 20 minutes late"
+          },
+          {
+            "obs": "amb-03",
+            "path": "output.blueprint.steps.0.route",
+            "value": "telegram_client"
+          },
+          {
+            "obs": "amb-03",
+            "path": "output.blueprint.steps.0.app",
+            "value": "Telegram Personal Account"
+          },
+          {
+            "obs": "amb-03",
+            "path": "output.blueprint.steps.0.action",
+            "value": "SEND_MESSAGE"
+          },
+          {
+            "obs": "amb-03",
+            "path": "output.blueprint.steps.0.parameters.text",
+            "value": "I'll be about 20 minutes late."
+          },
+          {
+            "obs": "agentspec:voxagent-planner",
+            "path": "spec.agent.systemPrompt",
+            "value": "Only use 'composio_api' with `app` \"Telegram\" (a separate bot identity, e.g. TELEGRAM_SEND_MESSAGE with `chat_id`/`text`) when the user EXPLICITLY says \"bot\""
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "NOT APPLICABLE — positive read of the only step: steps.0.route is \"telegram_client\", and the array has exactly one element. No browser_agent step, so no browser task detail to assess.",
+        "refs": [
+          {
+            "obs": "amb-03",
+            "path": "output.blueprint.steps.0.route",
+            "value": "telegram_client"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "ctfm-01",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "NOT APPLICABLE — the criterion is conditioned on missing_parameters being populated, and that precondition is falsified by two positive field reads, not by silence: needs_clarification is false and missing_parameters is the empty array. With zero entries there is no parameter_key/label to inspect, so there is nothing to score. Worth recording for the reader because it is the interesting half of this trace: the step DOES carry \"database_name\": \"Bug Tracker\" rather than a Notion database_id — i.e. the planner stayed on the human-friendly side without needing to ask at all — but that is corroboration, not a verdict, since the criterion binds on the ASK and there is no ask here. n/a is a coverage state, not a pass.",
+        "refs": [
+          {
+            "obs": "ctfm-01",
+            "path": "output.blueprint.needs_clarification",
+            "value": "false"
+          },
+          {
+            "obs": "ctfm-01",
+            "path": "output.blueprint.missing_parameters",
+            "value": "[]"
+          },
+          {
+            "obs": "ctfm-01",
+            "path": "output.blueprint.steps.0.parameters.database_name",
+            "value": "Bug Tracker"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step, route \"composio_api\", app \"Notion\", action \"NOTION_CREATE_DATABASE_PAGE\". The prompt — \"Create a new page in my Notion database called Bug Tracker...\" — names Notion explicitly, and Notion appears verbatim in the Rules' own composio_api enumeration of cataloged SaaS apps, so the app→route mapping is grounded in the ground-truth prompt rather than my own belief about Composio's catalog. The slug follows the prescribed {APPNAME}_{VERB}_{OBJECT} convention. Competing routes excluded on positive evidence: Notion has a public API and is cataloged, so browser_agent (reserved for \"websites/portals without public APIs\") would be wrong; no URL/REST endpoint appears in the prompt, so not http_webhook; nothing about the user's Telegram, so not telegram_client; and every value written (\"Login button unresponsive on Safari\", \"In Progress\", \"High\") is copied literally from the user's own words rather than generated, so ai_generate would have been wrong. ABSENCE CHECK: the steps array has exactly one element and I read its route field — full enumeration. NOT judged here (different criterion): whether database_name/title/properties matches Notion's real parent.database_id + nested-properties schema is schema-aligned-execution's question, and per nonGoals the planner is explicitly not expected to know exact parameter names. Route classification is correct regardless of how those keys land. Decide: pass.",
+        "refs": [
+          {
+            "obs": "ctfm-01",
+            "path": "input.prompt",
+            "value": "Create a new page in my Notion database called Bug Tracker with the title 'Login button unresponsive on Safari' and set the status to In Progress and priority to High"
+          },
+          {
+            "obs": "ctfm-01",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "ctfm-01",
+            "path": "output.blueprint.steps.0.app",
+            "value": "Notion"
+          },
+          {
+            "obs": "ctfm-01",
+            "path": "output.blueprint.steps.0.action",
+            "value": "NOTION_CREATE_DATABASE_PAGE"
+          },
+          {
+            "obs": "agentspec:voxagent-planner",
+            "path": "spec.agent.systemPrompt",
+            "value": "'composio_api': For any of the 1000+ SaaS apps with a public API via Composio (e.g. Gmail, Slack, GitHub, Google Sheets, Notion, Trello, ...)"
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.95,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "NOT APPLICABLE — positive read: steps has one element and steps.0.route is \"composio_api\". No browser_agent step exists, so there is no browser task payload to judge for concreteness.",
+        "refs": [
+          {
+            "obs": "ctfm-01",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "ctfm-02",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "NOT APPLICABLE — precondition falsified by positive reads: needs_clarification is false and missing_parameters is the empty array, so no clarification entry exists whose parameter_key/label could be scored. (The prompt was fully specified — repo, title, body and label all supplied — so an empty ask is the expected shape here.) n/a is a coverage state, not a pass.",
+        "refs": [
+          {
+            "obs": "ctfm-02",
+            "path": "output.blueprint.needs_clarification",
+            "value": "false"
+          },
+          {
+            "obs": "ctfm-02",
+            "path": "output.blueprint.missing_parameters",
+            "value": "[]"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "One step, route \"composio_api\", app \"GitHub\", action \"GITHUB_CREATE_AN_ISSUE\". The prompt — \"open a github issue in acme/web-dashboard...\" — names GitHub explicitly, and GitHub is one of the apps enumerated verbatim in the Rules' composio_api definition, so the mapping is grounded in ground truth rather than assumed. The slug matches the prescribed {APPNAME}_{VERB}_{OBJECT} convention and is in fact the exact example the systemPrompt itself gives (\"GITHUB_CREATE_AN_ISSUE\"), which is about as strong as classification evidence gets. Competing routes excluded positively: GitHub has a public API and is cataloged (so not browser_agent); the prompt contains no URL or REST endpoint, only the owner/repo slug \"acme/web-dashboard\" (so not http_webhook); nothing Telegram-related (so not telegram_client); and title/body are quoted literally from the user rather than drafted (so not ai_generate). ABSENCE CHECK: steps has exactly one element, route read — full enumeration. NOT judged here: whether owner/repo/body/labels are the real GitHub field names is schema-aligned-execution's question, orthogonal to route. Decide: pass.",
+        "refs": [
+          {
+            "obs": "ctfm-02",
+            "path": "input.prompt",
+            "value": "open a github issue in acme/web-dashboard titled 'Checkout returns 500 on Safari' with the body 'Repro: add item to cart, click Pay, server returns 500. Chrome unaffected.' and tag it bug"
+          },
+          {
+            "obs": "ctfm-02",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "ctfm-02",
+            "path": "output.blueprint.steps.0.app",
+            "value": "GitHub"
+          },
+          {
+            "obs": "ctfm-02",
+            "path": "output.blueprint.steps.0.action",
+            "value": "GITHUB_CREATE_AN_ISSUE"
+          },
+          {
+            "obs": "agentspec:voxagent-planner",
+            "path": "spec.agent.systemPrompt",
+            "value": "\"GITHUB_CREATE_AN_ISSUE\""
+          }
+        ],
+        "assumptions": [],
+        "result": "pass",
+        "confidence": 0.96,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "NOT APPLICABLE — positive read: steps has one element and steps.0.route is \"composio_api\". No browser_agent step, hence no browser task detail to assess.",
+        "refs": [
+          {
+            "obs": "ctfm-02",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  },
+  {
+    "trace_id": "ctfm-03",
+    "criteria": {
+      "no-opaque-id-asked": {
+        "critique": "NOT APPLICABLE — precondition falsified by positive reads: needs_clarification is false and missing_parameters is the empty array, so there is no clarification entry to score. Corroborating (not a verdict): both steps addressed their targets by human-friendly names anyway — base_name \"Sales CRM\", table_name \"Deals\", channel \"sales\" — rather than Airtable base/table IDs or a Slack C-prefixed channel ID, so no opaque identifier was invented in lieu of asking either. But the criterion binds on the ASK, and there is none. n/a is a coverage state, not a pass.",
+        "refs": [
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.needs_clarification",
+            "value": "false"
+          },
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.missing_parameters",
+            "value": "[]"
+          },
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.steps.0.parameters.base_name",
+            "value": "Sales CRM"
+          },
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.steps.1.parameters.channel",
+            "value": "sales"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      },
+      "correct-route-classification": {
+        "critique": "Two steps, both read. Step 1: route \"composio_api\", app \"Airtable\", action \"AIRTABLE_CREATE_RECORD\" — the prompt names Airtable explicitly (\"add a record to my airtable base called Sales CRM in the Deals table\"). Airtable is not in the Rules' short e.g.-list under composio_api, but the Rules cover \"any of the 1000+ SaaS apps with a public API via Composio\" and Rule 6 independently names Airtable as one of the spreadsheet/table/database targets the planner is expected to write rows into — which only makes sense via composio_api — so the classification is grounded in the systemPrompt itself, not in my own catalogue belief. Step 2: route \"composio_api\", app \"Slack\", action \"SLACK_SEND_MESSAGE\" — Slack is named verbatim in the composio_api enumeration, and the slug matches both the naming convention and the systemPrompt's own example. Competing routes excluded positively for both steps: neither target is an API-less portal (browser_agent); the prompt contains no URL or REST endpoint (http_webhook); nothing concerns the user's Telegram (telegram_client); and every written value — \"Northwind Renewal\", 12000, \"Negotiation\", and the Slack text \"The Northwind renewal is in negotiation.\" — is a literal restatement of the user's own dictated words, not AI-drafted content, so no step should have been ai_generate. ABSENCE CHECK: the steps array has exactly two elements and I read both route fields — full enumeration, not inference from silence. NOT judged here (other criteria): the Airtable base_name/table_name/fields naming vs baseId/tableId is schema-aligned-execution's; the stray \"headers\" parameter on an Airtable create-record call is sheet-header-safety's; the voice-transcript normalization of \"hash sales\" to channel \"sales\" is a parameter-value question. None of them changes which route each step belongs on. Decide: pass.",
+        "refs": [
+          {
+            "obs": "ctfm-03",
+            "path": "input.prompt",
+            "value": "so um I need you to add a record to my airtable base called Sales CRM in the Deals table, deal name is Northwind Renewal, amount twelve thousand, stage Negotiation, and then uh also post in the slack channel hash sales that the Northwind renewal is in negotiation"
+          },
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.steps.0.app",
+            "value": "Airtable"
+          },
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.steps.0.action",
+            "value": "AIRTABLE_CREATE_RECORD"
+          },
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.steps.1.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.steps.1.app",
+            "value": "Slack"
+          },
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.steps.1.action",
+            "value": "SLACK_SEND_MESSAGE"
+          },
+          {
+            "obs": "agentspec:voxagent-planner",
+            "path": "spec.agent.systemPrompt",
+            "value": "Whenever a step writes row(s) of structured data into a spreadsheet/table/database (Google Sheets, Airtable, a Notion database, ...)"
+          }
+        ],
+        "assumptions": [
+          {
+            "text": "Airtable is present in Composio's live tool catalog; the systemPrompt names it as a supported table target (Rule 6) but never enumerates it under the composio_api route list, so catalog membership is inferred from that indirect naming rather than read directly.",
+            "kind": "factual-intent",
+            "status": "hypothesis"
+          }
+        ],
+        "result": "pass",
+        "confidence": 0.9,
+        "blockedBy": null
+      },
+      "browser-context-sufficiency": {
+        "critique": "NOT APPLICABLE — positive read of every element: steps has two entries, steps.0.route is \"composio_api\" and steps.1.route is \"composio_api\". No browser_agent step exists, so there is no browser task payload whose concreteness could be assessed.",
+        "refs": [
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.steps.0.route",
+            "value": "composio_api"
+          },
+          {
+            "obs": "ctfm-03",
+            "path": "output.blueprint.steps.1.route",
+            "value": "composio_api"
+          }
+        ],
+        "assumptions": [],
+        "result": "n/a",
+        "confidence": 1.0,
+        "blockedBy": null
+      }
+    }
+  }
+]

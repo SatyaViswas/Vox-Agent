@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>@@TITLE@@</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0a12;--surf:#14141d;--surf2:#1a1a25;--surf3:#22222f;--border:rgba(255,255,255,.09);--borderS:rgba(255,255,255,.16);
+--fg:#d6dbe6;--fgS:#eef1f6;--muted:#8a8698;--dim:#5a5667;--primary:#7E47D7;--primarySoft:#b794f4;--cyan:#45b8cc;
+--pass:#43c39a;--fail:#e06666;--warn:#e8a64d;--pass-bg:rgba(67,195,154,.16);--fail-bg:rgba(224,102,102,.16);--warn-bg:rgba(232,166,77,.16);
+--font:'Space Grotesk',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace;
+--hm-pass:rgba(67,195,154,.55);--hm-fail:rgba(224,102,102,.6);--hm-indet:rgba(232,166,77,.6);--hm-skip:rgba(255,255,255,.16)}
+*{box-sizing:border-box;border-radius:0}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.5;padding-bottom:110px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 22px 40px}
+.hdr{position:sticky;top:0;z-index:30;background:rgba(10,10,18,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:12px 22px;display:flex;align-items:center;gap:12px}
+.wm{font-weight:700;font-size:18px;letter-spacing:.5px}
+.wm b{background:linear-gradient(90deg,var(--primarySoft),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+.mockbadge{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--warn);border:1px solid var(--warn);padding:2px 8px}
+.panel{border:1px solid var(--border);background:var(--surf);margin-top:14px}
+.panel-h{display:flex;align-items:center;gap:8px;padding:9px 15px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--primarySoft);background:var(--surf2)}
+.panel-h .r{margin-left:auto;color:var(--muted);text-transform:none}
+.panel-b{padding:13px 15px}
+.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg);flex-wrap:wrap}
+.tabs s{font-family:var(--mono);font-size:11px;padding:8px 13px;border-right:1px solid var(--border);color:var(--muted);cursor:pointer;text-decoration:none}
+.tabs s.on{color:var(--primarySoft);border-bottom:2px solid var(--primary);background:var(--surf)}
+.sec{display:none}.sec.show{display:block}
+.kpi{display:flex;gap:7px;flex-wrap:wrap}
+.kpi i{font-family:var(--mono);font-size:11px;font-style:normal;padding:3px 9px;border:1px solid var(--border);color:var(--muted)}
+.kpi i b{color:var(--fgS)} .kpi i.pass b{color:var(--pass)} .kpi i.fail b{color:var(--fail)} .kpi i.warn b{color:var(--warn)} .kpi i.p b{color:var(--primarySoft)}
+.sev{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 7px}
+.sev.CRIT{color:var(--fail);background:var(--fail-bg)} .sev.HIGH{color:var(--warn);background:var(--warn-bg)} .sev.MED{color:var(--cyan);background:rgba(69,184,204,.10)} .sev.LOW{color:var(--muted);background:var(--surf3)}
+.chip{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--border);padding:1px 6px}
+.gb{font-family:var(--mono);font-size:11px;padding:2px 7px}
+.gb.observed{color:var(--pass);background:var(--pass-bg)} .gb.inferred{color:var(--warn);background:var(--warn-bg)}
+/* funnel variants */
+.funnelH{display:flex;gap:0;align-items:stretch;margin:8px 0;overflow-x:auto}
+.funnelH .st{flex:1;min-width:130px;border:1px solid var(--border);background:var(--surf2);padding:9px 12px;position:relative}
+.funnelH .st:not(:last-child)::after{content:"▸";position:absolute;right:-9px;top:38%;color:var(--primarySoft);z-index:2}
+.funnelH .st .k{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.funnelH .st .v{font-size:22px;font-weight:700;color:var(--fgS)}
+.funnelH .st .s{font-size:12.5px;color:var(--muted)}
+.funnelV{margin:8px 0;border-left:2px solid var(--primary);padding-left:16px}
+.funnelV .st{margin:0 0 10px;position:relative}
+.funnelV .st::before{content:"";position:absolute;left:-21px;top:6px;width:8px;height:8px;background:var(--primary)}
+.funnelV .st .v{font-weight:700;color:var(--fgS)}
+.funnelV .st .s{font-family:var(--mono);font-size:11px;color:var(--muted)}
+/* bars / curve */
+.bar{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;margin:6px 0}
+.bar .lab{width:200px;color:var(--fg);text-align:left;font-weight:600}
+.bar .tr{flex:1;background:var(--surf3);height:16px;position:relative}
+.bar .fill{height:16px;background:rgba(126,71,215,.55)}
+.bar .fill.g{background:rgba(67,195,154,.5)} .bar .fill.r{background:rgba(224,102,102,.5)} .bar .fill.c{background:rgba(69,184,204,.5)}
+.bar b{color:var(--fgS);min-width:64px;font-size:14px}
+/* section intro — replaces wall-of-text explainers */
+.intro{margin:0 0 16px}
+.intro h4{margin:0 0 6px;font-size:16px;color:var(--fgS);font-weight:600}
+.intro p{margin:0 0 6px;font-size:14px;color:var(--muted);max-width:84ch;line-height:1.6}
+.intro p b{color:var(--fg)}
+.h4s{margin:20px 0 8px;font-size:15px;color:var(--fgS);font-weight:600;border-bottom:1px solid var(--border);padding-bottom:5px;max-width:84ch}
+.stratexp{font-size:13.5px;color:var(--muted);margin:-2px 0 14px 0;max-width:80ch;line-height:1.55}
+.stratexp b{color:var(--fg)}
+/* sampled-corpus heat grid */
+.heatwrap{margin:14px 0 4px}
+.heatgrid{display:grid;grid-template-columns:repeat(43,1fr);gap:2px;max-width:860px}
+.hg{aspect-ratio:1;background:var(--surf3);border:1px solid rgba(0,0,0,.3)}
+.hg.samp{background:rgba(126,71,215,.45)}
+.hg.readp{background:var(--hm-pass, rgba(67,195,154,.55));background:rgba(67,195,154,.55)}
+.hg.readf{background:rgba(224,102,102,.6)}
+.hlegend{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:8px}
+.hlegend .sw{display:inline-block;width:11px;height:11px;vertical-align:-1px;margin-right:5px;border:1px solid rgba(0,0,0,.3)}
+/* criterion cards vs table */
+.ccard{border:1px solid var(--border);background:var(--surf2);margin:10px 0}
+.ccard-h{display:flex;gap:9px;align-items:center;padding:8px 11px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.ccard-b{padding:10px 13px;font-size:14px;color:var(--muted);line-height:1.55}
+.ccard-b b{color:var(--fg)}
+.nest{border:1px solid var(--border);background:var(--surf);margin:8px 0;padding:7px 10px;font-family:var(--mono);font-size:13px;color:var(--muted);line-height:1.5}
+.nest b{color:var(--fg)} .nest .ok{color:var(--pass)}
+table.ct{border-collapse:collapse;width:100%;font-size:14px;margin:8px 0}
+table.ct th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;padding:7px 10px;border-bottom:1px solid var(--borderS)}
+table.ct td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top;line-height:1.55}
+table.ct td b{color:var(--fg)}
+.vq{border:1px dashed var(--cyan);background:rgba(69,184,204,.05);padding:8px 11px;margin:12px 0}
+.vq .q{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);margin-bottom:5px}
+.vq .opts{display:flex;gap:6px;flex-wrap:wrap}
+.vq .opts button{font-family:var(--mono);font-size:11px;padding:3px 11px;background:var(--surf2);border:1px solid var(--border);color:var(--muted);cursor:pointer}
+.vq .opts button.on{border-color:var(--cyan);color:var(--cyan);background:rgba(69,184,204,.12)}
+.row{font-family:var(--mono);font-size:13.5px;color:var(--fg);opacity:.92;margin:5px 0;line-height:1.55}
+.row .ok{color:var(--pass)} .row .w{color:var(--warn)}
+.explain{font-size:14px;line-height:1.6;color:var(--muted);border-left:3px solid var(--cyan);background:rgba(69,184,204,.05);padding:8px 13px;margin:0 0 14px;max-width:86ch}
+.explain b{color:var(--fg)}
+/* criterion card v2 — labeled sections, show-don't-tell */
+.csec{padding:10px 14px 11px;border-bottom:1px solid var(--border)}
+.csec:last-child{border-bottom:0}
+.clab{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.03em;color:var(--primarySoft);margin-bottom:5px}
+.dotstrip{display:inline-flex;gap:3px;vertical-align:-2px;margin:0 8px}
+.dotstrip u{width:13px;height:13px;border:1px solid rgba(0,0,0,.35)}
+.dotstrip u.fail{background:var(--hm-fail)} .dotstrip u.pass{background:var(--hm-pass)} .dotstrip u.uncertain{background:var(--hm-indet)} .dotstrip u.skip{background:var(--hm-skip)}
+.origin{font-family:var(--mono);font-size:12.5px;color:var(--primarySoft);border:1px solid var(--primary);padding:1px 8px;cursor:pointer;margin:2px 4px 2px 0;display:inline-block}
+.origin:hover{background:rgba(126,71,215,.18)}
+.quote{font-family:var(--mono);font-size:13px;line-height:1.55;color:var(--fg);background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--pass);padding:4px 9px;margin:4px 0;display:block}
+.quote i{font-style:normal;color:var(--dim)}
+#tpeek{display:none;position:fixed;z-index:70;background:var(--surf3);border:1px solid var(--primary);padding:11px 14px;font-size:13.5px;color:var(--fg);max-width:460px;box-shadow:0 8px 26px rgba(0,0,0,.55);line-height:1.55}
+#tpeek .pk1{font-family:var(--mono);font-weight:700;color:var(--fgS);font-size:14px;margin-bottom:4px;padding-right:66px}
+#tpeek .pkstep{font-family:var(--mono);font-size:12.5px;color:var(--muted);padding:2px 0;border-bottom:1px dashed var(--border)}
+#tpeek .pkstep b{color:var(--cyan);font-weight:600}
+#tpeek .pkx{position:absolute;top:6px;right:9px;color:var(--dim);cursor:pointer;font-family:var(--mono)}
+.handoffbtn{background:var(--surf2);border:1px solid var(--pass);color:var(--pass);font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:none;padding:4px 12px;cursor:pointer;margin-left:auto}
+.handoffbtn.done{background:var(--pass-bg)}
+.layercover{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px}
+.layercover i{font-style:normal;font-family:var(--mono);font-size:12.5px;padding:3px 10px;border:1px solid var(--border);color:var(--muted)}
+.layercover i b{color:var(--fgS)}
+.stratline{font-size:13.5px;color:var(--muted);margin:-2px 0 10px 200px;max-width:72ch}
+.hero{padding:26px 0 10px;border-bottom:1px solid var(--border);margin-bottom:6px}
+.hero .who{font-family:var(--mono);font-size:11.5px;color:var(--cyan);text-transform:uppercase;letter-spacing:.14em;margin-bottom:7px}
+.hero h1{font-size:clamp(24px,3.4vw,32px);margin:0 0 8px;color:var(--fgS);letter-spacing:-.01em;font-weight:700}
+.hero p{font-size:15.5px;color:var(--muted);max-width:88ch;margin:0 0 8px;line-height:1.65}
+.hero p b{color:var(--fg)}
+.foot{margin-top:32px;color:var(--dim);font-size:11px;border-top:1px solid var(--border);padding-top:12px;font-family:var(--mono)}
+#fbpanel{position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,18,.97);border-top:1px solid var(--primary);padding:9px 22px 11px;z-index:50}
+#fbpanel .frow{max-width:1180px;margin:0 auto;display:flex;gap:12px;align-items:flex-end}
+#fbpanel label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--primarySoft);display:block;margin-bottom:4px}
+#fbtext{flex:1;background:var(--surf2);border:1px solid var(--border);color:var(--fg);font-family:var(--font);font-size:13px;padding:7px 10px;min-height:40px;max-height:110px;resize:vertical}
+#fbcopy{background:var(--surf2);border:1px solid var(--primary);color:var(--primarySoft);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:10px 16px;cursor:pointer;white-space:nowrap}
+#fbcopy.done{border-color:var(--pass);color:var(--pass)}
+</style></head><body>
+<div class="hdr"><div class="wm">MUTAGENT<b>/evaluator</b> · Discovery Report</div>
+  @@HEADER_RIGHT@@</div>
+<div class="wrap">
+
+  <div class="hero" data-component="mgt-report-hero">
+    <div class="who">Eval discovery · which checks should exist</div>
+    <h1>@@HERO_TITLE@@</h1>
+    <p>@@HERO_LEDE@@</p>
+  </div>
+
+  <div class="panel"><div class="panel-b" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    @@IDENTITY_STRIP@@
+  </div></div>
+
+  <div class="panel" id="report">
+    <div class="tabs">
+      <s class="on" onclick="tab(0)">① Overview</s><s onclick="tab(1)">② Corpus &amp; Sampling</s>
+      <s onclick="tab(2)">③ Discovery Walk</s><s onclick="tab(3)">④ Criteria Catalog</s>
+      <s onclick="tab(4)">⑤ Dataset</s><s onclick="tab(5)">⑥ Methodology [INT]</s>
+    </div>
+
+    <!-- ① OVERVIEW -->
+    <div class="sec show" data-page="overview"><div class="panel-h">① Overview <span class="r">the funnel IS the story</span></div><div class="panel-b">
+      <div class="intro">
+        <h4>What this run did</h4>
+        <p>@@OVERVIEW_INTRO@@</p>
+      </div>
+      <div id="funnelhost" data-component="mgt-funnel"></div>
+
+      <div class="heatwrap" data-component="mgt-sample-heatgrid">
+        <div class="h4s" style="margin-top:18px">@@HEAT_HEADING@@</div>
+        <div class="hlegend" style="margin:0 0 10px;font-size:13px">@@HEAT_LEGEND@@</div>
+        <div class="heatgrid" id="heatgrid"></div>
+      </div>
+
+      <div class="kpi" style="margin-top:16px">
+        @@KPI@@
+      </div>
+      <div style="margin-top:12px;color:var(--muted);font-size:14px;max-width:84ch;line-height:1.6">
+        @@BOTTOM_LINE@@
+      </div>
+    </div></div>
+
+    <!-- ② CORPUS -->
+    <div class="sec" data-page="corpus-sampling"><div class="panel-h">② Corpus &amp; Sampling <span class="r">where the traces came from · how we chose · when we stopped</span></div><div class="panel-b">
+
+      @@SAMPLING_SECTION@@
+      <div class="nest" style="margin-top:12px">Data-hygiene guard: tool observations are sorted by real event time before any "was X known at that moment" judgment — unsorted platform exports flip most such verdicts.</div>
+    </div></div>
+
+    <!-- ③ DISCOVERY WALK -->
+    <div class="sec" data-page="discovery-walk"><div class="panel-h">③ Discovery Walk <span class="r">failure classes → emergent clusters → criteria</span></div><div class="panel-b">
+      <div class="intro">
+        <h4>How each failure was diagnosed</h4>
+        <p>Every failed session was read for its <b>first thing wrong</b>, and each finding was classified
+        <b>behavioral</b> (an eval belongs here) or <b>infrastructure</b> (a fix belongs elsewhere). Failures were then
+        grouped into categories that <b>emerged from the reading itself</b> — never from a pre-made list,
+        which would bias what we find. Each category ended one of three ways: it became an eval criterion, it was routed to
+        diagnostics as an infrastructure fix, or it was dropped as a one-off.</p>
+      </div>
+      @@WALK_SECTION@@
+      
+    </div></div>
+
+    <!-- ④ CATALOG -->
+    <div class="sec" data-page="criteria-catalog"><div class="panel-h">④ Criteria Catalog <span class="r">@@CATALOG_COUNT@@</span><button class="handoffbtn" id="ahbtn" onclick="copyAdoptionHandoff()">Copy adoption handoff (markdown)</button></div><div class="panel-b">
+      <div class="intro" style="margin-top:2px">
+        <h4>How to read a criterion card</h4>
+        <p>Each card is one recommended check. <b>THE CHECK</b> is what gets verified — true or false per session, never a score.
+        <b>WHY IT EXISTS</b> shows the real past failures that created it: the colored strip is every analyzed session
+        (<b style="color:var(--fail)">red = this check failed there</b>), and the purple session chips are clickable — peek at the
+        actual trace. <b>EVIDENCE SEEN</b> quotes the exact strings the verdicts cited. <b>GATES RELEASE?</b> says whether a
+        failure of this check blocks a release.</p>
+      </div>
+      <div class="layercover" data-component="mgt-layer-coverage">
+        @@LAYER_COVERAGE@@
+      </div>
+      <div id="cathost" data-component="mgt-criterion-catalog"></div>
+    </div></div>
+
+    <!-- ⑤ DATASET -->
+    <div class="sec" data-page="dataset"><div class="panel-h">⑤ Dataset <span class="r">candidates → *build-dataset · living-suite Δ</span></div><div class="panel-b">
+      <div class="intro">
+        <h4>Proposed regression cases — keep these mistakes fixed forever</h4>
+        <p>Some sessions showed failure shapes worth <b>keeping as test cases</b>: each becomes a synthetic input that recreates the
+        situation, so every future evaluation automatically re-checks that this exact mistake hasn't come back. Each row tells you
+        the real story it came from, how that session was judged, and what the test case will prevent.</p>
+      </div>
+      @@DATASET_SECTION@@
+    </div></div>
+
+    <!-- ⑥ METHODOLOGY -->
+    <div class="sec" data-page="methodology"><div class="panel-h">⑥ Methodology <span class="r">internal — stripped on publish</span></div><div class="panel-b">
+      <div class="intro">
+        <h4>The report grading itself</h4>
+        <p>The full account of HOW this run produced its numbers: the process as it actually executed, which script or agent
+        produced every figure on the other tabs (provenance), one fully worked example of a session read, and the honest gaps.
+        Internal only — stripped from any external publish.</p>
+      </div>
+
+      @@METHODOLOGY_SECTION@@
+    </div></div>
+  </div>
+
+  <div class="foot">@@FOOT@@</div>
+</div>
+
+<div id="fbpanel" data-component="mgt-feedback-bar"><div class="frow">
+  <div style="flex:1"><label for="fbtext">@@FEEDBACK_LABEL@@</label>
+  <textarea id="fbtext" placeholder="e.g. 'funnel horizontal but add drop-off %' · 'catalog: show passDef/failDef on cards' …"></textarea></div>
+  <button id="fbcopy" type="button">Copy&nbsp;MD</button>
+</div></div>
+<div id="tpeek" data-component="mgt-trace-peek"></div>
+
+<script>window.ASTER=@@DATA_JSON@@;</script>
+<script>
+function tab(i){var t=document.querySelectorAll('#report>.tabs s'),s=document.querySelectorAll('#report>.sec');
+  t.forEach(function(x,k){x.classList.toggle('on',k===i)});s.forEach(function(x,k){x.classList.toggle('show',k===i)});}
+var funnelStyle='h', catStyle='cards';
+var STAGES=ASTER.funnelStages||[];
+function renderFunnel(){
+  var host=document.getElementById('funnelhost'),h='';
+  if(funnelStyle==='h'){
+    h='<div class="funnelH">';
+    STAGES.forEach(function(s){h+='<div class="st"><div class="k">'+s[0]+'</div><div class="v">'+s[1]+'</div><div class="s">'+s[2]+'</div></div>';});
+    h+='</div>';
+  }else{
+    h='<div class="funnelV">';
+    STAGES.forEach(function(s){h+='<div class="st"><span class="v">'+s[1]+'</span> <b style="color:var(--primarySoft)">'+s[0]+'</b> <span class="s">— '+s[2]+'</span></div>';});
+    h+='</div>';
+  }
+  host.innerHTML=h;
+}
+var CLUSTERS=ASTER.clusters||{};
+function critEvidence(cid){
+  var out={cells:[],origins:[],quotes:[]};
+  ASTER.traces.forEach(function(tr){
+    var st='pass',ref=null,vseen=null;
+    tr.steps.forEach(function(s){(s.verdicts||[]).forEach(function(vd){if(vd.crit===cid){vseen=vd.verdict;if(vd.ref)ref=vd.ref;}});});
+    if(!vseen){st=(tr.gate==='incomplete')?'skip':'pass';}
+    else st=(vseen==='uncertain')?'uncertain':vseen;
+    out.cells.push({id:tr.id,st:st});
+    if(vseen==='fail'||vseen==='uncertain'){out.origins.push(tr.id);if(ref)out.quotes.push({id:tr.id,ref:ref});}
+  });
+  return out;
+}
+function renderCat(){
+  var host=document.getElementById('cathost'),h='';
+  if(catStyle==='cards'){
+    ASTER.criteria.forEach(function(c){
+      var ev=critEvidence(c.id);
+      var dots;
+      if(ev.cells.length<=60){
+        dots='<span class="dotstrip">';
+        ev.cells.forEach(function(cl){dots+='<u class="'+cl.st+'" title="'+cl.id+': '+cl.st+'"></u>';});
+        dots+='</span>';
+      }else{
+        /* mgt-ratio-bar — large-corpus aggregate of the per-session dot strip */
+        var f=0,u=0;ev.cells.forEach(function(cl){if(cl.st==='fail')f++;else if(cl.st==='uncertain')u++;});
+        var n=ev.cells.length,fp=Math.max(1,Math.round(100*f/n)),up=Math.round(100*u/n);
+        dots='<span data-component="mgt-ratio-bar" style="display:inline-flex;align-items:center;gap:8px;vertical-align:-3px;margin:0 8px">'
+          +'<span style="display:inline-flex;width:180px;height:14px;border:1px solid rgba(0,0,0,.35);background:var(--hm-pass, rgba(67,195,154,.38));background:rgba(67,195,154,.38)">'
+          +'<span style="width:'+fp+'%;background:rgba(224,102,102,.7)"></span>'
+          +(u?'<span style="width:'+up+'%;background:rgba(232,166,77,.6)"></span>':'')
+          +'</span><b style="color:var(--fg);font-family:var(--mono);font-size:13px">failed in '+f+' of '+n+'</b></span>';
+      }
+      var shown=ev.origins.slice(0,8);
+      var origins='';shown.forEach(function(id){origins+='<span class="origin" onclick="peekTrace(event,\''+id+'\')">'+id+' ▸ peek</span>';});
+      if(ev.origins.length>8)origins+='<span class="chip" style="font-size:12.5px">+'+(ev.origins.length-8)+' more sessions</span>';
+      var quotes='';ev.quotes.forEach(function(q){quotes+='<span class="quote">"'+q.ref.value+'" <i>— </i><span class="origin" onclick="peekTrace(event,\''+q.id+'\')" style="font-size:11.5px">'+q.id+(q.ref.obs&&q.ref.obs!==q.id?' · '+q.ref.obs:'')+' · '+q.ref.path+' ▸ peek</span></span>';});
+      if(!quotes)quotes='<span class="quote" style="border-left-color:var(--warn)">no quoted evidence for this check in this sample — no failed session cited a structured ref, so this criterion is INFERRED rather than observed</span>';
+      h+='<div class="ccard" data-component="mgt-criterion-card"><div class="ccard-h"><span class="sev '+c.sev+'">'+c.sev+'</span><b style="font-size:15px">'+c.id+' · '+c.slug+'</b>'
+        +'<span class="chip" style="color:var(--primarySoft);border-color:rgba(126,71,215,.5)">layer: '+c.layer+'</span>'
+        +'<span class="chip">'+(c.cls==='code'?'checked by code':c.cls==='hybrid'?'checked by code + judge':'checked by judge')+'</span></div>'
+        +'<div class="csec"><div class="clab">The check</div><div style="font-size:14.5px;color:var(--fg)">'+c.statement+'</div>'
+        +'<div style="font-size:13px;color:var(--muted);margin-top:4px"><b style="color:var(--fg)">passes:</b> '+c.passDef+' · <b style="color:var(--fg)">fails:</b> '+c.failDef+'</div></div>'
+        +'<div class="csec"><div class="clab">Why it exists — the real failures that created it</div>'
+        +'<div style="font-size:14px;color:var(--muted)">Cluster: <b style="color:var(--fg)">'+CLUSTERS[c.id]+'</b> · behavior across the '+ev.cells.length+' analyzed session(s): '+dots
+        +(ev.origins.length?'<br>failed / undecided in: '+origins:' — no failure in this sample')+'</div></div>'
+        +'<div class="csec"><div class="clab">Evidence seen — exact quoted strings</div>'+quotes+'</div>'
+        +'<div class="csec"><div class="clab">Does it gate a release?</div><div style="font-size:14px;color:var(--muted)">'
+        +(c.sev==='CRIT'||c.sev==='HIGH'?'<b style="color:var(--fail)">YES</b> — a '+c.sev+' failure fails the gate':'<b style="color:var(--muted)">no</b> — advisory, tracked in the variance view')
+        +'</div></div></div>';
+    });
+  }else{
+    h='<table class="ct"><tr><th>id</th><th>statement</th><th>layer</th><th>class</th><th>sev</th><th>grounding</th></tr>';
+    ASTER.criteria.forEach(function(c){
+      h+='<tr><td><b>'+c.id+'</b></td><td>'+c.statement+'</td><td>'+c.layer+'</td><td>'+c.cls+'</td>'
+        +'<td><span class="sev '+c.sev+'">'+c.sev+'</span></td><td><span class="gb observed">obs k='+c.k+'/'+c.n+'</span></td></tr>';
+    });
+    h+='</table>';
+  }
+  host.innerHTML=h;
+}
+function renderHeat(){
+  var host=document.getElementById('heatgrid');if(!host)return;
+  var H=ASTER.heat||{readp:0,readf:0,samp:0};
+  var cells=[];
+  for(var i=0;i<H.readp;i++)cells.push('readp');
+  for(var j=0;j<H.readf;j++)cells.push('readf');
+  for(var k=0;k<H.samp;k++)cells.push('samp');
+  /* deterministic interleave so colors mix like a real corpus (no Math.random — stable render) */
+  var total=cells.length,readTotal=H.readp+H.readf;
+  var mixed=[],a=0,b=H.readp,c=readTotal,step=0;
+  while(mixed.length<total){
+    if(step%3===0&&a<H.readp)mixed.push(cells[a++]);
+    else if(step%3===1&&b<readTotal)mixed.push(cells[b++]);
+    else if(c<total)mixed.push(cells[c++]);
+    else if(a<H.readp)mixed.push(cells[a++]);
+    else if(b<readTotal)mixed.push(cells[b++]);
+    step++;
+  }
+  var h='';mixed.forEach(function(cl){h+='<span class="hg '+cl+'"></span>';});
+  host.innerHTML=h;
+}
+function copyAdoptionHandoff(){
+  var md=ASTER.adoptionMd||'';var btn=document.getElementById('ahbtn');
+  function ok(){btn.classList.add('done');btn.textContent='✓ copied';setTimeout(function(){btn.classList.remove('done');btn.textContent='Copy adoption handoff (markdown)';},2000);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(md).then(ok,function(){fbc(md);});}else{fbc(md);}
+  function fbc(t){var x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();
+    try{document.execCommand('copy');}catch(e){}document.body.removeChild(x);ok();}
+}
+function peekTrace(e,id){
+  e.stopPropagation();
+  var tr=null;ASTER.traces.forEach(function(t){if(t.id===id)tr=t;});
+  var p=document.getElementById('tpeek');
+  if(!tr){p.style.display='none';return;}
+  var h='<span class="pkx" onclick="document.getElementById(\'tpeek\').style.display=\'none\'">✕ close</span>'
+    +'<div class="pk1">'+tr.id+' · '+tr.scenario+' · gate '+tr.gate+'</div>'
+    +'<div style="font-size:13px;color:var(--muted);margin-bottom:6px">'+(tr.outcome.verdict==='pass'?('reached expected exit: '+tr.outcome.expected):('expected '+tr.outcome.expected+' — actual: '+tr.outcome.actual))+'</div>';
+  tr.steps.forEach(function(s,i){h+='<div class="pkstep">obs-'+(i+1)+' · <b>'+s.tool+'</b> '+String(s.args)+'<br><span style="color:var(--fg);opacity:.85">→ '+String(s.output).slice(0,400)+'</span></div>';});
+  if(tr.divergence)h+='<div style="font-size:12.5px;color:var(--fail);margin-top:5px">◆ '+tr.divergence+'</div>';
+  if(ASTER.evalReportHref){h+='<div style="font-size:12.5px;margin-top:8px"><a href="'+ASTER.evalReportHref+'#'+tr.id+'" target="_blank" style="color:var(--primarySoft);text-decoration:none;border:1px solid var(--primary);padding:2px 9px;font-family:var(--mono)">open the full judged walk ('+tr.id+') in the Evaluation Report ▸</a></div>';}
+  p.innerHTML=h;p.style.display='block';
+  var x=e.clientX+14,y=e.clientY+14;
+  if(x+470>window.innerWidth)x=Math.max(10,e.clientX-480);
+  if(y+320>window.innerHeight)y=Math.max(10,e.clientY-330);
+  p.style.left=x+'px';p.style.top=y+'px';
+}
+document.addEventListener('click',function(e){
+  var p=document.getElementById('tpeek');
+  if(p&&p.style.display==='block'&&!p.contains(e.target)&&!(e.target.classList&&e.target.classList.contains('origin')))p.style.display='none';
+});
+function setFunnel(v,btn){funnelStyle=v;vqOn(btn);renderFunnel();}
+function setCat(v,btn){catStyle=v;vqOn(btn);renderCat();}
+function vqOn(btn){btn.parentElement.querySelectorAll('button').forEach(function(b){b.classList.remove('on');});btn.classList.add('on');}
+renderFunnel();renderCat();renderHeat();
+(function(){
+  var btn=document.getElementById('fbcopy'),ta=document.getElementById('fbtext');
+  if(!btn||!ta)return;
+  function buildMd(){
+    var lines=['## Feedback — '+(ASTER.feedbackTitle||document.title),'','Artifact: `'+(ASTER.artifactPath||'discovery-report.html')+'`'];
+    document.querySelectorAll('.vq').forEach(function(vq){
+      var on=vq.querySelector('button.on');
+      lines.push('- **'+vq.getAttribute('data-vq')+'**: '+(on?on.getAttribute('data-v'):'(none)'));
+    });
+    lines.push('','### Notes');
+    var note=ta.value.trim();lines.push(note.length?note:'_(no notes entered)_');
+    return lines.join('\n');
+  }
+  function done(){btn.classList.add('done');btn.textContent='Copied ✓';setTimeout(function(){btn.classList.remove('done');btn.textContent='Copy MD';},1800);}
+  btn.addEventListener('click',function(){
+    var md=buildMd();
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(md).then(done,function(){fb(md);});}else{fb(md);}
+    function fb(t){var x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();
+      try{document.execCommand('copy');}catch(e){}document.body.removeChild(x);done();}
+  });
+})();
+</script>
+</body></html>

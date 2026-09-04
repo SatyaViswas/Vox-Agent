@@ -1,0 +1,117 @@
+# AgentSpec 0.3.0 — canonical example · kind: Workflow (the canonical graph resource)
+# The primary resource is a reusable graph with no persona/system prompt; the same graph body is what
+# an Agent or MultiAgent embeds via workflow.inline. The optional dataset supplies workflow input plus
+# the expected path and node-by-node output for every traversed node.
+apiVersion: agentspec.mutagent.io/v0.3.0
+kind: Workflow
+metadata:
+  id: incident-routing
+  name: Incident Routing Workflow
+  version: "1.0.0"
+  description: "Retrieves incident context, classifies severity, and approval-gates external paging."
+
+spec:
+  intent:
+    problem: "Incident routing varies by operator and may omit evidence or required approval."
+    outcomes: ["Apply one reviewable routing graph.", "Escalate only with policy evidence and approval."]
+    sop:
+      - { id: incident-routing, when: "An incident enters routing.", description: "Validate, retrieve, classify, decide, request approval if paging, then record the terminal state.", onFailure: "Stop without paging and return missing context." }
+    jobs:
+      - { id: route-incident, description: "Classify and route an incident using current ownership/policy context.", expectedOutput: "Resolved or escalated terminal state with evidence." }
+    constraints: ["External paging is traceable and approval-gated."]
+    nonGoals: ["Diagnose root cause", "Remediate the service failure"]
+    assumptions: ["Incident and service ownership data are available through approved reads."]
+    unknowns: []
+
+  context:
+    - id: incident-record
+      description: "Incident payload, service, symptoms, timestamps, and current owner."
+      modalities: [record, event]
+      source: incident-platform
+      freshness: current
+      access: { kind: saas, ref: incident-api, allowedOperations: [incident.get] }
+    - id: service-ownership
+      description: "Service owner, escalation policy, and on-call route."
+      modalities: [record, policy]
+      source: service-catalog
+      access: { kind: sdk, ref: service-catalog-sdk, allowedOperations: [service.owner.get, service.policy.get] }
+
+  actions:
+    - id: page-on-call
+      description: "Create one page for the resolved on-call destination with the approved incident summary."
+      binding: { kind: saas, ref: pager-api, authRef: PAGER_TOKEN }
+      allowedOperations: [page.create]
+      approval: { policy: required, when: "Before every page.create call." }
+      evidence: "Record approval, destination, message digest, and pager result."
+      onFailure: "Set terminal state page-failed and do not retry automatically."
+
+  capabilities: { code: [], skills: [], delegates: [] }
+
+  workflow:                                       # This body is reusable inline/ref elsewhere.
+    state: IncidentRoutingState
+    entry: intake
+    nodes:
+      - id: intake
+        description: "Validate required incident fields."
+        edges: [{ to: retrieve }]
+      - id: retrieve
+        description: "Load incident and ownership context."
+        contextRefs: [incident-record, service-ownership]   # required INPUT is a SEPARATE node field (F03/R4), not an executor
+        edges: [{ to: classify, condition: "context complete" }, { to: missing-context, condition: "otherwise" }]
+      - id: classify
+        description: "Apply severity and escalation policy."
+        edges: [{ to: request-approval, condition: "external page required" }, { to: resolved, condition: "no page required" }]
+      - id: request-approval
+        description: "Show destination and exact page summary to the operator."
+        edges: [{ to: page, condition: "approved" }, { to: stopped, condition: "rejected" }]
+      - id: page
+        description: "Invoke the bounded page-on-call action."
+        executor: { kind: action, ref: page-on-call }   # strict typed executor {kind, ref} (F03/R4)
+        terminal: true
+      - { id: resolved, description: "Complete with no external action.", terminal: true }
+      - { id: missing-context, description: "Return missing context and stop.", terminal: true }
+      - { id: stopped, description: "Approval rejected; stop without paging.", terminal: true }
+
+  targets:
+    - id: temporal
+      type: framework
+      name: temporal
+      artifact: { format: code, path: src/workflows/incident-routing.ts }
+      implementation: { language: typescript, toolchain: node }
+      capabilityFit: "Durable state, branching, API activities, approval signals, and evidence storage are supported."
+      documentation: [{ purpose: workflow-and-testing, url: "https://example.test/temporal/workflows" }]
+    - id: cloud-workflow
+      type: platform
+      name: managed-agent-workflows
+      artifact: { format: platform-config, path: deploy/incident-routing.yaml }
+      capabilityFit: "Platform supports context connectors, approval steps, outbound pager action, and terminal audit evidence."
+      documentation: [{ purpose: authoring-deployment-security, url: "https://example.test/cloud/workflows" }]
+
+  evaluation:
+    criteria:
+      - { id: page-requires-approval, description: "page-on-call is unreachable without the approval branch.", type: code-check, goal: "Zero bypass paths" }
+      - { id: graph-resolves, description: "Entry, terminal nodes, edges, context/action refs, and executors resolve.", type: code-check, goal: "Zero dangling references" }
+    scenarios:
+      - { id: missing-ownership, description: "Service ownership context is absent.", expectedBehavior: "Reach missing-context and never call page-on-call.", edgeCase: true }
+    datasets:
+      - id: incident-routing-cases
+        description: "Workflow inputs with expected node-by-node execution evidence."
+        mapsTo: { jobs: [route-incident], scenarios: [missing-ownership], criteria: [page-requires-approval, graph-resolves] }
+        categories:
+          - { id: incomplete-routing-context, description: "Incidents missing ownership or escalation-policy context.", generationGuidance: "Vary missing field, incident severity, service identity, and presence of stale fallback data." }
+        caseDimensions:
+          context: { description: "Whether required routing context resolves.", values: [complete, missing] }
+          paging: { description: "Whether a page would otherwise be required.", values: [required, not-required] }
+        items:
+          - id: workflow-001
+            category: incomplete-routing-context
+            scenarioRef: missing-ownership
+            case: { context: missing, paging: required }
+            input: { incident: { id: INC-42, severity: critical, service: payments }, serviceOwnership: null }
+            expected:
+              path: [intake, retrieve, missing-context]
+              nodeOutputs:
+                - { nodeRef: intake, output: { valid: true } }
+                - { nodeRef: retrieve, output: { contextComplete: false, missing: [service-ownership] } }
+                - { nodeRef: missing-context, output: { terminalState: missing-context, pageCreated: false } }
+              actionCalls: []

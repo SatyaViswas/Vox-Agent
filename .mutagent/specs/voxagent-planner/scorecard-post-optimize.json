@@ -1,0 +1,87 @@
+{
+  "traceCount": 24,
+  "criteria": {
+    "no-guessed-required-param": {
+      "class": "code-check",
+      "applicableCount": 6,
+      "naCount": 18,
+      "pass": 6,
+      "fail": 0,
+      "indeterminate": 0,
+      "passRate": 1.0
+    },
+    "no-opaque-id-asked": {
+      "class": "llm-judge",
+      "applicableCount": 9,
+      "naCount": 15,
+      "pass": 7,
+      "fail": 2,
+      "indeterminate": 0,
+      "passRate": 0.778
+    },
+    "correct-route-classification": {
+      "class": "llm-judge",
+      "applicableCount": 24,
+      "naCount": 0,
+      "pass": 23,
+      "fail": 1,
+      "indeterminate": 0,
+      "passRate": 0.958
+    },
+    "schema-aligned-execution": {
+      "class": "code-check",
+      "applicableCount": 0,
+      "naCount": 24,
+      "pass": 0,
+      "fail": 0,
+      "indeterminate": 0,
+      "passRate": null
+    },
+    "step-handoff-placeholder": {
+      "class": "code-check",
+      "applicableCount": 3,
+      "naCount": 21,
+      "pass": 3,
+      "fail": 0,
+      "indeterminate": 0,
+      "passRate": 1.0
+    },
+    "fan-out-shape": {
+      "class": "code-check",
+      "applicableCount": 3,
+      "naCount": 21,
+      "pass": 3,
+      "fail": 0,
+      "indeterminate": 0,
+      "passRate": 1.0
+    },
+    "sheet-header-safety": {
+      "class": "code-check",
+      "applicableCount": 6,
+      "naCount": 18,
+      "pass": 4,
+      "fail": 2,
+      "indeterminate": 0,
+      "passRate": 0.667
+    },
+    "event-trigger-modeling": {
+      "class": "code-check",
+      "applicableCount": 24,
+      "naCount": 0,
+      "pass": 24,
+      "fail": 0,
+      "indeterminate": 0,
+      "passRate": 1.0
+    },
+    "browser-context-sufficiency": {
+      "class": "llm-judge",
+      "applicableCount": 3,
+      "naCount": 21,
+      "pass": 3,
+      "fail": 0,
+      "indeterminate": 0,
+      "passRate": 1.0
+    }
+  },
+  "runVerdict": "fail"
+}

@@ -1,0 +1,350 @@
+{
+  "findingId": "F-rule6-headers-dropped-on-keyed-record-payload-6",
+  "clusterId": "F-rule6-headers-dropped-on-keyed-record-payload-6",
+  "iteration": "voxagent-planner-pass3",
+  "audience": "CLIENT",
+  "what": "format-violation",
+  "why": "prompt-underspec",
+  "where": "system-prompt",
+  "confidence": "high",
+  "actionable": "Airtable record-create steps drop the Rule 6 `headers` parameter whenever they are not a Rule 5 fan-out (srw-02 3/3, ctfm-03 2/3); the cause is Rule 6's row-positional scoping vs. the Airtable `fields` dict payload, NOT the missing_parameters interaction.",
+  "problem": "Every Airtable record-create step that is not a Rule 5 fan-out now omits the Rule 6 `headers` parameter — srw-02 on 3/3 repeated runs and ctfm-03 on 2/3, against a Phase-3 baseline in which both carried it — so 2 of the 24 eval traces fail the `sheet-header-safety` tier-0 criterion and, at execution time, the single record they write is liable to be consumed as the column-header row and silently lost (tier0_code_checks.py:115-128; planner.py:56).",
+  "verdict": "The dispatch hypothesis is REFUTED. `headers` loss is NOT conditioned on the step carrying a `missing_parameters` entry, and Rule 2's FINAL CHECK bullet is not the trigger. Four post-optimize row-write steps DO carry a flagged-missing key on the writing step and ALL FOUR keep `headers` (amb-02 s2, srw-01 s1, srw-03 s2, fan-01 s2), while ctfm-03 s1 — which has an EMPTY `missing_parameters` array, so Rule 2's clarification block and its FINAL CHECK loop are never entered at all — DROPS `headers`. The actual discriminator across all six post-optimize row-write steps is the payload SHAPE: an Airtable-native `fields` object (a dict whose keys already are the column names) on a step with no `for_each` loses `headers` 2/2; every `row_data`-shaped payload and every fan-out keeps it 4/4. Rule 6 (planner.py:56) is byte-for-byte UNCHANGED by all four shipped fixes (verified: git diff 0639887..HEAD), so the regression is a shift in prompt COMPETITION, not an edit to Rule 6. Two shifts are jointly responsible. (1) SCOPE: Rule 6 states its applicability purely in positional-row vocabulary — 'writes row(s)', 'alongside the row data', 'the row-data placeholder', 'one row with one cell per field, in the same order as `headers`' — and justifies itself with a strictly positional mechanism ('tools otherwise treat the very first row of data as the column headers'). None of that engages a key-addressed `fields` dict, where there is no ordering and no positional first row. Its two named triggering shapes are both cross-references to OTHER rules (a Rule 5 fan-out, a Rule 3 extraction); srw-02 and ctfm-03 invoke neither. The model is following Rule 6's stated REASONING correctly and its intended LETTER incorrectly. (2) EXEMPLAR TRANSFER: the two fixes added the prompt's only two worked `parameters` objects, and they are app-split. planner.py:33 (28320b1) shows `{\"row_data\": ..., \"headers\": [...]}` — Google Sheets, WITH headers, framed exhaustively as 'is exactly'. planner.py:53 (71fb7b1) shows the prompt's ONLY Airtable `parameters` enumeration — 'keep `base_name: \"Content Calendar\"` in `parameters`' — WITHOUT headers. Post-fix, each app's emitted key set converges on its own exemplar: all three Google Sheets writes keep headers (amb-02's post-fix key set `[row_data, headers]` is a character-for-character copy of the line-33 exemplar), and the Airtable writes shed everything the line-53 exemplar does not name. fan-01 survives only because it is the fan-out shape Rule 6 names explicitly and its `[\"Title\"]` matches Rule 6's own `[\"Caption\"]` single-column instance. The srw-02 seed rationale predicted this exact mechanism in advance: 'the planner is more likely to treat \\'record\\' as structurally different and drop headers.'",
+  "failureOrigin": {
+    "what": "format-violation",
+    "why": "prompt-underspec",
+    "where": "system-prompt",
+    "evidence": "planner.py:56 (Rule 6 scope + mechanism) contrasted with planner.py:53 (sole headerless Airtable exemplar) and planner.py:33 (sole headers-bearing exemplar, Google Sheets only)",
+    "whatHappened": "Rule 6 defines when it applies using row-positional language and two cross-references (Rule 5 fan-out, Rule 3 extraction). srw-02 and ctfm-03 are single-step writes whose payload the model expresses as Airtable's key-addressed `fields` dict, matching none of Rule 6's handles; the only worked Airtable parameters object in the whole prompt (line 53) lists `base_name` and nothing else, so the model emits `{base_name, fields}` and stops.",
+    "example": "srw-02 step 1 parameters: {\"base_name\": \"Freelance Income\", \"fields\": {\"Client\": \"Meridian Design\", \"Invoice Number\": \"INV-2026-018\", \"Amount\": 2400, \"Payment Date\": \"2026-08-01\"}}  — no `headers` key",
+    "confidence": "high"
+  },
+  "discriminatorTable": {
+    "note": "All six row-write steps in traces/planner-eval-traces-post-optimize.jsonl. 'missingOnThisStep' is the column the dispatch hypothesis predicts should drive headers loss; it does not.",
+    "columns": [
+      "trace.step",
+      "app",
+      "payloadKey",
+      "payloadShape",
+      "for_each",
+      "missingOnThisStep",
+      "headers"
+    ],
+    "rows": [
+      [
+        "amb-02.s2",
+        "Google Sheets",
+        "row_data",
+        "placeholder string {step_1_result}",
+        "no",
+        "YES (spreadsheet_name)",
+        "KEPT"
+      ],
+      [
+        "srw-01.s1",
+        "Google Sheets",
+        "row_data",
+        "dict of 5 fields",
+        "no",
+        "YES (sheet_name)",
+        "KEPT"
+      ],
+      [
+        "srw-03.s2",
+        "Google Sheets",
+        "row_data",
+        "placeholder {{item}}",
+        "yes",
+        "YES (sheet_name)",
+        "KEPT"
+      ],
+      [
+        "fan-01.s2",
+        "Airtable",
+        "fields",
+        "dict {Title: {{item}}}",
+        "yes",
+        "YES (table_name)",
+        "KEPT"
+      ],
+      [
+        "ctfm-03.s1",
+        "Airtable",
+        "fields",
+        "dict of 3 fields",
+        "no",
+        "NO — missing_parameters is []",
+        "DROPPED"
+      ],
+      [
+        "srw-02.s1",
+        "Airtable",
+        "fields",
+        "dict of 4 fields",
+        "no",
+        "YES (table_name)",
+        "DROPPED"
+      ]
+    ],
+    "conclusion": "missingOnThisStep=YES -> headers KEPT in 4/5 cases; the single step with missingOnThisStep=NO is one of the two that DROPPED. The hypothesis' predictor is uncorrelated (and if anything inverted). payloadKey=`fields` AND for_each=no predicts DROPPED with 2/2 precision and 2/2 recall."
+  },
+  "evidence": [
+    "planner.py:56 (worktree /private/tmp/voxagent-optimize-pass3/... , byte-identical to committed HEAD — verified by diff against `git show HEAD:backend/app/services/planner.py`) — Rule 6, the violated rule. Its scope clause is '— whether it's a Rule 5 fan-out (many rows) or a single record (e.g. one row of extracted fields from Rule 3, such as name/email/company) —': an em-dash appositive naming exactly TWO shapes, BOTH cross-references to other rules. srw-02 and ctfm-03 are single-step direct-literal writes that invoke neither Rule 5 nor Rule 3.",
+    "planner.py:56 — Rule 6's stated MECHANISM is strictly positional: 'Many of these tools otherwise treat the very first row of data as the column headers instead of storing it'. A key-addressed Airtable `fields` object has no positional first row and no column ordering, so the rule's own justification reads as inapplicable to it. The model is obeying Rule 6's reasoning, not defying it.",
+    "planner.py:56 — Rule 6 never names the payload PARAMETER. It says 'alongside the row data' and 'the row-data placeholder' in prose only. Confirmed by grep: the token `row_data` occurs in the entire prompt at planner.py:33 ONLY (Rule 2's new example); `record_data` occurs ZERO times; `fields` occurs only inside Rule 6's prose ('one per field/column', 'one cell per field'), never as a parameter key.",
+    "planner.py:33 (added by 28320b1, the most recent fix) — the FIRST of the prompt's only two worked `parameters` objects. It DOES contain `headers`: source `{{\"row_data\": \"{{step_1_result}}\", \"headers\": [\"Order ID\", \"Customer Name\"]}}`, rendering to `{\"row_data\": \"{step_1_result}\", \"headers\": [\"Order ID\", \"Customer Name\"]}`. This DIRECTLY REFUTES the dispatch brief's suspicion that the new worked example omits headers — it does not. But it is a Google Sheets / `row_data` object, and it is framed exhaustively ('step 2's `parameters` object is exactly ...'), so it teaches a complete key set for the Sheets shape only.",
+    "planner.py:53 (added by 71fb7b1) — the SECOND worked object and the prompt's ONLY Airtable `parameters` enumeration: 'Concrete example — \"add each title to my Airtable base Content Calendar\": `base_name: \"Content Calendar\"` is a literal (user said it); `table_name` is missing ... keep `base_name: \"Content Calendar\"` in `parameters`.' It enumerates the Airtable step's parameters as `base_name` plus the item value, with NO `headers`. Confirmed by grep: `base_name` occurs at planner.py:53 and nowhere else in the prompt. srw-02's failing output `{base_name, fields}` is this exemplar's key set exactly.",
+    "planner.py:33 vs :56 — grep for `headers` across the whole prompt returns exactly TWO lines: 33 and 56. So the only place in the entire system prompt where `headers` is shown INSIDE a concrete `parameters` object is line 33, the Google Sheets example. Rule 6 itself supplies header VALUE examples (`[\"Caption\"]`, `[\"Name\", \"Email\", \"Company\"]`) but never a full parameters object, and never an Airtable one.",
+    "git diff 0639887..HEAD -- backend/app/services/planner.py — the complete delta of all four shipped fixes. Rule 6's line is NOT in the diff at all: it appears only as unchanged context. Rule 2 grew by four bullets (~1,900 chars), Rule 5's second bullet grew (~700 chars), Rule 7 was added (~1,400 chars). The regression is therefore attributable to changed competition around an unchanged Rule 6, not to any edit of Rule 6.",
+    "REFUTING OBSERVATION (decisive) — traces/planner-eval-traces-post-optimize.jsonl, ctfm-03: `missing_parameters` is `[]` and step 1 is not a fan-out, yet `headers` is dropped (2/3 runs per the dispatch brief). With an empty missing_parameters array, Rule 2's FINAL CHECK loop at planner.py:35 ('walk every entry in `missing_parameters`') iterates zero times and Rule 2's clarification block is never entered. No edit to Rule 2 can reach this trace, so Rule 2 cannot be the fix site.",
+    "REFUTING OBSERVATION — traces/planner-eval-traces-post-optimize.jsonl, srw-01 step 1: `missing_parameters` DOES carry an entry for this step (`sheet_name`) and the step still emits `headers`: `{\"spreadsheet_name\": \"Gym Log\", \"row_data\": {...5 fields...}, \"headers\": [\"Date\", \"Exercise\", \"Sets\", \"Reps\", \"Weight\"]}`. Same for srw-03 s2 (`sheet_name` flagged, headers kept), amb-02 s2 (`spreadsheet_name` flagged, headers kept) and fan-01 s2 (`table_name` flagged, headers kept). Four for four against the hypothesis.",
+    "CONTRAST that isolates fan-01 — fan-01 s2 is Airtable with a `fields` dict, i.e. the failing payload shape, yet keeps `headers: [\"Title\"]`. The difference is `for_each`: fan-01 is the Rule 5 fan-out that Rule 6's scope clause names EXPLICITLY as a covered shape, and its single-column `[\"Title\"]` is a direct instance of Rule 6's own `[\"Caption\"]` example. Rule 6 protects exactly the shapes it names.",
+    "BASELINE (pre-optimize), traces/planner-eval-traces.jsonl — ctfm-03 s1 was `{\"base_name\": \"Sales CRM\", \"table_name\": \"Deals\", \"fields\": {...}, \"headers\": [\"Deal Name\", \"Amount\", \"Stage\"]}` and srw-02 s1 was `{\"base_name\": ..., \"table_name\": \"Invoices\", \"record_data\": {...}, \"headers\": [5 columns]}`. Both Airtable writes carried headers BEFORE the fixes, ctfm-03 already with a `fields` dict. So the `fields` shape alone was not sufficient pre-fix; the added exemplars tipped it.",
+    "SECONDARY SHIFT, srw-02 baseline vs post — the payload key itself changed from `record_data` to `fields`. `record_data` is row-flavoured vocabulary that Rule 6's 'the row data' phrasing plausibly still reached; `fields` is Airtable-schema-native and reaches none of Rule 6's handles. Consistent with the model having become more schema-literal after the exemplar additions.",
+    "eval-dataset-candidates.json, srw-02 rationale — 'Extends the header-safety requirement past Google Sheets to a table/database target, WHERE THE PLANNER IS MORE LIKELY TO TREAT \\'RECORD\\' AS STRUCTURALLY DIFFERENT AND DROP HEADERS.' The seed author predicted this precise mechanism, and it names the record-vs-row distinction — not any missing_parameters interaction — as the risk.",
+    "eval-dataset-candidates.json, fan-01 rationale — 'Also implicitly requires headers on a table write.' Confirms headers-on-Airtable is intended behaviour, not an artefact.",
+    "tier0_code_checks.py:104-112 `_is_positional_row_write` and :115-128 `check_sheet_header_safety` — the criterion gates on POSITIONAL_ROW_VERBS (ADD_ROW/APPEND_ROW/INSERT_ROW/CREATE_ROW/ADD_RECORD/CREATE_RECORD/BATCH_UPDATE) and exempts ONLY a non-empty Notion-style `properties` dict ('key-addressed: column names already carried as keys'). AIRTABLE_CREATE_RECORD with a `fields` dict matches a verb and is NOT exempted, so srw-02 and ctfm-03 are scored FAIL. Note the asymmetry: the check itself articulates the key-addressed principle the model is applying, but applies it to `properties` and not to `fields`.",
+    "agentspec.yaml:138 — Rule 6 mirrored verbatim in rendered form (1130 chars = planner.py:56's 1128 + 6 indent - 4 for the un-doubled `{{step_N_result}}`), confirming the mirror convention: agentspec.yaml carries the RENDERED string, planner.py the f-string source. agentspec.yaml:44, :199 and :235 all restate the headers requirement ('Includes a headers parameter matching the row data's fields, whether it's one row or a fan-out batch'), so the spec's intent is unambiguous.",
+    "composio_engine.py:244-264 `_normalize_parameters_via_schema` — 'Unmatched keys pass through unchanged.' `headers` is never consumed by name anywhere in the backend (grep across app/services and app/routers finds it only in planner.py:56 and a prose comment at orchestrator.py:627). See secondary observation S2: this makes the execution-time correctness of `headers` on a key-addressed Airtable payload an open question that should be settled before or alongside shipping."
+  ],
+  "whyChain": [
+    {
+      "why": "srw-02 emits an Airtable record-create step with no `headers`, deterministically across 3 runs at temperature 0.1; ctfm-03 does the same on 2 of 3",
+      "evidence": "traces/planner-eval-traces-post-optimize.jsonl srw-02 steps[0].parameters, ctfm-03 steps[0].parameters; 3x repetition reported in the dispatch brief",
+      "whatHappened": "The planner produced a complete-looking Airtable write carrying the base name and a fully populated fields dict, but no headers list, so the tier-0 sheet-header-safety criterion scores it a fail and the row is liable to be eaten as a header row at execution time.",
+      "example": "run1/run2/run3 step1 action=AIRTABLE_CREATE_RECORD params_keys=['base_name', 'fields']"
+    },
+    {
+      "why": "It is NOT because the step carries a flagged-missing parameter — that predictor is uncorrelated and, on the evidence, inverted",
+      "evidence": "traces/planner-eval-traces-post-optimize.jsonl amb-02 s2, srw-01 s1, srw-03 s2, fan-01 s2 (flagged + headers kept) vs ctfm-03 s1 (nothing flagged + headers dropped)",
+      "whatHappened": "Four separate row-write steps each carry a missing_parameters entry for their own step number and each still emits headers, while the one row-write step in the whole post-optimize set with an entirely empty missing_parameters array is one of the two that drops headers. Rule 2's FINAL CHECK loop iterates over missing_parameters, so on ctfm-03 it executes zero times and cannot have pruned anything.",
+      "example": "srw-01 s1: {\"spreadsheet_name\": \"Gym Log\", \"row_data\": {...}, \"headers\": [\"Date\",\"Exercise\",\"Sets\",\"Reps\",\"Weight\"]} with missing_parameters=[{step 1, sheet_name}]"
+    },
+    {
+      "why": "The real discriminator is the payload shape: an Airtable key-addressed `fields` dict on a step with no `for_each`",
+      "evidence": "discriminatorTable above, over all 6 post-optimize row-write steps",
+      "whatHappened": "Every Google Sheets write, whose payload the model names `row_data`, keeps headers 3/3. Every Airtable write, whose payload the model names `fields`, drops headers unless the step is a fan-out. The one Airtable fan-out keeps them."
+    },
+    {
+      "why": "Rule 6 states both its scope and its justification in positional-row terms that a key-addressed dict does not engage",
+      "evidence": "planner.py:56",
+      "whatHappened": "Rule 6 says it applies when a step 'writes row(s) of structured data', asks for headers 'alongside the row data', and explains itself with 'many of these tools otherwise treat the very first row of data as the column headers instead of storing it'. For a fields dict whose keys already ARE the column names there is no first row and no ordering to protect, so the rule reads as describing a different situation. The model is applying Rule 6's reasoning faithfully and reaching the wrong answer.",
+      "example": "Many of these tools otherwise treat the very first row of data as the column headers instead of storing it"
+    },
+    {
+      "why": "Rule 6's two named triggering shapes are both cross-references to other rules, and srw-02/ctfm-03 invoke neither",
+      "evidence": "planner.py:56 scope appositive; ctfm-03/srw-02 are single-step, no for_each, no {step_N_result}",
+      "whatHappened": "The appositive '— whether it's a Rule 5 fan-out (many rows) or a single record (e.g. one row of extracted fields from Rule 3 ...) —' reads as an exhaustive two-item enumeration. A single-step write whose values the user typed directly into the request is a third shape the sentence never names, and it is exactly the shape of both failing traces."
+    },
+    {
+      "why": "The two shipped fixes added the prompt's only worked `parameters` objects, and they are split by app: the Sheets one has headers, the Airtable one does not",
+      "evidence": "planner.py:33 (28320b1) vs planner.py:53 (71fb7b1); grep confirms `headers` appears in a parameters object only at :33 and `base_name` only at :53",
+      "whatHappened": "28320b1 added an exhaustively-framed Google Sheets object containing row_data and headers; 71fb7b1 added the prompt's only Airtable object, which lists base_name and nothing else. After both landed, each app's emitted key set converged on its own exemplar — amb-02's post-fix keys are a character-for-character copy of the line-33 object, and srw-02's are the line-53 object's key set plus the payload.",
+      "example": "line 53: keep `base_name: \"Content Calendar\"` in `parameters`  (no headers anywhere in the example)"
+    },
+    {
+      "why": "Rule 6 was never edited, so nothing counterbalanced the new app-specific exemplars",
+      "evidence": "git diff 0639887..HEAD -- backend/app/services/planner.py — Rule 6 appears only as unchanged context",
+      "whatHappened": "All four fixes added roughly 4,000 characters to Rules 2, 5 and 7 while Rule 6 stayed byte-for-byte identical and supplied no worked parameters object of its own to compete with the new headerless Airtable exemplar. Rule 6 protected only the shapes it explicitly names — the fan-out and the Rule 3 handoff — and lost the shape it does not.",
+      "isOrigin": true
+    }
+  ],
+  "secondaryObservations": [
+    {
+      "id": "S1-over-pruning-of-user-given-destination-literals",
+      "priority": "HIGH — recommend its own finding before the next promotion",
+      "status": "flagged-not-in-scope",
+      "observation": "The over-pruning effect the dispatch brief hypothesised is REAL, but its footprint is destination-identity keys, not `headers`, and it has already caused two clear regressions plus two rule violations that no criterion currently catches. Baseline -> post-optimize: (a) ctfm-01 went from `parameters {database_name: \"Bug Tracker\", title, properties}` with `missing_parameters: []` to `parameters {title, properties}` with `database_name` FLAGGED MISSING — but the user literally said 'my Notion database called Bug Tracker', so a user-given literal was deleted; (b) msh-03 step 3 went from `{database_name: \"Vendor Requests\", content}` / no clarification to `{content, title}` with `parent_page_id` flagged — the user said 'my Notion database called Vendor Requests', so again a user-given literal was dropped, AND `parent_page_id` is an opaque internal ID, which planner.py:39 explicitly forbids asking for; (c) amb-01 changed its flagged key from `channel` to `channel_id`, also an opaque ID forbidden by planner.py:39; (d) srw-01 and srw-03 each gained a new `sheet_name` (tab-name) clarification where the baseline asked nothing, though both kept their user-given `spreadsheet_name` literal, so these two are mild over-clarification rather than literal loss. (a) and (b) directly contradict Rule 5's 'any name or value the user literally said belongs in `parameters` as a concrete literal' (planner.py:53) and were the exact risk flagged as untested in diagnose-finding-5-amb02.json's applyInstructions step 6 and in its fourth assumption.",
+      "possibleContributingCause": "Rule 2's FINAL CHECK (planner.py:35) is a purely SUBTRACTIVE last-pass instruction sitting immediately before the schema, with high recency and no counterbalancing 'and confirm every other required field is still present' half. Its closing phrase 'keep only the `missing_parameters` entry' is readable as a minimality directive. Combined with planner.py:34's 'An intentionally incomplete step body plus a `missing_parameters` entry IS the correct, complete output', the prompt now rewards incompleteness in the destination slot, and the model appears to be resolving borderline cases toward flagging-and-omitting. Note this pressure operates on the DESTINATION key class the new bullets enumerate (spreadsheet_name, database_name, table_name, 'Sheet1'/'Orders'/'General'/'#general'), which is why it does not explain the `headers` loss.",
+      "proposedFollowUp": "Separate finding with its own 3x repetition. Candidate direction, NOT applied here: pair the FINAL CHECK with a symmetric positive check ('...and confirm every OTHER key the rules require for that step — including Rule 6's `headers` — is still present') and add a guard that a name the user spoke is never flagged. Also add a tier-0 criterion for 'no opaque ID in missing_parameters' to catch (b) and (c), which currently pass silently.",
+      "doNotBundle": "Keep out of remedy 1 so the srw-02/ctfm-03 A/B stays attributable to a single Rule 6 change."
+    },
+    {
+      "id": "S2-is-headers-on-a-key-addressed-airtable-payload-actually-correct",
+      "priority": "HIGH — settle before or alongside shipping remedy 1",
+      "status": "open-question",
+      "observation": "The model's behaviour may be substantively RIGHT even though it is spec-noncompliant, and the codebase contradicts itself on the point. composio_engine.py:244-264 states 'Unmatched keys pass through unchanged', and `headers` is never consumed by name anywhere in the backend, so a `headers` key on AIRTABLE_CREATE_RECORD is forwarded to Composio rather than dropped — where Airtable's real schema has no headers concept, because a `fields` object names its own columns. Meanwhile tier0_code_checks.py:92-112 articulates exactly that principle in its own comment ('the payload is KEY-ADDRESSED and already names its own columns') but applies the exemption to Notion `properties` and NOT to Airtable `fields`, which is equally key-addressed. So the criterion demands on Airtable precisely what its own stated rationale would exempt.",
+      "whyItStillWarrantsRemedy1": "Every declared source of intent requires headers here — agentspec.yaml:44, :199 and :235, the srw-02 and fan-01 seed rationales, Rule 6's explicit naming of Airtable, and the Phase-3 baseline in which all three Airtable writes carried headers with no reported execution failures. Restoring the specified, previously-observed behaviour is the correct default; changing the spec is a deliberate decision the operator should make explicitly, not a silent drift.",
+      "proposedFollowUp": "Before or immediately after remedy 1, execute one real AIRTABLE_CREATE_RECORD through composio_engine with and without a `headers` key and record whether Composio rejects the extra property, ignores it, or uses it. If it is rejected or harmful, take remedy 2 INSTEAD of remedy 1 and update agentspec.yaml:44/:199/:235 to match; if it is ignored or useful, ship remedy 1 as written."
+    },
+    {
+      "id": "S3-eval-contamination-by-verbatim-seed-prompts-in-the-system-prompt",
+      "priority": "medium",
+      "status": "flagged-not-in-scope",
+      "observation": "28320b1 embedded amb-02's seed prompt VERBATIM into planner.py:33 ('Grab the latest orders from our internal API and drop them into one of my spreadsheets'), together with its correct answer. amb-02's post-optimize step-2 key set is now `[row_data, headers]`, a character-for-character match to that exemplar. amb-02 has therefore stopped being a held-out measurement of generalization and become a memorization check, which is likely part of why the amb-02 fix looked so clean while srw-02 silently broke.",
+      "mitigationAppliedHere": "Remedy 1's worked example deliberately uses tokens absent from the entire dataset and both trace files — 'Ops Budget', 'Q3 Spend', 'Northgate Supply' each verified at 0 occurrences in eval-dataset-candidates.json and traces/*.jsonl — and names a base AND table so it never demonstrates the missing-parameter decision that srw-02 tests. srw-02 therefore remains a clean held-out measurement of remedy 1.",
+      "proposedFollowUp": "Adopt as a standing convention for this optimize loop: worked examples in the system prompt must use tokens that appear in no eval seed, and any exemplar reusing a seed prompt retires that seed from the scorecard."
+    }
+  ],
+  "assumptions": [
+    {
+      "text": "The 3/3 (srw-02) and 2/3 (ctfm-03) incidence figures came from live Gemini calls against the get_system_prompt() text currently at /private/tmp/voxagent-optimize-pass3/backend/app/services/planner.py.",
+      "status": "unverified",
+      "basis": "Run outputs were supplied in the dispatch brief and were not re-executed by this analysis. The worktree file WAS read directly and verified byte-identical to committed HEAD (diff against `git show HEAD:backend/app/services/planner.py` returned no differences), and it contains all four shipped fixes, which is consistent with the brief."
+    },
+    {
+      "text": "The headers status of amb-02, srw-01, srw-03, fan-01 and ctfm-01 reflects stable behaviour rather than a lucky sample.",
+      "status": "unverified",
+      "basis": "traces/planner-eval-traces-post-optimize.jsonl contains exactly ONE run per trace_id; only srw-02 and ctfm-03 were repeated 3x. The refutation of the missing_parameters hypothesis nevertheless rests on four independent traces agreeing plus one decisive structural argument (ctfm-03's missing_parameters is empty, so Rule 2's loop provably cannot execute), which does not depend on repetition. Remedy 3 removes this limitation."
+    },
+    {
+      "text": "The exemplar-transfer mechanism (planner.py:33 vs :53) is causally responsible, rather than merely co-occurring with the ~4,000 characters the four fixes added around an unchanged Rule 6.",
+      "status": "hypothesis-pending",
+      "basis": "Textual and distributional: the two exemplars are the prompt's ONLY worked parameters objects (verified by grep for `headers`, `row_data`, `base_name`), they split exactly along the app boundary that the pass/fail split follows, and amb-02's output is a character-for-character copy of one of them. Separating exemplar transfer from generic attention dilution would require an ablation that adds only the Airtable headers exemplar with no other Rule 6 change; remedy 1 as written bundles both, which is acceptable because both point the same way, but it means the finding predicts the OUTCOME reliably and the MECHANISM only probably."
+    },
+    {
+      "text": "Requiring `headers` on a key-addressed Airtable `fields` payload is correct at execution time.",
+      "status": "hypothesis-pending",
+      "basis": "Every declared intent source requires it (agentspec.yaml:44/:199/:235, both seed rationales, Rule 6's naming of Airtable) and the Phase-3 baseline emitted it on all three Airtable writes with no reported failures. BUT composio_engine.py:248-249 says unmatched keys pass through unchanged rather than being dropped, and tier0_code_checks.py:110-111 exempts the equally key-addressed Notion `properties` from the same requirement. See secondary observation S2 for the concrete execution test that settles it."
+    },
+    {
+      "text": "The f-string brace escaping in the proposed planner.py diff is correct and the mirrored agentspec.yaml text is exactly what planner.py renders.",
+      "status": "verified",
+      "basis": "The proposed `after` text was evaluated as an f-string in isolation and asserted equal, line for line after stripping the 6-space YAML indent, to the proposed agentspec.yaml mirror. Source `{{\"base_name\": ..., \"fields\": {{...}}, \"headers\": [...]}}` renders to single braces; `{{{{step_N_result}}}}` renders to `{{step_N_result}}`, preserving Rule 6's existing (deliberately doubled) placeholder convention. The `before` anchors were extracted programmatically from planner.py line 56 and agentspec.yaml line 138 rather than transcribed."
+    },
+    {
+      "text": "Remedy 1 will not regress the four shipped fixes.",
+      "status": "hypothesis-pending",
+      "basis": "Structural: the edit touches ONLY Rule 6, which git diff 0639887..HEAD shows is byte-for-byte untouched by all four fixes, so there is zero textual overlap with any shipped change; Rule 2's and Rule 5's text is not altered by a single byte. The added text says nothing about which keys are literals vs missing, and its worked example names BOTH base and table so it never demonstrates the missing-parameter decision. The residual risk is indirect: ~1,100 added characters shift Rule 7's and the schema's position, and the third bullet mentions missing_parameters. Requires the full 24-trace re-run in applyInstructions step 6."
+    },
+    {
+      "text": "Source access to planner.py, agentspec.yaml, tier0_code_checks.py, composio_engine.py, orchestrator.py, both trace files and the eval dataset was available, and all were read directly for this finding.",
+      "status": "verified",
+      "basis": "All cited line numbers and quoted strings were read from the files in this session; the diff anchors were extracted programmatically, not inferred from trace metadata. Re-anchor on the verbatim `before` string rather than the line number if either file has moved."
+    }
+  ],
+  "remedies": [
+    {
+      "rank": 1,
+      "remedyId": "R-6-1",
+      "cost": "low",
+      "correctness": "high",
+      "title": "Rescope Rule 6 by ACTION SHAPE rather than row-positional vocabulary, and give it its own worked Airtable-with-headers example",
+      "target": "system-prompt",
+      "targetClass": "code-construct",
+      "applyTarget": "/private/tmp/voxagent-optimize-pass3/backend/app/services/planner.py",
+      "targetFile": "/private/tmp/voxagent-optimize-pass3/backend/app/services/planner.py",
+      "targetLocation": "get_system_prompt(), Rule 6 — replace line 56 in full (single line -> four lines). No other line is touched.",
+      "whyThisSiteNotRule2": "The dispatch asked whether the cleaner fix is Rule 6 or Rule 2's FINAL CHECK. The evidence settles it rather than leaving it to taste. (1) REACHABILITY: ctfm-03 exhibits the defect with `missing_parameters: []`, so Rule 2's block is never entered and its FINAL CHECK loop iterates zero times — no Rule 2 edit can reach that trace, which alone disqualifies Rule 2 as the fix site. (2) SPECIFICITY: Rule 6 is the rule actually being violated and its scope clause is where the omission is licensed; Rule 2 is not violated by these traces at all — srw-02's handling of `table_name` is exactly right and must not be disturbed. (3) BLAST RADIUS: git diff 0639887..HEAD shows Rule 6 is byte-for-byte untouched by all four shipped fixes, so editing it has zero textual overlap with any of them, whereas Rule 2's FINAL CHECK is the newest and most load-bearing text in the prompt — amb-02, amb-01, amb-03, ctfm-01 and msh-03 all now depend on it, and it is the same text implicated in the S1 over-pruning regressions. Rewording it would put four shipped fixes and this one on a single non-attributable A/B.",
+      "rationale": "Rule 6 already commands headers on Airtable and the model is not defying it — it is applying the rule's own stated reasoning correctly. Rule 6 scopes itself with positional-row vocabulary ('writes row(s)', 'alongside the row data', 'in the same order as `headers`') and justifies itself with a strictly positional mechanism ('tools otherwise treat the very first row of data as the column headers'), none of which engages an Airtable `fields` object whose keys already are the column names; and it names only two triggering shapes, both cross-references to Rule 5 and Rule 3, neither of which srw-02 or ctfm-03 invokes. Meanwhile the only worked Airtable `parameters` object anywhere in the prompt (planner.py:53) lists `base_name` and nothing else. The failing output is that exemplar's key set plus the payload, on the one shape Rule 6 forgot to name. This remedy removes the model's discretion about whether a given write 'counts' and gives Rule 6 the two properties diagnose-finding-5 established are what make a rule stick here: a point-of-use statement and a worked example.",
+      "whyWorks": "Four mechanisms, each closing one link in the why-chain. (1) The scope clause is restated as an ACTION-SHAPE test naming the exact verb list the criterion gates on (ADD_ROW / APPEND_ROW / INSERT_ROW / CREATE_ROW / ADD_RECORD / CREATE_RECORD / BATCH_UPDATE), so applicability is decided by the action slug the model has already chosen rather than by an inference about whether the payload is positional — AIRTABLE_CREATE_RECORD matches on its face. (2) A third triggering shape, 'a single record whose field values the user gave directly in their own request', is added to the appositive, naming precisely the shape srw-02 and ctfm-03 are and that the two-item enumeration silently excluded. (3) The first new bullet decouples the requirement from the payload's name and internal structure and states explicitly that key-addressed keys do not satisfy it, then supplies the prompt's first Airtable `parameters` object containing `headers` — directly counterweighting the headerless exemplar at planner.py:53, at the point of use, in the same delivery form that made the Rule 5 carve-out stick on fan-01. (4) The third new bullet forecloses the missing_parameters interaction as an aggravating factor (srw-02 fails 3/3 with a flagged key while ctfm-03 fails 2/3 without one, which is consistent with it aggravating even though it does not cause), and it does so as a general principle — omitting a flagged key never licenses omitting anything else — that also hardens the step body against the S1 over-pruning pressure without touching Rule 2's text.",
+      "regressionSafety": "The Notion exception bullet is written to match tier0_code_checks.py:104-112 exactly: the criterion exempts a non-empty `properties` dict, and so does the new bullet, so ctfm-01 and msh-03 (Notion page creation, currently scored n/a) cannot be pushed into emitting a spurious headers key. The verb list is copied from POSITIONAL_ROW_VERBS at tier0_code_checks.py:98-101, so prompt and criterion agree by construction rather than by coincidence. The worked example names both `base_name` AND `table_name`, so it never demonstrates the flag-vs-literal decision and cannot re-teach srw-02's or fan-01's answer. Its tokens ('Ops Budget', 'Q3 Spend', 'Northgate Supply') were each verified at zero occurrences across eval-dataset-candidates.json and both trace files, so no eval seed is contaminated.",
+      "diff": {
+        "before": "Rule 6 (Headers for Spreadsheet/Table Row Writes): Whenever a step writes row(s) of structured data into a spreadsheet/table/database (Google Sheets, Airtable, a Notion database, ...) — whether it's a Rule 5 fan-out (many rows) or a single record (e.g. one row of extracted fields from Rule 3, such as name/email/company) — ALWAYS also include a `headers` parameter alongside the row data: a short list of column-name strings, one per field/column being written (e.g. `[\"Caption\"]` for one column, or `[\"Name\", \"Email\", \"Company\"]` for a multi-field record). Many of these tools otherwise treat the very first row of data as the column headers instead of storing it, silently discarding what should have been real data — this is true even for a SINGLE row, which would otherwise be entirely lost. When writing one structured record with multiple fields, reference the WHOLE extraction result as the row-data placeholder (e.g. `{{{{step_N_result}}}}`) rather than trying to pull individual fields out yourself — the execution engine turns a single JSON object into one row with one cell per field, in the same order as `headers`.",
+        "after": "Rule 6 (Headers for Spreadsheet/Table Row Writes): Whenever a step appends a row or creates a record in a spreadsheet/table/database (Google Sheets, Airtable, a Notion database, ...) — i.e. any action of the shape ADD_ROW / APPEND_ROW / INSERT_ROW / CREATE_ROW / ADD_RECORD / CREATE_RECORD / BATCH_UPDATE, and whether it's a Rule 5 fan-out (many rows), a single record of fields an earlier step extracted under Rule 3 (such as name/email/company), or a single record whose field values the user gave directly in their own request — ALWAYS also include a `headers` parameter alongside the row data: a short list of column-name strings, one per field/column being written (e.g. `[\"Caption\"]` for one column, or `[\"Name\", \"Email\", \"Company\"]` for a multi-field record). Many of these tools otherwise treat the very first row of data as the column headers instead of storing it, silently discarding what should have been real data — this is true even for a SINGLE row, which would otherwise be entirely lost. When writing one structured record with multiple fields, reference the WHOLE extraction result as the row-data placeholder (e.g. `{{{{step_N_result}}}}`) rather than trying to pull individual fields out yourself — the execution engine turns a single JSON object into one row with one cell per field, in the same order as `headers`.\n- Whether `headers` is required is decided by that ACTION SHAPE alone — never by what you happen to name the payload parameter, and never by how that payload is structured internally. `row_data`, `values`, `record_data` and an Airtable `fields` object are all the same case: `headers` is a separate sibling key in the same `parameters` object and is still required alongside it. A payload whose KEYS already read like column names does NOT remove the requirement — still emit `headers` listing those same columns in the same order. Worked Airtable example — \"add this expense to my Airtable base Ops Budget, Q3 Spend table: vendor Northgate Supply, amount 850, category Software\": `parameters` is `{{\"base_name\": \"Ops Budget\", \"table_name\": \"Q3 Spend\", \"fields\": {{\"Vendor\": \"Northgate Supply\", \"Amount\": 850, \"Category\": \"Software\"}}, \"headers\": [\"Vendor\", \"Amount\", \"Category\"]}}`.\n- The one exception is creating a Notion PAGE (e.g. NOTION_CREATE_PAGE, NOTION_CREATE_DATABASE_PAGE) whose content is a `properties` object — that is not a positional row append, so it needs no `headers`.\n- `headers` is never optional, and it is never dropped to make a step look smaller or more \"incomplete\". If this step also carries a `missing_parameters` entry, leaving that one flagged key out under Rule 2 does NOT license leaving anything else out: every other rule, this one included, still applies in full to the rest of the step body. A step is meant to be incomplete in exactly the flagged key and complete in every other respect."
+      },
+      "escapingNote": "CRITICAL — get_system_prompt() returns an f-string, so every literal brace in the `after` text is DOUBLED in source and renders single. Source `{{\"base_name\": \"Ops Budget\", ..., \"fields\": {{\"Vendor\": ...}}, \"headers\": [...]}}` renders to single braces. The existing `{{{{step_N_result}}}}` (four braces) is preserved verbatim and renders to `{{step_N_result}}` (two braces) — that is Rule 6's pre-existing convention and is deliberately left alone; do NOT 'normalise' it as part of this change. The `after` text is the PLANNER.PY SOURCE form and must be pasted exactly as-is. Verified by evaluating it as an f-string and asserting equality with the agentspec mirror.",
+      "mirror": {
+        "file": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml",
+        "location": "spec.agent.systemPrompt, Rule 6 — replace line 138 in full (single line -> four lines), 6-space block-scalar indent on every line",
+        "note": "agentspec.yaml is a plain YAML block scalar carrying the RENDERED string, NOT an f-string — SINGLE braces. Verified: agentspec.yaml:138 is 1130 chars = planner.py:56's 1128 + 6 indent - 4 for the un-doubled placeholder. `{{step_N_result}}` stays DOUBLE here because that is what planner.py:56 renders (matching agentspec.yaml:135's Rule 5 convention, not Rule 3's single-brace one at :123).",
+        "before": "      Rule 6 (Headers for Spreadsheet/Table Row Writes): Whenever a step writes row(s) of structured data into a spreadsheet/table/database (Google Sheets, Airtable, a Notion database, ...) — whether it's a Rule 5 fan-out (many rows) or a single record (e.g. one row of extracted fields from Rule 3, such as name/email/company) — ALWAYS also include a `headers` parameter alongside the row data: a short list of column-name strings, one per field/column being written (e.g. `[\"Caption\"]` for one column, or `[\"Name\", \"Email\", \"Company\"]` for a multi-field record). Many of these tools otherwise treat the very first row of data as the column headers instead of storing it, silently discarding what should have been real data — this is true even for a SINGLE row, which would otherwise be entirely lost. When writing one structured record with multiple fields, reference the WHOLE extraction result as the row-data placeholder (e.g. `{{step_N_result}}`) rather than trying to pull individual fields out yourself — the execution engine turns a single JSON object into one row with one cell per field, in the same order as `headers`.",
+        "after": "      Rule 6 (Headers for Spreadsheet/Table Row Writes): Whenever a step appends a row or creates a record in a spreadsheet/table/database (Google Sheets, Airtable, a Notion database, ...) — i.e. any action of the shape ADD_ROW / APPEND_ROW / INSERT_ROW / CREATE_ROW / ADD_RECORD / CREATE_RECORD / BATCH_UPDATE, and whether it's a Rule 5 fan-out (many rows), a single record of fields an earlier step extracted under Rule 3 (such as name/email/company), or a single record whose field values the user gave directly in their own request — ALWAYS also include a `headers` parameter alongside the row data: a short list of column-name strings, one per field/column being written (e.g. `[\"Caption\"]` for one column, or `[\"Name\", \"Email\", \"Company\"]` for a multi-field record). Many of these tools otherwise treat the very first row of data as the column headers instead of storing it, silently discarding what should have been real data — this is true even for a SINGLE row, which would otherwise be entirely lost. When writing one structured record with multiple fields, reference the WHOLE extraction result as the row-data placeholder (e.g. `{{step_N_result}}`) rather than trying to pull individual fields out yourself — the execution engine turns a single JSON object into one row with one cell per field, in the same order as `headers`.\n      - Whether `headers` is required is decided by that ACTION SHAPE alone — never by what you happen to name the payload parameter, and never by how that payload is structured internally. `row_data`, `values`, `record_data` and an Airtable `fields` object are all the same case: `headers` is a separate sibling key in the same `parameters` object and is still required alongside it. A payload whose KEYS already read like column names does NOT remove the requirement — still emit `headers` listing those same columns in the same order. Worked Airtable example — \"add this expense to my Airtable base Ops Budget, Q3 Spend table: vendor Northgate Supply, amount 850, category Software\": `parameters` is `{\"base_name\": \"Ops Budget\", \"table_name\": \"Q3 Spend\", \"fields\": {\"Vendor\": \"Northgate Supply\", \"Amount\": 850, \"Category\": \"Software\"}, \"headers\": [\"Vendor\", \"Amount\", \"Category\"]}`.\n      - The one exception is creating a Notion PAGE (e.g. NOTION_CREATE_PAGE, NOTION_CREATE_DATABASE_PAGE) whose content is a `properties` object — that is not a positional row append, so it needs no `headers`.\n      - `headers` is never optional, and it is never dropped to make a step look smaller or more \"incomplete\". If this step also carries a `missing_parameters` entry, leaving that one flagged key out under Rule 2 does NOT license leaving anything else out: every other rule, this one included, still applies in full to the rest of the step body. A step is meant to be incomplete in exactly the flagged key and complete in every other respect."
+      },
+      "applyInstructions": [
+        "1. Open /private/tmp/voxagent-optimize-pass3/backend/app/services/planner.py and locate line 56, the single line beginning 'Rule 6 (Headers for Spreadsheet/Table Row Writes):'. Anchor on that verbatim `before` string, not on the line number.",
+        "2. Replace that ONE line with the four-line `after` text verbatim, preserving DOUBLED braces exactly as written and leaving the existing `{{{{step_N_result}}}}` untouched. No other line in planner.py changes.",
+        "3. Smoke-test the render before any Gemini spend: cd /private/tmp/voxagent-optimize-pass3/backend && python3 -c \"from app.services.planner import get_system_prompt as g; p=g(); assert '\\\"headers\\\": [\\\"Vendor\\\", \\\"Amount\\\", \\\"Category\\\"]' in p; assert 'CREATE_RECORD' in p; assert '{step_N_result}' not in p.split('Rule 6')[1].split('Rule 7')[0] or True; print('render OK')\"",
+        "4. Mirror `mirror.after` into agentspec.yaml, replacing line 138, at the 6-space block-scalar indent with SINGLE braces, then verify: python3 -c \"import yaml; s=yaml.safe_load(open('/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml')); assert 'Northgate Supply' in s['spec']['agent']['systemPrompt']; print('yaml OK')\"",
+        "5. A/B the two target traces FIRST, remedy 1 alone: run srw-02 and ctfm-03 3x each at temperature 0.1. PASS bar = 6/6 runs in which the Airtable step's `parameters` contains a `headers` list whose entries match the `fields` keys, AND srw-02 still has `table_name` in `missing_parameters` and absent from `parameters` on 3/3 (the shipped Rule 2/5 behaviour must be intact).",
+        "6. Then the full 24-trace regression: python3 run_dataset_through_planner.py && python3 tier0_code_checks.py && python3 aggregate_scorecard.py. Required non-regressions — fan-01 keeps base_name literal + table_name flagged-and-absent + headers; srw-01 and srw-03 keep spreadsheet_name + row_data + headers; amb-02 keeps row_data + headers with spreadsheet_name flagged-and-absent; ctfm-01 and msh-03 must NOT gain a headers key (they are Notion page creations and must stay n/a on sheet-header-safety); bpt-02 and bpt-03 keep needs_clarification=false with no credential entries; the happy-path controls hpp-01/02/03 gain no new clarification.",
+        "7. Do NOT bundle any Rule 2 edit into this A/B. If S1's over-pruning regressions (ctfm-01 and msh-03 dropping user-given database names, amb-01/msh-03 requesting opaque IDs) are to be addressed, they get their own finding and their own attributable run."
+      ],
+      "assumptions": [
+        "Source access to planner.py and agentspec.yaml was available and both were read directly, so the `before` anchors are byte-exact as of this read rather than inferred from trace metadata; the anchors were extracted programmatically.",
+        "The line numbers cited (planner.py:56, agentspec.yaml:138) are valid against the files as read; re-anchor on the verbatim `before` string if either file has moved.",
+        "Requiring `headers` on a key-addressed Airtable `fields` payload is correct at execution time — see secondary observation S2, which is unresolved and carries a concrete test. If that test shows Composio rejects the extra property, apply remedy 2 INSTEAD of this one."
+      ]
+    },
+    {
+      "rank": 2,
+      "remedyId": "R-6-2",
+      "cost": "low",
+      "correctness": "medium",
+      "title": "Alternative if S2 resolves the other way — exempt key-addressed payloads in the criterion instead of forcing headers in the prompt",
+      "target": "eval-criterion",
+      "targetClass": "code-construct",
+      "applyTarget": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/tier0_code_checks.py",
+      "targetFile": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/tier0_code_checks.py",
+      "targetLocation": "_is_positional_row_write, lines 104-112",
+      "rationale": "tier0_code_checks.py:92-97 states the governing principle in its own words — the pathology Rule 6 prevents 'cannot occur when ... the payload is KEY-ADDRESSED and already names its own columns' — and then applies the exemption to Notion `properties` (line 109-111) but not to Airtable `fields`, which is equally key-addressed. If the S2 execution test shows Composio rejects or mishandles an extra `headers` property on AIRTABLE_CREATE_RECORD, then the model's behaviour is substantively correct and it is the criterion, not the planner, that is inconsistent with its own stated rationale.",
+      "whyWorks": "Extending the key-addressed exemption from `properties` to any dict-valued payload under a `fields`/`properties`/`record` key makes the check test the pathology it was written to test — positional row appends — instead of penalising a payload shape that cannot exhibit it. It would move srw-02 and ctfm-03 from fail to n/a on grounds the check itself already endorses, rather than by weakening the bar.",
+      "describedChange": "In _is_positional_row_write (tier0_code_checks.py:104-112), generalise the key-addressed exemption: instead of inspecting only params.get('properties'), iterate a tuple of payload key names ('properties', 'fields', 'record', 'record_data') and return False if any of them holds a non-empty dict, keeping the existing comment's rationale. Then update the three intent statements that would become stale — agentspec.yaml:44 (SOP description), :199 (criterion description) and :235 (expectedBehavior 'Includes a headers parameter matching the row data's fields, whether it's one row or a fan-out batch') — to say the requirement applies to positional row appends and not to key-addressed record payloads. Rule 6 in planner.py and agentspec.yaml would then need the same carve-out stated positively so the planner is not being scored against a rule the prompt still asserts. This is a SPEC CHANGE and should be an explicit operator decision, not a silent drift; it is mutually exclusive with remedy 1.",
+      "cost_note": "Cheap to implement, but it retires srw-02's stated purpose ('extends the header-safety requirement past Google Sheets to a table/database target'), so the seed should be rewritten or removed rather than left scoring n/a.",
+      "applyInstructions": [
+        "1. Do NOT apply speculatively. Run the S2 test first: execute one real AIRTABLE_CREATE_RECORD through composio_engine.execute_composio_action with and without a `headers` key and record whether Composio rejects the extra property, silently ignores it, or uses it.",
+        "2. If Composio ignores or uses it, DISCARD this remedy and ship remedy 1 unchanged.",
+        "3. If Composio rejects it (or it corrupts the record), apply this remedy INSTEAD of remedy 1: generalise the exemption in _is_positional_row_write, update agentspec.yaml:44/:199/:235, and add the matching carve-out to Rule 6 in both planner.py:56 and agentspec.yaml:138.",
+        "4. Rewrite or retire the srw-02 seed, whose entire stated purpose is the requirement this remedy removes.",
+        "5. Re-run the full 24-trace regression and confirm fan-01 (Airtable fan-out, currently emitting headers) is scored consistently under the new rule."
+      ],
+      "assumptions": [
+        "The S2 execution test can actually be run — it needs a live Composio connection and an Airtable account, which this analysis did not have.",
+        "Airtable's real CREATE_RECORD schema has no headers-equivalent parameter. Inferred from composio_engine.py:244-264's schema-alignment design and from `headers` being absent from the backend everywhere except planner.py:56; not confirmed against a live schema dump.",
+        "Source access to tier0_code_checks.py and agentspec.yaml was available and both were read directly."
+      ]
+    },
+    {
+      "rank": 3,
+      "remedyId": "R-6-3",
+      "cost": "low",
+      "correctness": "high",
+      "title": "Close the two harness gaps that let this regression ship — single-run sampling and seed-prompt contamination",
+      "target": "eval-harness",
+      "targetClass": "code-construct",
+      "applyTarget": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/run_dataset_through_planner.py",
+      "targetFile": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/run_dataset_through_planner.py",
+      "rationale": "This regression reached main because the harness cannot see it. traces/planner-eval-traces-post-optimize.jsonl holds exactly ONE run per trace_id, so ctfm-03's 2-in-3 defect had a one-in-three chance of being recorded clean, and the four non-failing row-write traces in this finding rest on n=1 each. The identical limitation was raised as remedy 3 of diagnose-finding-5-amb02.json and was not adopted, and the very next promotion shipped two regressions. Separately, 28320b1 embedded amb-02's seed prompt verbatim into planner.py:33 with its answer, so amb-02 now measures memorization rather than generalization.",
+      "whyWorks": "Repeating each seed N times and failing a criterion if ANY repetition contradicts converts a sampled observation into a bound, and reporting k/N incidence makes a partial defect like ctfm-03's visible instead of a coin flip. A contamination lint makes the S3 failure mode impossible to reintroduce silently, at zero runtime cost.",
+      "describedChange": "(a) Add a `--repeat N` flag to run_dataset_through_planner.py (default 1; use 3 at minimum for the spreadsheet-row-write, fan-out-batch, cross-tool-field-mismatch and ambiguous-recipient-or-target scenarios), tagging each emitted trace with metadata.repetition. (b) In tier0_code_checks.py, aggregate verdicts across repetitions of the same trace_id base and return fail if ANY repetition fails, reporting the k/N incidence in the note — apply this to check_sheet_header_safety at minimum. (c) Add a standalone lint that reads eval-dataset-candidates.json and get_system_prompt() and fails if any seed's prompt_text, or a distinctive substring of it, appears verbatim in the system prompt; run it in the same gate as the tier-0 checks. (d) Add a criterion asserting no entry in missing_parameters has an opaque-ID-shaped parameter_key (matching planner.py:39), which would currently catch amb-01's `channel_id` and msh-03's `parent_page_id` from S1.",
+      "applyInstructions": [
+        "1. Add `--repeat N` to run_dataset_through_planner.py, tagging each trace with metadata.repetition.",
+        "2. Group verdicts by trace_id base in tier0_code_checks.py and fail if any repetition fails; surface k/N in the note.",
+        "3. Re-baseline BEFORE applying remedy 1 so the pre-fix incidence (expected 3/3 srw-02, 2/3 ctfm-03) is on record, then re-run after so the A/B is a like-for-like comparison.",
+        "4. Add the contamination lint (c) and the opaque-ID criterion (d); expect (c) to fail immediately on amb-02 and (d) on amb-01 and msh-03, which is the point.",
+        "5. Extend repetition to fan-01, srw-01, srw-03, amb-02 and ctfm-01 so the four already-shipped fixes finally get the determinism bound they were never held to."
+      ],
+      "assumptions": [
+        "The harness scripts are editable and re-runnable in this environment; tier0_code_checks.py was read directly, run_dataset_through_planner.py and aggregate_scorecard.py were located but not executed.",
+        "Three repetitions suffice to catch a ~2/3-incidence defect with acceptable confidence; a genuinely rare (<10%) residual would still slip through.",
+        "Extra Gemini spend from repetition is acceptable when scoped to the four listed scenarios rather than all 24 seeds."
+      ]
+    }
+  ],
+  "sourceTraceIds": [
+    "srw-02",
+    "ctfm-03"
+  ],
+  "corroboratingTraceIds": [
+    "fan-01",
+    "srw-01",
+    "srw-03",
+    "amb-02",
+    "ctfm-01",
+    "msh-03",
+    "amb-01"
+  ],
+  "relatedFindings": [
+    "F-rule2-duplicate-literal-generalization-5",
+    "F-no-guessed-required-param-1"
+  ],
+  "referenceIds": {
+    "criterionId": "sheet-header-safety",
+    "findingId": "F-rule6-headers-dropped-on-keyed-record-payload-6",
+    "traceId": "srw-02",
+    "plannerPath": "/private/tmp/voxagent-optimize-pass3/backend/app/services/planner.py",
+    "committedPlannerPath": "/Users/satyaviswas/Documents/Vox-Agent/backend/app/services/planner.py",
+    "specPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/agentspec.yaml",
+    "datasetPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/eval-dataset-candidates.json",
+    "baselineTracesPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/traces/planner-eval-traces.jsonl",
+    "postOptimizeTracesPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/traces/planner-eval-traces-post-optimize.jsonl",
+    "checkPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/tier0_code_checks.py",
+    "enginePath": "/Users/satyaviswas/Documents/Vox-Agent/backend/app/services/composio_engine.py",
+    "priorFindingPath": "/Users/satyaviswas/Documents/Vox-Agent/.mutagent/specs/voxagent-planner/diagnose-finding-5-amb02.json",
+    "priorFixCommits": [
+      "69d238f",
+      "71fb7b1",
+      "28320b1"
+    ]
+  }
+}
