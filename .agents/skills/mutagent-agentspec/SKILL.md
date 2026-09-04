@@ -98,7 +98,7 @@ pnpx @mutagent/agentspec init
 *validate-spec ./agentspec.yaml   # schema-gate it (round-trip)
 ```
 
-Start from the worked example: `assets/templates/agentspec.yaml.tpl` (a complete, validated
+start from the worked example: `assets/templates/agentspec.yaml.tpl` (a complete, validated
 synthetic spec exercising every field).
 
 ## §3 — Architecture
