@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     TELEGRAM_API_ID: int | None = None
     TELEGRAM_API_HASH: str | None = None
     GROQ_API_KEY: str | None = None
+    # Gnani AI platform configuration (Prisma STT, Timbre TTS, Voice Cloning)
+    GNANI_API_KEY: str | None = None
+    GNANI_BASE_URL: str = "https://api.vachana.ai"
+    GNANI_PLATFORM_API_KEY: str | None = None
+    GNANI_PLATFORM_BASE_URL: str = "https://api.inya.ai/platform"
     PORT: int = 8000
     # Comma-separated list of origins allowed to call the API / open the
     # telemetry websocket, e.g. "http://localhost:5173,https://app.example.com".

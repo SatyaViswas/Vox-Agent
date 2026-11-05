@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import supabase
 from app.config import settings
-from app.routers import planner, engines, vault, execution, knowledge, auth, translate
+from app.routers import planner, engines, vault, execution, knowledge, auth, translate, tts
 from app.routers.execution import arm_event_trigger
 from app.services.scheduler import scheduler, add_or_update_job
 
@@ -48,6 +48,7 @@ app.include_router(vault.router, prefix="/api/v1")
 app.include_router(execution.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(translate.router, prefix="/api/v1")
+app.include_router(tts.router, prefix="/api/v1")
 
 import asyncio
 

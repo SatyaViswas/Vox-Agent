@@ -1,192 +1,267 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { transcribeAudio } from "../api/voice";
 
-const SpeechRecognitionImpl =
-  typeof window !== "undefined" ? window.SpeechRecognition || window.webkitSpeechRecognition : null;
-
-// Errors that mean "don't bother retrying" — mic access or the selected
-// language is fundamentally unavailable, so auto-restarting would just spin
-// forever with the same error.
-const TERMINAL_ERRORS = new Set(["not-allowed", "service-not-allowed", "audio-capture", "language-not-supported"]);
-
-// If the browser keeps ending the session without ever producing a result
-// (e.g. the selected language isn't actually supported, even though it
-// didn't return a clean "language-not-supported" error), auto-restarting
-// unconditionally spins in a tight loop — pinning the main thread and, on
-// Chrome, eventually tripping its own rapid-restart abuse guard, which
-// surfaces as a misleading "not-allowed" (looks exactly like a permission
-// problem even though mic access was never the issue). Cap consecutive
-// restarts-without-a-result so a genuinely unsupported language fails
-// loudly and honestly instead of looping.
-const MAX_RESULTLESS_RESTARTS = 3;
-const RESTART_DELAY_MS = 350;
-
-export function useSpeechRecognition({ onFinalTranscript, lang = "en-US" } = {}) {
+/**
+ * Sovereign speech recognition hook powered by Gnani Prisma v3.0.
+ *
+ * Captures microphone audio via standard MediaRecorder and transcribes
+ * via Gnani Prisma v3.0 with Automatic Language Identification (Auto-LID),
+ * Code-mixing support, and SaaS context keyterms.
+ */
+export function useSpeechRecognition({ onFinalTranscript, lang = "indic-auto", autoSilenceStop = true } = {}) {
   const { t } = useTranslation();
   const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [detectedLanguage, setDetectedLanguage] = useState(null);
+  const [boostInfo, setBoostInfo] = useState(null);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [error, setError] = useState(null);
-  const recognitionRef = useRef(null);
+
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const streamRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const vadIntervalRef = useRef(null);
+  const maxTimerRef = useRef(null);
   const onFinalRef = useRef(onFinalTranscript);
   onFinalRef.current = onFinalTranscript;
-  const langRef = useRef(lang);
-  langRef.current = lang;
 
-  // Distinguishes "the user clicked stop" from "the browser ended the
-  // session on its own" (e.g. Chrome's silence timeout, which fires even
-  // with continuous = true). Only the latter should auto-restart.
-  const manualStopRef = useRef(false);
-  const terminalErrorRef = useRef(false);
-  const gotResultRef = useRef(false);
-  const resultlessRestartsRef = useRef(0);
-  const restartTimerRef = useRef(null);
+  const isSupported =
+    typeof window !== "undefined" &&
+    Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
 
-  const isSupported = Boolean(SpeechRecognitionImpl);
-
-  const startRef = useRef(null);
-
-  const errorMessages = {
-    "not-allowed": t("voice.micDenied"),
-    "service-not-allowed": t("voice.serviceNotAllowed"),
-    "language-not-supported": t("voice.languageNotSupported"),
-    "audio-capture": t("voice.noMic"),
-    network: t("voice.networkInterrupted"),
-    "no-speech": undefined,
-    aborted: undefined,
-  };
-  const errorMessagesRef = useRef(errorMessages);
-  errorMessagesRef.current = errorMessages;
-
-  const clearRestartTimer = useCallback(() => {
-    if (restartTimerRef.current) {
-      clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = null;
+  const cleanupAudioNodes = useCallback(() => {
+    if (vadIntervalRef.current) {
+      clearInterval(vadIntervalRef.current);
+      vadIntervalRef.current = null;
     }
+    if (maxTimerRef.current) {
+      clearTimeout(maxTimerRef.current);
+      maxTimerRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try {
+        if (audioContextRef.current.state !== "closed") {
+          audioContextRef.current.close().catch(() => {});
+        }
+      } catch {
+        // ignore
+      }
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
   }, []);
 
-  const start = useCallback(() => {
-    if (!isSupported) return;
-    if (recognitionRef.current) return;
-    clearRestartTimer();
-    manualStopRef.current = false;
-    terminalErrorRef.current = false;
-    gotResultRef.current = false;
-    setError(null);
-    setInterimTranscript("");
-
-    // Always create a fresh instance when starting to avoid "dead" instance bugs
-    const recognition = new SpeechRecognitionImpl();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = langRef.current;
-
-    recognition.onresult = (event) => {
-      gotResultRef.current = true;
-      resultlessRestartsRef.current = 0;
-      let finalChunk = "";
-      let interimChunk = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) finalChunk += transcript;
-        else interimChunk += transcript;
-      }
-      if (finalChunk) {
-        onFinalRef.current?.(finalChunk.trim());
-        setInterimTranscript("");
-      } else {
-        setInterimTranscript(interimChunk);
-      }
-    };
-
-    recognition.onerror = (event) => {
-      console.error("Speech recognition error:", event.error);
-      if (TERMINAL_ERRORS.has(event.error)) {
-        terminalErrorRef.current = true;
-      }
-      const message = errorMessagesRef.current[event.error];
-      if (message) setError(message);
-    };
-
-    recognition.onend = () => {
-      recognitionRef.current = null;
-
-      if (!gotResultRef.current) {
-        resultlessRestartsRef.current += 1;
-      }
-
-      const loopedTooManyTimes = resultlessRestartsRef.current > MAX_RESULTLESS_RESTARTS;
-      const shouldRestart = !manualStopRef.current && !terminalErrorRef.current && !loopedTooManyTimes;
-
-      if (shouldRestart) {
-        // Browser ended the session on its own (silence timeout, transient
-        // network blip, etc.) — restart to keep voice mode feeling
-        // continuous instead of requiring the user to click the mic again.
-        // A short delay (rather than restarting synchronously) avoids
-        // hammering the browser's speech service in a tight loop.
-        restartTimerRef.current = setTimeout(() => {
-          restartTimerRef.current = null;
-          startRef.current?.();
-        }, RESTART_DELAY_MS);
-      } else {
-        if (loopedTooManyTimes && !terminalErrorRef.current) {
-          setError(t("voice.tooManyRestarts"));
-        }
-        setIsRecording(false);
-        setInterimTranscript("");
-      }
-    };
-
-    recognitionRef.current = recognition;
-
-    try {
-      recognition.start();
-      setIsRecording(true);
-    } catch (err) {
-      console.error("Failed to start speech recognition:", err);
-      recognitionRef.current = null;
-      setError(t("voice.startFailed"));
-      setIsRecording(false);
-    }
-  }, [isSupported, clearRestartTimer, t]);
-
-  startRef.current = start;
-
   const stop = useCallback(() => {
-    manualStopRef.current = true;
-    clearRestartTimer();
-    if (!recognitionRef.current) {
-      setIsRecording(false);
+    cleanupAudioNodes();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (err) {
+        console.error("Error stopping MediaRecorder:", err);
+      }
+    } else if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsRecording(false);
+  }, [cleanupAudioNodes]);
+
+  const start = useCallback(async () => {
+    if (!isSupported) {
+      setError(t("voice.notSupported") || "Microphone recording is not supported in this browser.");
       return;
     }
-    try {
-      recognitionRef.current.stop();
-    } catch {
-      // ignore
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      return;
     }
-  }, [clearRestartTimer]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      manualStopRef.current = true;
-      clearRestartTimer();
-      if (recognitionRef.current) {
-        recognitionRef.current.onresult = null;
-        recognitionRef.current.onerror = null;
-        recognitionRef.current.onend = null;
+    setError(null);
+    setBoostInfo(null);
+    setInterimTranscript("Listening via Gnani Prisma v3.0...");
+    audioChunksRef.current = [];
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      streamRef.current = stream;
+
+      // Select supported mimeType
+      let mimeType = "audio/webm";
+      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+        mimeType = "audio/webm;codecs=opus";
+      } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+        mimeType = "audio/mp4";
+      } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+        mimeType = "audio/ogg";
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
+        }
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        audioChunksRef.current = [];
+
+        if (audioBlob.size < 500) {
+          // Empty or accidental tap
+          setInterimTranscript("");
+          setIsProcessing(false);
+          return;
+        }
+
+        setIsProcessing(true);
+        setInterimTranscript("Transcribing with Gnani Prisma v3.0...");
+
         try {
-          recognitionRef.current.stop();
-        } catch {
-          // ignore
+          const extension = mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : "webm";
+          const result = await transcribeAudio(audioBlob, `speech_input.${extension}`, {
+            languageCode: lang,
+          });
+
+          const finalTranscript = (result?.transcript || "").trim();
+          if (finalTranscript) {
+            setDetectedLanguage(result.detected_language_code || null);
+            setBoostInfo({
+              userEntitiesBoosted: result.user_entities_boosted || 0,
+              keytermsApplied: result.keyterms_applied || [],
+              topic: result.topic,
+              model: result.model,
+              processingTime: result.processing_time,
+            });
+            onFinalRef.current?.(finalTranscript, result.detected_language_code, result);
+          }
+          setInterimTranscript("");
+        } catch (err) {
+          console.error("Gnani Prisma transcription error:", err);
+          setError(err.message || "Failed to transcribe audio with Gnani Prisma.");
+          setInterimTranscript("");
+        } finally {
+          setIsProcessing(false);
+        }
+      };
+
+      recorder.start(250); // Slice into 250ms chunks
+      setIsRecording(true);
+
+      // Voice Activity Detection (VAD): auto-submits on 1.4s silence after user speaks
+      if (autoSilenceStop) {
+        try {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            const audioCtx = new AudioContextClass();
+            const source = audioCtx.createMediaStreamSource(stream);
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 512;
+            source.connect(analyser);
+
+            audioContextRef.current = audioCtx;
+            analyserRef.current = analyser;
+
+            const sampleData = new Uint8Array(analyser.frequencyBinCount);
+            let hasSpoken = false;
+            let silenceStartTime = null;
+
+            vadIntervalRef.current = setInterval(() => {
+              if (!analyserRef.current || !mediaRecorderRef.current || mediaRecorderRef.current.state !== "recording") {
+                return;
+              }
+              analyserRef.current.getByteTimeDomainData(sampleData);
+              let sum = 0;
+              for (let i = 0; i < sampleData.length; i++) {
+                const val = (sampleData[i] - 128) / 128;
+                sum += val * val;
+              }
+              const rms = Math.sqrt(sum / sampleData.length);
+
+              // RMS threshold for human speech vs background noise
+              if (rms > 0.025) {
+                hasSpoken = true;
+                silenceStartTime = null;
+              } else if (hasSpoken) {
+                if (silenceStartTime === null) {
+                  silenceStartTime = Date.now();
+                } else if (Date.now() - silenceStartTime >= 1400) {
+                  // 1.4s of silence detected after speaking -> auto-submit!
+                  cleanupAudioNodes();
+                  stop();
+                }
+              }
+            }, 100);
+
+            // Safety max duration: 25s
+            maxTimerRef.current = setTimeout(() => {
+              if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+                cleanupAudioNodes();
+                stop();
+              }
+            }, 25000);
+          }
+        } catch (vadErr) {
+          console.warn("[VAD] Voice Activity Detection setup skipped:", vadErr);
         }
       }
-    };
-  }, [clearRestartTimer]);
+    } catch (err) {
+      console.error("Microphone access failed:", err);
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setError(t("voice.micDenied") || "Microphone access denied. Please grant permission.");
+      } else {
+        setError(t("voice.startFailed") || "Could not start microphone.");
+      }
+      setIsRecording(false);
+      setInterimTranscript("");
+    }
+  }, [isSupported, t]);
 
   const toggle = useCallback(() => {
-    if (isRecording) stop();
-    else start();
+    if (isRecording) {
+      stop();
+    } else {
+      start();
+    }
   }, [isRecording, start, stop]);
 
-  return { isSupported, isRecording, interimTranscript, error, start, stop, toggle };
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      cleanupAudioNodes();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [cleanupAudioNodes]);
+
+  return {
+    isSupported,
+    isRecording,
+    isProcessing,
+    detectedLanguage,
+    boostInfo,
+    interimTranscript,
+    error,
+    start,
+    stop,
+    toggle,
+  };
 }
+
+export default useSpeechRecognition;

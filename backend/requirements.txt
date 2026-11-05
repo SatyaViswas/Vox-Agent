@@ -19,3 +19,4 @@ PyMuPDF
 pandas
 beautifulsoup4
 python-multipart
+gnani-vachana

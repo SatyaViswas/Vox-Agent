@@ -8,6 +8,86 @@ from app.schemas.blueprint import WorkflowBlueprint
 # Initialize Gemini Client using google-genai
 client = genai.Client(api_key=settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else None
 
+FALLBACK_GEMINI_MODELS = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite",
+]
+
+
+def _generate_content_with_fallback(
+    contents,
+    system_instruction: str = None,
+    response_mime_type: str = None,
+    temperature: float = 0.1,
+):
+    """Call Gemini with multi-model fallback to protect against 503 high-demand spikes."""
+    if not client:
+        raise ValueError("GEMINI_API_KEY is not configured.")
+
+    last_error = None
+    for model_name in FALLBACK_GEMINI_MODELS:
+        try:
+            config_params = {"temperature": temperature}
+            if system_instruction:
+                config_params["system_instruction"] = system_instruction
+            if response_mime_type:
+                config_params["response_mime_type"] = response_mime_type
+
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(**config_params),
+            )
+            return response
+        except Exception as e:
+            err_str = str(e)
+            print(f"[planner] Gemini model {model_name} failed ({err_str[:120]}), attempting fallback...")
+            last_error = e
+            continue
+
+    # Secondary fallback to Groq if all Gemini models are experiencing 503 / spikes
+    if settings.GROQ_API_KEY:
+        for groq_model in ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]:
+            try:
+                from groq import Groq
+                groq_client = Groq(api_key=settings.GROQ_API_KEY)
+                messages = []
+                if system_instruction:
+                    messages.append({"role": "system", "content": system_instruction})
+                user_text = ""
+                if isinstance(contents, list) and len(contents) > 0:
+                    parts = getattr(contents[0], "parts", [])
+                    if parts and hasattr(parts[0], "text"):
+                        user_text = parts[0].text
+                    else:
+                        user_text = str(contents)
+                else:
+                    user_text = str(contents)
+
+                messages.append({"role": "user", "content": user_text})
+                print(f"[planner] Gemini unavailable, attempting Groq fallback with {groq_model}...")
+                chat_resp = groq_client.chat.completions.create(
+                    messages=messages,
+                    model=groq_model,
+                    response_format={"type": "json_object"} if response_mime_type == "application/json" else None,
+                    temperature=temperature,
+                )
+                raw_out = chat_resp.choices[0].message.content
+
+                class _MockResp:
+                    def __init__(self, text):
+                        self.text = text
+
+                return _MockResp(raw_out)
+            except Exception as groq_err:
+                print(f"[planner] Groq model {groq_model} failed: {groq_err}")
+                continue
+
+    raise last_error or RuntimeError("All AI models failed to respond.")
+
 def get_system_prompt() -> str:
     schema_json = json.dumps(WorkflowBlueprint.model_json_schema(), indent=2)
     return f"""
@@ -132,19 +212,13 @@ def _apply_route_fallback_and_required_apps(parsed_json: dict) -> None:
 
 
 def generate_blueprint(prompt: str) -> WorkflowBlueprint:
-    if not client:
-        raise ValueError("GEMINI_API_KEY is not configured.")
-
-    response = client.models.generate_content(
-        model='gemini-3.1-flash-lite',
+    response = _generate_content_with_fallback(
         contents=[
             types.Content(role="user", parts=[types.Part.from_text(text=prompt)])
         ],
-        config=types.GenerateContentConfig(
-            system_instruction=get_system_prompt(),
-            response_mime_type="application/json",
-            temperature=0.1,
-        )
+        system_instruction=get_system_prompt(),
+        response_mime_type="application/json",
+        temperature=0.1,
     )
     
     raw_text = response.text.strip()
@@ -272,14 +346,11 @@ def generate_ai_content(prompt: str, as_list: bool = False, user_id: str | None 
     prompt = _inject_url_content(prompt)
 
     if as_list:
-        response = client.models.generate_content(
-            model='gemini-3.1-flash-lite',
+        response = _generate_content_with_fallback(
             contents=[types.Content(role="user", parts=[types.Part.from_text(text=prompt)])],
-            config=types.GenerateContentConfig(
-                system_instruction=_LIST_GENERATION_INSTRUCTION,
-                response_mime_type="application/json",
-                temperature=0.7,
-            ),
+            system_instruction=_LIST_GENERATION_INSTRUCTION,
+            response_mime_type="application/json",
+            temperature=0.7,
         )
         raw_text = response.text.strip()
         try:
@@ -302,13 +373,10 @@ def generate_ai_content(prompt: str, as_list: bool = False, user_id: str | None 
         "concise, and non-technical — just state plainly what single piece of information is needed."
     )
 
-    response = client.models.generate_content(
-        model='gemini-3.1-flash-lite',
+    response = _generate_content_with_fallback(
         contents=[types.Content(role="user", parts=[types.Part.from_text(text=prompt)])],
-        config=types.GenerateContentConfig(
-            temperature=0.7,
-            system_instruction=system_instruction,
-        ),
+        temperature=0.7,
+        system_instruction=system_instruction,
     )
     text = _strip_markdown_fences(response.text.strip())
 

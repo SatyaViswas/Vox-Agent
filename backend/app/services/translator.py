@@ -42,15 +42,27 @@ def translate_to_english(text: str, source_lang: str = "auto") -> str:
         else ""
     )
 
-    response = client.models.generate_content(
-        model="gemini-3.1-flash-lite",
-        contents=[
-            types.Content(role="user", parts=[types.Part.from_text(text=text.strip())])
-        ],
-        config=types.GenerateContentConfig(
-            system_instruction=_SYSTEM_PROMPT + lang_hint,
-            temperature=0.0,
-        ),
-    )
+    for model_name in [
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-3.6-flash",
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite",
+    ]:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    types.Content(role="user", parts=[types.Part.from_text(text=text.strip())])
+                ],
+                config=types.GenerateContentConfig(
+                    system_instruction=_SYSTEM_PROMPT + lang_hint,
+                    temperature=0.0,
+                ),
+            )
+            return (response.text or "").strip()
+        except Exception as e:
+            print(f"[translator] {model_name} failed ({e}), trying fallback...")
+            continue
 
-    return (response.text or "").strip()
+    return text.strip()

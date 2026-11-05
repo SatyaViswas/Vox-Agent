@@ -5,7 +5,8 @@ from app.services.knowledge_ingestion import (
     process_and_store_knowledge,
     extract_text_from_pdf,
     extract_text_from_csv,
-    extract_text_from_url
+    extract_text_from_url,
+    extract_text_from_audio,
 )
 from app.database import supabase
 import uuid
@@ -46,14 +47,22 @@ async def ingest_knowledge(
             source_name = custom_name.strip() if custom_name else file.filename
             source_type = "file"
             
-            if file.filename.endswith(".pdf"):
+            AUDIO_EXTS = (".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac")
+            lower_name = file.filename.lower()
+            if lower_name.endswith(".pdf"):
                 content = extract_text_from_pdf(file_bytes)
-            elif file.filename.endswith(".csv"):
+            elif lower_name.endswith(".csv"):
                 content = extract_text_from_csv(file_bytes)
-            elif file.filename.endswith(".txt"):
+            elif lower_name.endswith(".txt"):
                 content = file_bytes.decode("utf-8")
+            elif lower_name.endswith(AUDIO_EXTS):
+                source_type = "file"
+                content = extract_text_from_audio(file_bytes, file.filename)
             else:
-                raise HTTPException(status_code=400, detail="Unsupported file format")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Unsupported file format. Supported: .pdf, .csv, .txt, .wav, .mp3, .m4a, .ogg, .flac, .aac",
+                )
                 
         elif url:
             source_name = custom_name.strip() if custom_name else url

@@ -984,7 +984,16 @@ async def resume_agent_workflow(agent_id: str, answer: str):
     resumed_step = dict(steps[paused_index])
     missing_field = context.get("missing_field")
     answer_key = missing_field or "clarification_answer"
-    resumed_step["parameters"] = {**resumed_step.get("parameters", {}), answer_key: answer}
+
+    # Normalize human conversational input into technical tool syntax
+    from app.services.parameter_normalizer import normalize_action_parameter
+    normalized_answer = normalize_action_parameter(
+        app=resumed_step.get("app", ""),
+        action=resumed_step.get("action", ""),
+        parameter_key=answer_key,
+        raw_value=answer,
+    )
+    resumed_step["parameters"] = {**resumed_step.get("parameters", {}), answer_key: normalized_answer}
     steps[paused_index] = resumed_step
 
     pending_actions.resolve_pending_action(pending["id"], answer=answer)

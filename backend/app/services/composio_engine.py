@@ -383,7 +383,7 @@ def _pick_best_action_via_ai(guessed_action: str, candidates: list) -> str | Non
     )
     try:
         response = _gemini_client.models.generate_content(
-            model='gemini-3.1-flash-lite',
+            model='gemini-3.5-flash-lite',
             contents=[genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])],
             config=genai_types.GenerateContentConfig(temperature=0.0),
         )
@@ -412,7 +412,7 @@ def ai_pick_best_match(context: str, candidates: list) -> str | None:
     prompt = f"{context}\n\nOptions:\n{listing}\n\nRespond with ONLY the single best slug, nothing else. If none fit, respond NONE."
     try:
         response = _gemini_client.models.generate_content(
-            model='gemini-3.1-flash-lite',
+            model='gemini-3.5-flash-lite',
             contents=[genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])],
             config=genai_types.GenerateContentConfig(temperature=0.0),
         )
@@ -449,7 +449,7 @@ def ai_content_matches_condition(condition: str, content: str) -> bool:
     )
     try:
         response = _gemini_client.models.generate_content(
-            model='gemini-3.1-flash-lite',
+            model='gemini-3.5-flash-lite',
             contents=[genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])],
             config=genai_types.GenerateContentConfig(temperature=0.0),
         )
@@ -553,7 +553,7 @@ def generate_sample_trigger_payload(blueprint: dict) -> dict:
     )
     try:
         response = _gemini_client.models.generate_content(
-            model='gemini-3.1-flash-lite',
+            model='gemini-3.5-flash-lite',
             contents=[genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])],
             config=genai_types.GenerateContentConfig(response_mime_type="application/json", temperature=0.6),
         )

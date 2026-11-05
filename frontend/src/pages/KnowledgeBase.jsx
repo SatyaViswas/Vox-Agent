@@ -43,7 +43,21 @@ function isUrl(str) {
   return URL_RE.test(str.trim());
 }
 
-function sourceTypeIcon(type) {
+const AUDIO_EXTS_RE = /\.(wav|mp3|m4a|ogg|flac|aac)$/i;
+
+function isAudioSource(source) {
+  if (!source) return false;
+  if (typeof source === "string") return AUDIO_EXTS_RE.test(source) || source.toLowerCase().includes("(audio)");
+  return (
+    source.source_type === "audio" ||
+    AUDIO_EXTS_RE.test(source.source_name || "") ||
+    (source.source_name || "").toLowerCase().includes("(audio)")
+  );
+}
+
+function sourceTypeIcon(source) {
+  if (isAudioSource(source)) return Mic;
+  const type = typeof source === "object" ? source?.source_type : source;
   if (type === "url") return Globe;
   if (type === "file") return FileSpreadsheet;
   return FileText;
@@ -171,13 +185,14 @@ function ViewSourceModal({ sourceName, onClose }) {
 
 function SourceRow({ source, onDelete, deleting, onRename, onView }) {
   const { t } = useTranslation();
-  const Icon = sourceTypeIcon(source.source_type);
-  const typeLabel =
-    source.source_type === "url"
-      ? t("knowledge.typeWebsite")
-      : source.source_type === "file"
-      ? t("knowledge.typeFile")
-      : t("knowledge.typeText");
+  const Icon = sourceTypeIcon(source);
+  const typeLabel = isAudioSource(source)
+    ? "Audio / Voice (Gnani Prisma)"
+    : source.source_type === "url"
+    ? t("knowledge.typeWebsite")
+    : source.source_type === "file"
+    ? t("knowledge.typeFile")
+    : t("knowledge.typeText");
 
   const [isRenaming, setIsRenaming] = useState(false);
   const [editName, setEditName] = useState(source.source_name);
@@ -275,6 +290,7 @@ function OmniBox({ onSuccess }) {
   const {
     isSupported: speechSupported,
     isRecording,
+    isProcessing: speechProcessing,
     interimTranscript,
     error: speechError,
     toggle: toggleRecording,
@@ -331,10 +347,16 @@ function OmniBox({ onSuccess }) {
     if (f.size > MAX_BYTES) {
       return showToast("error", t("knowledge.fileTooLarge"));
     }
-    const allowed = ["application/pdf", "text/csv", "text/plain"];
+    const audioExts = ["wav", "mp3", "m4a", "ogg", "flac", "aac"];
     const ext = f.name.split(".").pop().toLowerCase();
+    if (audioExts.includes(ext) || f.type.startsWith("audio/")) {
+      setFile(f);
+      setMode("audio");
+      return;
+    }
+    const allowed = ["application/pdf", "text/csv", "text/plain"];
     if (!allowed.includes(f.type) && !["pdf", "csv", "txt"].includes(ext)) {
-      return showToast("error", t("knowledge.unsupportedFormat"));
+      return showToast("error", "Unsupported format. Supported: PDF, CSV, TXT, WAV, MP3, M4A, OGG, FLAC");
     }
     setFile(f);
     setMode("file");
@@ -396,6 +418,7 @@ function OmniBox({ onSuccess }) {
           {tabBtn("text", t("knowledge.modeText"), FileText)}
           {tabBtn("url", t("knowledge.modeUrl"), Globe)}
           {tabBtn("file", t("knowledge.modeFile"), UploadCloud)}
+          {tabBtn("audio", "Audio / Voice", Mic)}
         </div>
       </div>
 
@@ -408,7 +431,12 @@ function OmniBox({ onSuccess }) {
             onChange={(e) => setTextInput(e.target.value)}
             placeholder={t("knowledge.textPlaceholderVoice")}
             rows={5}
-            disabled={isRecording}
+            disabled={isRecording || speechProcessing}
+            value={
+              isRecording || speechProcessing
+                ? (interimTranscript ? `${textInput ? textInput + " " : ""}${interimTranscript}` : textInput)
+                : textInput
+            }
             className="w-full resize-none rounded-xl border border-slate-200 dark:border-white/10 bg-white/60 dark:bg-black/20 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-400/50 placeholder-slate-400 dark:placeholder-slate-600 transition disabled:opacity-70"
           />
           <div className="flex items-center justify-end gap-2">
@@ -416,17 +444,19 @@ function OmniBox({ onSuccess }) {
             <button
               type="button"
               onClick={toggleRecording}
-              disabled={!speechSupported}
+              disabled={!speechSupported || speechProcessing}
               aria-pressed={isRecording}
               aria-label={t("voice.toggleRecording")}
-              title={speechSupported ? t("voice.speakPrompt") : t("voice.notSupported")}
+              title={speechSupported ? "Speak text with Gnani Prisma v3.0" : t("voice.notSupported")}
               className={`flex items-center justify-center w-9 h-9 rounded-xl transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
                 isRecording
                   ? "bg-red-500 text-white animate-pulse"
+                  : speechProcessing
+                  ? "bg-amber-500 text-white"
                   : "bg-slate-900/5 dark:bg-white/5 text-slate-500 hover:text-brand-500"
               }`}
             >
-              <Mic size={16} />
+              {speechProcessing ? <Loader2 size={16} className="animate-spin" /> : <Mic size={16} />}
             </button>
           </div>
           {speechError && (
@@ -468,7 +498,7 @@ function OmniBox({ onSuccess }) {
           <input
             ref={fileRef}
             type="file"
-            accept=".pdf,.csv,.txt"
+            accept=".pdf,.csv,.txt,.wav,.mp3,.m4a,.ogg,.flac,.aac"
             className="sr-only"
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -504,6 +534,68 @@ function OmniBox({ onSuccess }) {
               <div className="text-center">
                 <p className="font-medium text-sm">{t("knowledge.dropOrClick")}</p>
                 <p className="text-xs text-slate-400 mt-1">{t("knowledge.supportedFormats")}</p>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {mode === "audio" && (
+        <div
+          onClick={() => fileRef.current?.click()}
+          className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 cursor-pointer transition-all duration-150 ${
+            file
+              ? "border-brand-400 bg-brand-500/5"
+              : "border-slate-200 dark:border-white/10 hover:border-brand-400/60 hover:bg-brand-500/5"
+          }`}
+        >
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".wav,.mp3,.m4a,.ogg,.flac,.aac"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleFileDrop(f);
+            }}
+          />
+          {file ? (
+            <>
+              <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-500/10">
+                <Mic size={24} className="text-brand-500" />
+              </div>
+              <div className="text-center">
+                <p className="font-semibold text-sm">{file.name}</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {(file.size / 1024).toFixed(0)} KB • Audio Recording
+                </p>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-medium mt-2">
+                  <Sparkles size={12} className="text-brand-500" />
+                  <span>Transcribing with Gnani Prisma v3.0 (Auto-LID & Code-Mix)</span>
+                </div>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFile(null);
+                }}
+                className="absolute top-3 right-3 flex items-center justify-center w-6 h-6 rounded-full bg-slate-200 dark:bg-white/10 text-slate-500 hover:bg-red-500/20 hover:text-red-500 transition-colors"
+              >
+                <X size={12} />
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-brand-500/10 text-brand-500">
+                <Mic size={24} />
+              </div>
+              <div className="text-center">
+                <p className="font-medium text-sm">Drop customer calls, meeting audio, or voice notes</p>
+                <p className="text-xs text-slate-400 mt-1">WAV, MP3, M4A, OGG, FLAC up to 10 MB</p>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 text-xs font-medium mt-2">
+                  <Sparkles size={12} className="text-brand-500" />
+                  <span>Auto-transcribed with Gnani Prisma v3.0 into RAG vectors</span>
+                </div>
               </div>
             </>
           )}

@@ -1,4 +1,9 @@
 import io
+import os
+import glob
+import subprocess
+import tempfile
+from pathlib import Path
 import pandas as pd
 import fitz  # PyMuPDF
 from bs4 import BeautifulSoup
@@ -7,6 +12,7 @@ from typing import List, Tuple
 from google import genai
 from app.config import settings
 from app.database import supabase
+from app.services.gnani_service import transcribe_audio_prisma, is_gnani_configured
 import uuid
 
 # Initialize Gemini Client for embeddings
@@ -79,6 +85,87 @@ def extract_text_from_csv(file_bytes: bytes) -> str:
         return "\n".join(text_lines)
     except Exception as e:
         raise Exception(f"Failed to parse CSV: {str(e)}")
+
+def extract_text_from_audio(file_bytes: bytes, filename: str) -> str:
+    """Extract and transcribe speech from audio recordings using Gnani Prisma v3.0.
+    
+    Supports WAV, MP3, M4A, OGG, FLAC, AAC up to 10MB.
+    Automatically segments long audio recordings (>28s) to comply with single-clip limits,
+    running Prisma v3.0 with Auto-LID and code-mix output.
+    """
+    if not is_gnani_configured():
+        raise ValueError("GNANI_API_KEY is not configured in backend/.env")
+
+    ext = Path(filename).suffix.lower() or ".wav"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_file = os.path.join(tmpdir, f"input{ext}")
+        with open(input_file, "wb") as f:
+            f.write(file_bytes)
+
+        # 1. Determine duration using ffprobe
+        duration = 0.0
+        try:
+            cmd = [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                input_file,
+            ]
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+            duration = float(res.stdout.strip())
+        except Exception:
+            duration = 10.0  # Fallback assumption if ffprobe unavailable
+
+        # 2. If short audio (<= 28s), transcribe in one call
+        if duration <= 28.0:
+            result = transcribe_audio_prisma(
+                file_bytes=file_bytes,
+                filename=filename,
+                language_code="indic-auto",
+                format_style="codemix",
+                topic="business meeting discussions and voice notes",
+            )
+            return result.get("transcript", "").strip()
+
+        # 3. If long audio (> 28s), segment into 25s chunks with ffmpeg and transcribe
+        standard_wav = os.path.join(tmpdir, "standard.wav")
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", input_file, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", standard_wav],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        segment_pattern = os.path.join(tmpdir, "segment_%03d.wav")
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", standard_wav, "-f", "segment", "-segment_time", "25", "-c", "copy", segment_pattern],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        segment_files = sorted(glob.glob(os.path.join(tmpdir, "segment_*.wav")))
+        transcripts = []
+
+        for seg_path in segment_files:
+            with open(seg_path, "rb") as seg_f:
+                seg_bytes = seg_f.read()
+            if len(seg_bytes) < 1000:
+                continue
+
+            seg_res = transcribe_audio_prisma(
+                file_bytes=seg_bytes,
+                filename=os.path.basename(seg_path),
+                language_code="indic-auto",
+                format_style="codemix",
+                topic="business meeting discussions and voice notes",
+            )
+            seg_text = (seg_res.get("transcript") or "").strip()
+            if seg_text:
+                transcripts.append(seg_text)
+
+        return " ".join(transcripts)
 
 def process_and_store_knowledge(
     user_id: str, 

@@ -36,7 +36,7 @@ async def execute_browser_action(
             ChatGoogle._cached_get_client = True
             
         llm = ChatGoogle(
-            model="gemini-3.1-flash-lite",
+            model="gemini-3.5-flash-lite",
             api_key=gemini_key
         )
         

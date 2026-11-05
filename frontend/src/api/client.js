@@ -23,19 +23,31 @@ async function request(path, { method = "GET", body, headers = {}, params, signa
     });
   }
 
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  const requestHeaders = {
+    "X-User-Id": getUserId(),
+    ...headers,
+  };
+  if (!isFormData && !requestHeaders["Content-Type"]) {
+    requestHeaders["Content-Type"] = "application/json";
+  }
+
   const res = await fetch(url.toString(), {
     method,
-    headers: {
-      "Content-Type": "application/json",
-      "X-User-Id": getUserId(),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
+    headers: requestHeaders,
+    body: isFormData ? body : (body ? JSON.stringify(body) : undefined),
     signal,
   });
 
   const contentType = res.headers.get("content-type") || "";
-  const data = contentType.includes("application/json") ? await res.json().catch(() => null) : await res.text();
+  let data;
+  if (contentType.includes("application/json")) {
+    data = await res.json().catch(() => null);
+  } else if (contentType.includes("audio/") || contentType.includes("application/octet-stream")) {
+    data = await res.blob();
+  } else {
+    data = await res.text();
+  }
 
   if (!res.ok) {
     throw new ApiError(data?.detail || res.statusText || "Request failed", res.status, data);

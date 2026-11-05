@@ -6,6 +6,7 @@
 // uiCode: i18next language key (matches a file in src/i18n/locales/)
 
 export const LANGUAGES = [
+  { uiCode: "hi", speechCode: "indic-auto", label: "Auto Detect (Indic)", nativeLabel: "✨ Indic Auto-LID", group: "indian" },
   { uiCode: "en", speechCode: "en-US", label: "English", nativeLabel: "English", group: "international" },
 
   // Indian regional

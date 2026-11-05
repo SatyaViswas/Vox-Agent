@@ -4,10 +4,13 @@ import { useTranslation } from "react-i18next";
 import { AlertCircle, Loader2, Mic, PlayCircle, Radio, SendHorizontal, Sparkles, Workflow } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
+import { useVoiceFeedback } from "../hooks/useVoiceFeedback";
 import { useVoiceLanguage } from "../hooks/useVoiceLanguage";
 import { translateText } from "../api/translate";
+import { resolveDisambiguation } from "../api/voice";
 import { needsTranslation } from "../lib/textLanguage";
 import VoiceLanguagePicker from "../components/shared/VoiceLanguagePicker";
+import VoiceFeedbackBar from "../components/studio/VoiceFeedbackBar";
 import {
   approvePendingAction,
   createAgent,
@@ -86,6 +89,17 @@ export default function AgentStudio() {
   const { voiceLanguage, setVoiceLanguage } = useVoiceLanguage();
 
   const {
+    enabled: ttsEnabled,
+    setEnabled: setTtsEnabled,
+    voice: ttsVoice,
+    setVoice: setTtsVoice,
+    isPlaying: ttsPlaying,
+    isLoading: ttsLoading,
+    speak,
+    stop: stopSpeaking,
+  } = useVoiceFeedback({ defaultLanguage: voiceLanguage.speechCode });
+
+  const {
     prompt, setPrompt,
     planning, setPlanning,
     planError, setPlanError,
@@ -105,6 +119,20 @@ export default function AgentStudio() {
     requireApproval, setRequireApproval,
     clearStudio
   } = useStudioStore();
+
+  const [isListeningForDisambig, setIsListeningForDisambig] = useState(false);
+  const [activeParamListening, setActiveParamListening] = useState(null);
+  const [disambigResolving, setDisambigResolving] = useState(false);
+
+  const isListeningForDisambigRef = useRef(false);
+  const activeParamListeningRef = useRef(null);
+  const disambigValuesRef = useRef(disambigValues);
+  disambigValuesRef.current = disambigValues;
+  const blueprintRef = useRef(blueprint);
+  blueprintRef.current = blueprint;
+  const startVoiceClarificationRef = useRef(null);
+  const startRecordingRef = useRef(null);
+  const handleVoiceDisambigResponseRef = useRef(null);
 
   const wsRef = useRef(null);
   const pollRef = useRef(null);
@@ -165,15 +193,17 @@ export default function AgentStudio() {
         stopPolling();
       } else if (message === "Workflow execution completed.") {
         setRunStatus("success");
+        speak("Workflow execution completed successfully! <excited> All actions were carried out.");
         stopPolling();
         closeSocket();
       } else if (message === "Workflow execution failed.") {
         setRunStatus("failed");
+        speak("<sigh> The workflow encountered an error during execution.");
         stopPolling();
         closeSocket();
       }
     },
-    [stopPolling, closeSocket]
+    [stopPolling, closeSocket, speak]
   );
 
   // Single source of truth for "what does this pause actually look like" —
@@ -195,12 +225,16 @@ export default function AgentStudio() {
           reconnectRoute: entry.reconnect_route,
           inputType: entry.input_type,
         });
+        if (entry.question) {
+          const cleanQ = entry.question.replace(/```json[\s\S]*?```/g, "").trim();
+          speak(`<curious> The agent paused and needs your input. </curious> ${cleanQ}`);
+        }
       }
     } catch {
       // Transient fetch error — whatever detection path triggered this call
       // (WS event or poll) will likely fire again shortly.
     }
-  }, []);
+  }, [speak]);
 
   const openSocket = useCallback(
     (id) => {
@@ -376,13 +410,25 @@ export default function AgentStudio() {
         const data = await planWorkflow(englishText, userId);
         setBlueprint(data);
         setStepStatuses(Object.fromEntries((data.steps || []).map((s) => [s.step_number, "pending"])));
+
+        if (data.needs_clarification) {
+          const q = data.clarification_question || "Please specify the missing parameters to proceed.";
+          speak(`I have mapped out the workflow, but I need one detail. <pauses> ${q}`, {
+            onEnd: () => {
+              startVoiceClarificationRef.current?.(null);
+            },
+          });
+        } else {
+          const stepCount = (data.steps || []).length;
+          speak(`Great! <excited> I generated your workflow blueprint with ${stepCount} steps. Ready to run.`);
+        }
       } catch (err) {
         setPlanError(err.message || "Failed to generate a blueprint.");
       } finally {
         setPlanning(false);
       }
     },
-    [planning, userId, stopPolling, closeSocket, voiceLanguage]
+    [planning, userId, stopPolling, closeSocket, voiceLanguage, speak]
   );
 
   useEffect(() => {
@@ -397,31 +443,53 @@ export default function AgentStudio() {
   const {
     isSupported: speechSupported,
     isRecording,
+    isProcessing: speechProcessing,
+    detectedLanguage: speechDetectedLanguage,
+    boostInfo: speechBoostInfo,
     interimTranscript,
     error: speechError,
     toggle: toggleRecording,
+    start: startRecording,
+    stop: stopRecording,
   } = useSpeechRecognition({
     lang: voiceLanguage.speechCode,
     onFinalTranscript: (finalText) => {
-      setPrompt((prev) => (prev ? prev + " " + finalText : finalText).trim());
+      if (isListeningForDisambigRef.current) {
+        handleVoiceDisambigResponseRef.current?.(finalText);
+      } else {
+        setPrompt((prev) => (prev ? prev + " " + finalText : finalText).trim());
+      }
     },
   });
+  startRecordingRef.current = startRecording;
 
-  const handleTextSubmit = (e) => {
-    e.preventDefault();
-    handleGenerate(prompt);
-  };
+  const handleStartVoiceClarification = useCallback(
+    (paramKeyTarget = null) => {
+      setActiveParamListening(paramKeyTarget);
+      activeParamListeningRef.current = paramKeyTarget;
+      setIsListeningForDisambig(true);
+      isListeningForDisambigRef.current = true;
+      startRecordingRef.current?.();
+    },
+    []
+  );
+  startVoiceClarificationRef.current = handleStartVoiceClarification;
 
-  const handleDisambigChange = (key, value) => {
-    setDisambigValues((prev) => ({ ...prev, [key]: value }));
-  };
+  const handleStopVoiceClarification = useCallback(() => {
+    setIsListeningForDisambig(false);
+    isListeningForDisambigRef.current = false;
+    setActiveParamListening(null);
+    activeParamListeningRef.current = null;
+    stopRecording();
+  }, [stopRecording]);
 
-  const handleUpdateBlueprint = () => {
-    if (!blueprint) return;
-    const updated = cloneBlueprint(blueprint);
+  const applyValuesToBlueprint = useCallback((baseBlueprint, valuesMap) => {
+    if (!baseBlueprint) return null;
+    const updated = cloneBlueprint(baseBlueprint);
     (updated.missing_parameters || []).forEach((param) => {
-      const value = disambigValues[paramKey(param)];
-      if (value !== undefined) {
+      const key = paramKey(param);
+      const value = valuesMap[key];
+      if (value !== undefined && value !== "") {
         if (param.step_number === null || param.step_number === undefined || param.step_number === 'trigger') {
           if (!updated.trigger) updated.trigger = {};
           if (param.parameter_key === 'event_app') {
@@ -432,7 +500,6 @@ export default function AgentStudio() {
           } else if (param.parameter_key === 'event_target') {
             updated.trigger.event_target = value;
           } else {
-            // For any other trigger-specific config (future proofing)
             if (!updated.trigger.trigger_config) updated.trigger.trigger_config = {};
             updated.trigger.trigger_config[param.parameter_key] = value;
           }
@@ -445,8 +512,7 @@ export default function AgentStudio() {
             };
           }
         }
-        
-        // The AI might use the placeholder in ANY step's app field, not necessarily the one matching param.step_number
+
         updated.steps.forEach((step) => {
           if (step.app?.includes(param.parameter_key)) {
             step.app = value;
@@ -464,15 +530,130 @@ export default function AgentStudio() {
         }
       }
     });
-    
-    // Clean up any unreplaced placeholders the LLM might have stuck in required_apps
+
     if (updated.required_apps) {
       updated.required_apps = updated.required_apps.filter(app => !app.includes('{') && !app.includes('}'));
     }
-    
+
     updated.needs_clarification = false;
+    return updated;
+  }, []);
+
+  const handleVoiceDisambigResponse = useCallback(
+    async (spokenText) => {
+      const currentBlueprint = blueprintRef.current;
+      if (!currentBlueprint || !currentBlueprint.missing_parameters?.length) return;
+      setDisambigResolving(true);
+
+      try {
+        const targetedParamKey = activeParamListeningRef.current;
+        let targetParams = currentBlueprint.missing_parameters;
+        if (targetedParamKey) {
+          const matched = currentBlueprint.missing_parameters.filter(
+            (p) => paramKey(p) === targetedParamKey
+          );
+          if (matched.length > 0) {
+            targetParams = matched;
+          }
+        }
+
+        // Full hands-free disambiguation extraction + validation + normalization
+        const res = await resolveDisambiguation({
+          clarificationQuestion: currentBlueprint.clarification_question,
+          missingParameters: targetParams,
+          spokenAnswer: spokenText,
+          existingValues: disambigValuesRef.current,
+        });
+
+        if (res?.is_valid === false) {
+          speak(
+            res.spoken_acknowledgement ||
+              "I didn't quite catch the specific detail for that. Could you please state it again?",
+            {
+              onEnd: () => {
+                startVoiceClarificationRef.current?.(targetedParamKey || null);
+              },
+            }
+          );
+          return;
+        }
+
+        if (res?.resolved_values && Object.keys(res.resolved_values).length > 0) {
+          const merged = { ...disambigValuesRef.current, ...res.resolved_values };
+          setDisambigValues(merged);
+          disambigValuesRef.current = merged;
+
+          const allFilled = currentBlueprint.missing_parameters.every(
+            (p) => (merged[paramKey(p)] || "").trim().length > 0
+          );
+
+          if (allFilled) {
+            const updated = applyValuesToBlueprint(currentBlueprint, merged);
+            setBlueprint(updated);
+            setDisambigResolved(true);
+            speak(
+              `${res.spoken_acknowledgement || "<excited> Perfect!"} Workflow blueprint updated and ready to run.`
+            );
+          } else {
+            const remainingParams = currentBlueprint.missing_parameters.filter(
+              (p) => !(merged[paramKey(p)] || "").trim()
+            );
+            const nextParam = remainingParams[0];
+            const nextPrompt = nextParam
+              ? ` Please specify ${nextParam.label || nextParam.parameter_key}.`
+              : " Please provide the remaining details.";
+
+            speak(`${res.spoken_acknowledgement || "<happy> Got it."}${nextPrompt}`, {
+              onEnd: () => {
+                startVoiceClarificationRef.current?.(nextParam ? paramKey(nextParam) : null);
+              },
+            });
+          }
+        } else {
+          speak("I could not extract that parameter. Could you please state it again?", {
+            onEnd: () => {
+              startVoiceClarificationRef.current?.(targetedParamKey || null);
+            },
+          });
+        }
+      } catch (err) {
+        console.error("Failed to resolve voice disambiguation:", err);
+        speak("I had trouble understanding that. You can also type the value directly into the form.");
+      } finally {
+        setDisambigResolving(false);
+        setIsListeningForDisambig(false);
+        isListeningForDisambigRef.current = false;
+        setActiveParamListening(null);
+        activeParamListeningRef.current = null;
+      }
+    },
+    [applyValuesToBlueprint, speak, setDisambigValues, setBlueprint, setDisambigResolved]
+  );
+  handleVoiceDisambigResponseRef.current = handleVoiceDisambigResponse;
+
+  const handleTextSubmit = (e) => {
+    e.preventDefault();
+    handleGenerate(prompt);
+  };
+
+  const handleDisambigChange = (key, value) => {
+    setDisambigValues((prev) => {
+      const merged = { ...prev, [key]: value };
+      disambigValuesRef.current = merged;
+      if (blueprintRef.current) {
+        const updated = applyValuesToBlueprint(blueprintRef.current, merged);
+        setBlueprint(updated);
+      }
+      return merged;
+    });
+  };
+
+  const handleUpdateBlueprint = () => {
+    if (!blueprint) return;
+    const updated = applyValuesToBlueprint(blueprint, disambigValues);
     setBlueprint(updated);
     setDisambigResolved(true);
+    speak("<happy> Workflow details saved. Ready to run. </happy>");
   };
 
   const blockedByDisambiguation = needsAttention(blueprint) && !disambigResolved;
@@ -488,9 +669,13 @@ export default function AgentStudio() {
     setRunStatus("saving");
 
     try {
-      const payloadBlueprint = { ...blueprint, require_approval: requireApproval };
+      const currentVals = disambigValuesRef.current || disambigValues;
+      const latestBlueprint = Object.keys(currentVals).length > 0
+        ? applyValuesToBlueprint(blueprint, currentVals)
+        : blueprint;
+      const payloadBlueprint = { ...latestBlueprint, require_approval: requireApproval };
       const { agent_id: newAgentId } = await createAgent({
-        title: blueprint.title || "Untitled Agent",
+        title: latestBlueprint.title || "Untitled Agent",
         originalPrompt: prompt,
         blueprint: payloadBlueprint,
         userId: userId,
@@ -622,38 +807,79 @@ export default function AgentStudio() {
       <form onSubmit={handleTextSubmit} className="glass-panel flex items-center gap-2 p-2 pl-4 relative z-20">
         <SendHorizontal size={18} className="text-slate-400 shrink-0" />
         <input
-          value={isRecording && interimTranscript ? `${prompt} ${interimTranscript}`.trim() : prompt}
+          value={
+            isRecording || speechProcessing
+              ? (interimTranscript ? `${prompt ? prompt + " " : ""}${interimTranscript}` : prompt)
+              : prompt
+          }
           onChange={(e) => setPrompt(e.target.value)}
           type="text"
           placeholder={t("studio.promptPlaceholder")}
-          disabled={isRecording}
+          disabled={isRecording || speechProcessing}
           className="flex-1 bg-transparent outline-none text-sm md:text-base placeholder:text-slate-400 dark:placeholder:text-slate-500 disabled:opacity-60"
         />
         <VoiceLanguagePicker value={voiceLanguage.speechCode} onChange={setVoiceLanguage} className="shrink-0" />
         <button
           type="button"
           onClick={toggleRecording}
-          disabled={!speechSupported}
+          disabled={!speechSupported || speechProcessing}
           aria-pressed={isRecording}
           aria-label={t("voice.toggleRecording")}
-          title={speechSupported ? t("voice.speakPrompt") : t("voice.notSupported")}
+          title={speechSupported ? "Speak prompt with Gnani Prisma v3.0" : t("voice.notSupported")}
           className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
             isRecording
               ? "bg-red-500 text-white animate-pulse"
+              : speechProcessing
+              ? "bg-amber-500 text-white"
               : "bg-slate-900/5 dark:bg-white/5 text-slate-500 hover:text-brand-500"
           }`}
         >
-          <Mic size={18} />
+          {speechProcessing ? <Loader2 size={18} className="animate-spin" /> : <Mic size={18} />}
         </button>
         <button
           type="submit"
-          disabled={planning || !prompt.trim()}
+          disabled={planning || !prompt.trim() || isRecording || speechProcessing}
           className="flex items-center gap-2 rounded-xl bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 transition-colors shrink-0"
         >
           {planning && <Loader2 size={15} className="animate-spin" />}
           {planning ? t("studio.generating") : t("studio.generate")}
         </button>
       </form>
+
+      {speechDetectedLanguage && !isRecording && (
+        <div className="flex flex-wrap items-center gap-2 text-xs font-medium px-2 -mt-2">
+          <span className="flex items-center gap-1.5 text-brand-600 dark:text-brand-400">
+            <Sparkles size={12} className="text-brand-500 shrink-0" />
+            <span>Gnani Prisma v3.0: <span className="font-semibold uppercase tracking-wider">{speechDetectedLanguage}</span> (Code-Mix)</span>
+          </span>
+          {speechBoostInfo?.userEntitiesBoosted > 0 ? (
+            <span
+              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-sm"
+              title={`Context boosted with vault entities: ${speechBoostInfo.keytermsApplied?.join(", ")}`}
+            >
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Context Boosted ({speechBoostInfo.userEntitiesBoosted} Vault Entities{speechBoostInfo.keytermsApplied?.length ? `: ${speechBoostInfo.keytermsApplied.slice(0, 3).join(", ")}...` : ""})</span>
+            </span>
+          ) : (
+            <span
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-500/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10"
+              title="Gnani Prisma v3.0 automation keyterms active"
+            >
+              <span>Domain Keyterms Active</span>
+            </span>
+          )}
+        </div>
+      )}
+
+      <VoiceFeedbackBar
+        enabled={ttsEnabled}
+        onToggleEnabled={setTtsEnabled}
+        voice={ttsVoice}
+        onVoiceChange={setTtsVoice}
+        isPlaying={ttsPlaying}
+        isLoading={ttsLoading}
+        onStop={stopSpeaking}
+      />
 
       {speechError && (
         <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
@@ -678,6 +904,12 @@ export default function AgentStudio() {
           approved={approved}
           onApprovedChange={setApproved}
           resolved={disambigResolved}
+          onSpeak={speak}
+          isListeningForDisambig={isListeningForDisambig}
+          onStartVoiceClarification={handleStartVoiceClarification}
+          onStopVoiceClarification={handleStopVoiceClarification}
+          disambigResolving={disambigResolving}
+          activeParamListening={activeParamListening}
         />
       )}
 
@@ -699,6 +931,7 @@ export default function AgentStudio() {
           onResume={handleResume}
           onApprove={handleApprove}
           onReject={handleReject}
+          onSpeak={speak}
           busy={resuming}
           error={resumeError}
         />
