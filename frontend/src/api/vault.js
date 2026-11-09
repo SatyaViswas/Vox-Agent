@@ -18,6 +18,12 @@ export function getRequiredAppsStatus(userId, appNames, routes) {
   return apiClient.get("/vault/required-apps-status", { params });
 }
 
+export function introspectAppResources(userId, app, parameterKey) {
+  const params = { user_id: userId, app };
+  if (parameterKey) params.parameter_key = parameterKey;
+  return apiClient.get("/vault/introspect-resources", { params });
+}
+
 export function disconnectComposioAccount(connectedAccountId) {
   return apiClient.delete(`/vault/composio-connections/${encodeURIComponent(connectedAccountId)}`);
 }
@@ -63,8 +69,22 @@ export function cancelWhatsAppQrSession(sessionId) {
   return apiClient.delete(`/vault/whatsapp/qr/${sessionId}`);
 }
 
-export function startBrowserLogin({ userId, appName, loginUrl }) {
-  return apiClient.post("/vault/browser-login/start", { user_id: userId, app_name: appName, login_url: loginUrl });
+export function startBrowserLogin({ userId, appName, loginUrl, isMobile = false, viewportWidth, viewportHeight }) {
+  return apiClient.post("/vault/browser-login/start", {
+    user_id: userId,
+    app_name: appName,
+    login_url: loginUrl,
+    is_mobile: isMobile,
+    viewport_width: viewportWidth,
+    viewport_height: viewportHeight,
+  });
+}
+
+export function getBrowserLoginStreamUrl(sessionId) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:5173";
+  const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const host = typeof window !== "undefined" ? window.location.host : "localhost:5173";
+  return `${wsProto}//${host}/api/v1/vault/browser-login/stream/${sessionId}`;
 }
 
 export function captureBrowserLogin(sessionId) {

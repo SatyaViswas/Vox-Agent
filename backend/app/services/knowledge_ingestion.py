@@ -31,15 +31,33 @@ def get_embedding(text: str) -> List[float]:
     return response.embeddings[0].values
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
-    """Basic character-based chunking with overlap."""
-    chunks = []
+    """
+    Robust character-based chunking with overlap.
+    If the text fits within a single chunk, returns it directly as one chunk.
+    Otherwise, slides by (chunk_size - overlap) and tags chunks with [CHUNK:i/total].
+    """
+    if not text:
+        return []
+    
+    # If content fits in a single chunk, do not split or tag unnecessarily
+    if len(text) <= chunk_size:
+        return [text]
+
+    raw_chunks = []
     start = 0
+    step = chunk_size - overlap
     while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end]
-        chunks.append(chunk)
-        start += chunk_size - overlap
-    return chunks
+        chunk = text[start:start + chunk_size]
+        raw_chunks.append(chunk)
+        start += step
+        # If the remaining characters fit within overlap or are consumed, stop
+        if start >= len(text):
+            break
+
+    total = len(raw_chunks)
+    # Tag chunks with sequential header so they can be reassembled with 100% precision
+    tagged_chunks = [f"[CHUNK:{i}/{total}]\n{c}" for i, c in enumerate(raw_chunks)]
+    return tagged_chunks
 
 def extract_text_from_url(url: str) -> str:
     """Scrape text from a URL."""

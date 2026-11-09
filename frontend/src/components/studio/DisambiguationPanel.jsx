@@ -144,6 +144,33 @@ export default function DisambiguationPanel({
           {missingParameters.map((param) => {
             const key = paramKey(param);
             const isThisFieldListening = isListeningForDisambig && activeParamListening === key;
+
+            const pKeyLower = (param.parameter_key || "").toLowerCase();
+            const labelLower = (param.label || "").toLowerCase();
+            const isEmail =
+              pKeyLower.includes("email") ||
+              pKeyLower.includes("recipient") ||
+              labelLower.includes("email") ||
+              labelLower.includes("recipient");
+
+            const isFreeform =
+              isEmail ||
+              pKeyLower.includes("to") ||
+              pKeyLower.includes("body") ||
+              pKeyLower.includes("message") ||
+              pKeyLower.includes("subject") ||
+              pKeyLower.includes("phone") ||
+              pKeyLower.includes("user") ||
+              labelLower.includes("message") ||
+              labelLower.includes("subject") ||
+              labelLower.includes("phone");
+
+            const isSelect =
+              !isFreeform &&
+              param.suggested_type === "select" &&
+              param.options &&
+              param.options.length > 0;
+
             return (
               <div key={key} className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
@@ -169,7 +196,7 @@ export default function DisambiguationPanel({
                     </button>
                   )}
                 </div>
-                {param.suggested_type === "select" && param.options ? (
+                {isSelect ? (
                   <select
                     id={key}
                     value={values[key] || ""}
@@ -181,15 +208,19 @@ export default function DisambiguationPanel({
                     }`}
                   >
                     <option value="" disabled>{t("disambiguation.selectOption")}</option>
-                    {param.options.map(opt => (
+                    {param.options.map((opt) => (
                       <option key={opt} value={opt}>{opt}</option>
                     ))}
                   </select>
                 ) : (
                   <input
                     id={key}
-                    type={param.suggested_type === "number" ? "number" : "text"}
-                    placeholder={param.description}
+                    type={isEmail ? "email" : param.suggested_type === "number" ? "number" : "text"}
+                    placeholder={
+                      isEmail
+                        ? "Enter recipient email (e.g. name@example.com)"
+                        : param.description || `Enter ${param.label || "value"}`
+                    }
                     value={values[key] || ""}
                     onChange={(e) => onChange(key, e.target.value)}
                     className={`rounded-lg border px-3 py-2 text-sm outline-none transition-all ${

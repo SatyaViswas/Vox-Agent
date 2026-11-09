@@ -11,6 +11,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.config import settings
+from app.services.resource_matcher import find_closest_resource_match
 
 logger = logging.getLogger(__name__)
 
@@ -31,15 +32,19 @@ def _format_param_key(param: Dict[str, Any]) -> str:
 
 
 def _rule_based_option_match(spoken_text: str, options: List[str]) -> Optional[str]:
-    """Fuzzy/substring match spoken text against allowed option strings."""
+    """Fuzzy/closest match spoken text against allowed option strings.
+    
+    Accepts closest matching resource name if similarity >= 0.55;
+    rejects completely irrelevant text.
+    """
     if not options or not spoken_text:
         return None
     spoken_low = spoken_text.lower().strip()
 
-    # Exact or contained match
+    # Exact or direct substring match
     for opt in options:
-        opt_low = opt.lower()
-        if opt_low in spoken_low or spoken_low in opt_low:
+        opt_low = opt.lower().strip()
+        if opt_low == spoken_low or opt_low in spoken_low or spoken_low in opt_low:
             return opt
 
     # Keyword heuristics for Telegram
@@ -52,7 +57,9 @@ def _rule_based_option_match(spoken_text: str, options: List[str]) -> Optional[s
             if "bot" in opt.lower():
                 return opt
 
-    return None
+    # Comprehensive fuzzy similarity match (closest resource resolution)
+    closest_match, score = find_closest_resource_match(spoken_text, options, threshold=0.55)
+    return closest_match
 
 
 def _find_matching_param_key(missing_parameters: List[Dict[str, Any]], raw_key: str) -> Optional[str]:
@@ -107,7 +114,7 @@ def resolve_disambiguation(
             system_instruction = (
                 "You are VoxAgent's Intelligent Disambiguation Engine. "
                 "The user was asked a clarification question to fill missing details for a software workflow. "
-                "Your job is to parse their spoken answer (which may be in conversational English, Hindi, or Hinglish) "
+                "Your job is to parse their spoken answer (which may be in conversational English, Hindi, Hinglish, Telugu, Tamil, or other Indic languages) "
                 "and extract the clean, intended value for each missing parameter.\n\n"
                 "Extraction Rules:\n"
                 "- Strip all conversational phrasing (e.g. 'receiver gmail is X' -> 'X', 'sheet name is Y' -> 'Y').\n"
@@ -115,9 +122,11 @@ def resolve_disambiguation(
                 "- For Google Sheets ranges: 'extract full sheet' or 'all rows' -> 'A:Z'; 'A1-B2' -> 'A1:B2'.\n"
                 "- For Telegram options: map 'personal' -> 'Telegram Personal Account', 'bot' -> 'Telegram Bot'.\n"
                 "- For channels: strip leading '#' and 'channel'.\n"
+                "- Closest Resource Matching Rule: If a parameter has options (e.g. Google Sheet names, channels, databases) and the user's answer is close to an option (e.g. typos, partial name, omission of year or word like 'Expenses' for 'Company Expenses 2024'), map it to the closest matching option string. If the user's answer is completely unrelated/irrelevant to any option, mark is_valid false.\n"
                 "- Validate the answer: if the operator answered with something off-topic (e.g. asked for email, user said 'potato' or 'coffee'), "
                 "set is_valid to false and provide a polite spoken re-prompt asking for the specific information needed.\n"
-                "- Provide a short, warm spoken confirmation (under 15 words) with an expressive Gnani audio tag (<happy>, <excited>, or <curious>)."
+                "- Provide a short, warm spoken confirmation (under 15 words) with an expressive Gnani audio tag (<happy>, <excited>, or <curious>).\n"
+                "- Language Continuity Rule: match the language/dialect of the operator's answer (if they spoke Telugu, respond in Telugu; if Hindi, respond in Hindi) while always preserving Arabic numbers (1, 2, 3), ranges (A:Z), and exact technical names (Gmail, Slack, Supabase, Google Sheets)."
             )
 
             prompt = f"""Clarification Question: "{clarification_question or 'Please provide the missing details.'}"
@@ -138,10 +147,12 @@ Output a strict JSON object:
 """
 
             for model_name in [
-                "gemini-3.5-flash-lite",
+                "gemini-3.1-flash-lite",
+                "gemini-3.1-flash-lite-preview",
+                "gemini-3-flash-preview",
                 "gemini-3.5-flash",
                 "gemini-3.6-flash",
-                "gemini-3-flash-preview",
+                "gemini-3.5-flash-lite",
             ]:
                 try:
                     response = _gemini_client.models.generate_content(

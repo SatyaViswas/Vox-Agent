@@ -188,6 +188,14 @@ def _coerce_list(raw_value):
     if isinstance(raw_value, list):
         return raw_value
     if isinstance(raw_value, dict):
+        data_inner = raw_value.get("data")
+        if isinstance(data_inner, dict):
+            for k in ("messages", "items", "rows", "records", "values", "results"):
+                if isinstance(data_inner.get(k), list):
+                    return data_inner[k]
+        for k in ("messages", "items", "rows", "records", "values", "results"):
+            if isinstance(raw_value.get(k), list):
+                return raw_value[k]
         return list(raw_value.values())
     if raw_value is None:
         return []
@@ -235,8 +243,39 @@ def _resolve_property(base_value, prop: str | None):
         except Exception:
             pass
             
-    if isinstance(base_value, dict) and prop in base_value:
-        return base_value[prop]
+    if isinstance(base_value, dict):
+        if prop in base_value:
+            return base_value[prop]
+        # Case-insensitive match
+        for k, v in base_value.items():
+            if k.lower() == prop.lower():
+                return v
+        # Property aliases
+        p_low = prop.lower()
+        if p_low in ("sender", "from", "email", "from_email", "author", "address", "to"):
+            for k in ("sender", "email", "from", "from_email", "address", "author", "user", "to"):
+                if k in base_value:
+                    return base_value[k]
+        if p_low in ("body", "text", "message", "content", "description", "message_text"):
+            for k in ("message_text", "body", "text", "content", "description", "message"):
+                if k in base_value:
+                    return base_value[k]
+        if p_low in ("subject", "title", "heading", "summary"):
+            for k in ("subject", "title", "summary", "heading"):
+                if k in base_value:
+                    return base_value[k]
+        if p_low in ("target", "chat_id", "user_id", "chat", "id", "spreadsheet_id", "spreadsheetid", "sheet_id"):
+            for k in ("spreadsheetId", "spreadsheet_id", "id", "sender", "chat_id", "target", "user_id"):
+                if k in base_value:
+                    return base_value[k]
+
+        # Nested data or response_data payloads
+        for sub_k in ("data", "response_data", "properties", "result"):
+            if sub_k in base_value and isinstance(base_value[sub_k], dict):
+                nested = _resolve_property(base_value[sub_k], prop)
+                if nested != base_value[sub_k]:
+                    return nested
+
     return base_value
 
 
@@ -264,6 +303,226 @@ def _interpolate(value, step_results):
     if isinstance(value, list):
         return [_interpolate(v, step_results) for v in value]
     return value
+
+
+# --- Phase B: Execution Precision — Condition Evaluation Engine ---------
+
+def _clean_operand(s):
+    """Strips surrounding quotes and whitespace, normalizes boolean/numeric/null literals."""
+    if not isinstance(s, str):
+        return s
+    cleaned = s.strip()
+    if (cleaned.startswith("'") and cleaned.endswith("'")) or (cleaned.startswith('"') and cleaned.endswith('"')):
+        cleaned = cleaned[1:-1].strip()
+    lowered = cleaned.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    if lowered in ("none", "null"):
+        return None
+    try:
+        if "." in cleaned:
+            return float(cleaned)
+        return int(cleaned)
+    except ValueError:
+        pass
+    return cleaned
+
+
+def _compare_values(left, right, op: str) -> bool:
+    """Evaluates comparison between left and right operands using `op`."""
+    if op == "==":
+        if isinstance(left, str) and isinstance(right, str):
+            return left.strip().lower() == right.strip().lower()
+        if isinstance(left, bool) or isinstance(right, bool):
+            def _to_b(v):
+                if isinstance(v, bool):
+                    return v
+                if isinstance(v, str):
+                    return v.strip().lower() in ("true", "yes", "1")
+                return bool(v)
+            return _to_b(left) == _to_b(right)
+        try:
+            return float(left) == float(right)
+        except (ValueError, TypeError):
+            pass
+        return left == right
+
+    if op == "!=":
+        if isinstance(left, str) and isinstance(right, str):
+            return left.strip().lower() != right.strip().lower()
+        if isinstance(left, bool) or isinstance(right, bool):
+            def _to_b(v):
+                if isinstance(v, bool):
+                    return v
+                if isinstance(v, str):
+                    return v.strip().lower() in ("true", "yes", "1")
+                return bool(v)
+            return _to_b(left) != _to_b(right)
+        try:
+            return float(left) != float(right)
+        except (ValueError, TypeError):
+            pass
+        return left != right
+
+    if op in (">", "<", ">=", "<="):
+        try:
+            nl = float(left)
+            nr = float(right)
+            if op == ">": return nl > nr
+            if op == "<": return nl < nr
+            if op == ">=": return nl >= nr
+            if op == "<=": return nl <= nr
+        except (ValueError, TypeError):
+            return False
+
+    if op == " contains ":
+        if isinstance(left, (list, tuple, set)):
+            r_str = str(right).strip().lower()
+            return any(r_str == str(item).strip().lower() for item in left)
+        if isinstance(left, dict):
+            return str(right).strip().lower() in [str(k).lower() for k in left.keys()]
+        if isinstance(left, str):
+            return str(right).strip().lower() in left.lower()
+        return False
+
+    if op == " in ":
+        if isinstance(right, (list, tuple, set)):
+            l_str = str(left).strip().lower()
+            return any(l_str == str(item).strip().lower() for item in right)
+        if isinstance(right, dict):
+            return str(left).strip().lower() in [str(k).lower() for k in right.keys()]
+        if isinstance(right, str):
+            return str(left).strip().lower() in right.lower()
+        return False
+
+    return False
+
+
+def _evaluate_condition_expression(condition: str, step_results: dict) -> bool:
+    """Parses and evaluates a condition expression against step results."""
+    condition = condition.strip()
+    if not condition:
+        return True
+
+    operators = ["==", "!=", ">=", "<=", ">", "<", " contains ", " in "]
+    found_op = None
+    for op in operators:
+        if op in condition:
+            found_op = op
+            break
+
+    if found_op:
+        parts = condition.split(found_op, 1)
+        left_raw = parts[0].strip()
+        right_raw = parts[1].strip()
+
+        left_val = _clean_operand(_interpolate(left_raw, step_results))
+        right_val = _clean_operand(_interpolate(right_raw, step_results))
+
+        return _compare_values(left_val, right_val, found_op)
+
+    val = _clean_operand(_interpolate(condition, step_results))
+    if val is None:
+        return False
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return val != 0
+    if isinstance(val, (list, dict, set)):
+        return len(val) > 0
+    if isinstance(val, str):
+        s = val.strip().lower()
+        return s not in ("", "0", "false", "no", "no_action", "none", "null", "[]", "{}")
+    return bool(val)
+
+
+def _referenced_step_numbers(obj) -> set:
+    """Recursively finds all step_N_result numbers referenced in `obj`."""
+    refs = set()
+    if isinstance(obj, str):
+        for m in _INLINE_PLACEHOLDER_RE.finditer(obj):
+            s = m.group("step")
+            if s is not None:
+                refs.add(int(s))
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            refs.update(_referenced_step_numbers(v))
+    elif isinstance(obj, list) or isinstance(obj, tuple):
+        for item in obj:
+            refs.update(_referenced_step_numbers(item))
+    return refs
+
+
+def _is_empty_or_no_action(val) -> bool:
+    """Returns True if the value represents empty data or an explicit NO_ACTION marker."""
+    if val is None:
+        return True
+    if isinstance(val, (list, dict, set)) and len(val) == 0:
+        return True
+    if isinstance(val, dict):
+        if len(val) == 0:
+            return True
+        data_inner = val.get("data")
+        if isinstance(data_inner, dict):
+            for k in ("messages", "items", "rows", "records", "values", "results"):
+                if k in data_inner:
+                    return _is_empty_or_no_action(data_inner[k])
+        for k in ("messages", "items", "rows", "records", "values", "results"):
+            if k in val:
+                return _is_empty_or_no_action(val[k])
+    if isinstance(val, str):
+        s = val.strip().lower()
+        if not s or s in ("no_action", "none", "null", "empty", "false", "[]", "{}"):
+            return True
+    return False
+
+
+def _evaluate_step_condition(
+    condition,
+    skip_if_empty,
+    raw_parameters: dict,
+    for_each_spec,
+    step_results: dict,
+    skipped_step_numbers: set,
+) -> tuple:
+    """Determines whether a step should be skipped before execution.
+
+    Returns (should_skip, skip_reason).
+    """
+    # 1. Upstream skip cascade check:
+    # If any step referenced in parameters, for_each, or condition was skipped, skip cleanly.
+    all_refs = _referenced_step_numbers((condition, raw_parameters, for_each_spec))
+    for ref_num in all_refs:
+        if ref_num in skipped_step_numbers:
+            return True, f"Upstream Step {ref_num} was skipped"
+
+    # 2. skip_if_empty guard:
+    if skip_if_empty:
+        if for_each_spec:
+            match = _FULL_PLACEHOLDER_RE.match(for_each_spec.strip())
+            source_value = step_results.get(_resolve_key(match)) if match else None
+            items = _coerce_list(source_value)
+            if not items:
+                return True, "For-each source items list is empty"
+        else:
+            param_refs = _referenced_step_numbers(raw_parameters)
+            if param_refs and all(_is_empty_or_no_action(step_results.get(r)) for r in param_refs):
+                ref_names = ", ".join(f"Step {r}" for r in sorted(param_refs))
+                return True, f"Referenced data from {ref_names} is empty or NO_ACTION"
+
+    # 3. Explicit condition expression check:
+    if condition:
+        try:
+            condition_met = _evaluate_condition_expression(condition, step_results)
+            if not condition_met:
+                return True, f"Condition '{condition}' evaluated to False"
+        except Exception as e:
+            logger.warning(f"Failed evaluating condition '{condition}': {e}")
+            return True, f"Condition '{condition}' evaluation error: {e}"
+
+    return False, ""
 
 
 def _looks_like_clarification_request(text) -> bool:
@@ -337,18 +596,40 @@ async def _load_agent_blueprint(agent_id: str):
 
 
 async def _persist_run(agent_id: str, status: str, step_logs: list):
+    log_id = None
     try:
-        supabase.table("execution_logs").insert({
+        res = supabase.table("execution_logs").insert({
             "agent_id": agent_id,
             "run_id": _current_run_id.get(),
             "status": status,
             "log_messages": step_logs,
             "proof_screenshot_url": None
         }).execute()
+        if res and res.data and len(res.data) > 0:
+            log_id = res.data[0].get("id")
     except Exception as e:
         traceback.print_exc()
         logger.error(f"Error saving execution logs: {e}")
         await telemetry_manager.send_log(agent_id, "Warning: Failed to save execution logs to database.", level="warning")
+
+    try:
+        from app.services.execution_events import record_execution_completed
+        agent_record, _ = await _load_agent_blueprint(agent_id)
+        agent_title = (agent_record or {}).get("title") or "Workflow"
+        user_id = (agent_record or {}).get("user_id") or "00000000-0000-0000-0000-000000000000"
+        trigger_type = _current_trigger_type.get() or (agent_record or {}).get("trigger_type") or "on_demand"
+        record_execution_completed(
+            agent_id=agent_id,
+            user_id=user_id,
+            trigger_type=trigger_type,
+            outcome=status,
+            step_logs=step_logs,
+            agent_title=agent_title,
+            run_id=_current_run_id.get() or str(uuid.uuid4()),
+            log_id=log_id,
+        )
+    except Exception as e:
+        logger.error(f"Error recording execution completion event: {e}")
 
 
 async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_number, step_results, app, action, route, parameters):
@@ -359,6 +640,16 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
     trigger_data = step_results.get("trigger_data")
     if isinstance(trigger_data, dict) and trigger_data.get("is_test"):
         parameters["_is_test_run"] = True
+
+    # Universal parameter normalization across all app types and routes
+    from app.services.parameter_normalizer import normalize_action_parameter
+    clean_params = {}
+    for k, v in (parameters or {}).items():
+        if k.startswith("_"):
+            clean_params[k] = v
+        else:
+            clean_params[k] = normalize_action_parameter(app, action, k, v)
+    parameters = clean_params
 
     if is_vault_notes_target(app):
         # No real destination was specified for extracted data (see
@@ -563,6 +854,9 @@ async def _run_single_step(agent_id, user_id, blueprint, steps, index, step_numb
     if status == "needs_input":
         reconnect_app = result_data.get("reconnect_app")
         missing_field = result_data.get("missing_field") if result_data.get("question") else None
+        options = result_data.get("options")
+        if result_data.get("_existing_sheet_id"):
+            raw_parameters["_existing_sheet_id"] = result_data["_existing_sheet_id"]
         step_logs.append(_log_entry(step_number, app, action, route, {"status": "needs_input", "question": question}))
         pending_actions.create_pending_action(
             run_id=_current_run_id.get(),
@@ -573,8 +867,10 @@ async def _run_single_step(agent_id, user_id, blueprint, steps, index, step_numb
             input_type=(
                 "credential_reconnect" if reconnect_app
                 else "confirm" if missing_field == "_approved"
+                else "select" if options
                 else "text"
             ),
+            options=options,
             context_snapshot={
                 "user_id": user_id,
                 "blueprint": blueprint,
@@ -588,6 +884,7 @@ async def _run_single_step(agent_id, user_id, blueprint, steps, index, step_numb
                 # "clarification_answer" the target tool's schema wouldn't
                 # recognize.
                 "missing_field": missing_field,
+                "options": options,
                 # Set instead of missing_field when the pause is "this app
                 # isn't connected" (see composio_engine.execute_composio_action)
                 # — resume doesn't need the answer to go anywhere specific,
@@ -607,7 +904,14 @@ async def _run_single_step(agent_id, user_id, blueprint, steps, index, step_numb
             agent_id,
             f"Step {step_number} needs clarification: {question}",
             level="needs_input",
-            data={"type": "clarification_needed", "step": step_number, "question": question, "reconnect_app": reconnect_app},
+            data={
+                "type": "clarification_needed",
+                "step": step_number,
+                "question": question,
+                "reconnect_app": reconnect_app,
+                "options": options,
+                "input_type": "select" if options else "text",
+            },
         )
         await _persist_run(agent_id, "needs_input", step_logs)
         return "needs_input"
@@ -651,6 +955,9 @@ async def _run_for_each_items(agent_id, user_id, blueprint, steps, index, step_n
         if status == "needs_input":
             reconnect_app = result_data.get("reconnect_app")
             missing_field = result_data.get("missing_field") if result_data.get("question") else None
+            options = result_data.get("options")
+            if result_data.get("_existing_sheet_id"):
+                raw_parameters["_existing_sheet_id"] = result_data["_existing_sheet_id"]
             step_logs.append(_log_entry(step_number, app, action, route, {"status": "needs_input", "question": question}))
             pending_actions.create_pending_action(
                 run_id=_current_run_id.get(),
@@ -661,8 +968,10 @@ async def _run_for_each_items(agent_id, user_id, blueprint, steps, index, step_n
                 input_type=(
                     "credential_reconnect" if reconnect_app
                     else "confirm" if missing_field == "_approved"
+                    else "select" if options
                     else "text"
                 ),
+                options=options,
                 context_snapshot={
                     "user_id": user_id,
                     "blueprint": blueprint,
@@ -670,6 +979,7 @@ async def _run_for_each_items(agent_id, user_id, blueprint, steps, index, step_n
                     "step_results": dict(step_results),
                     "paused_index": index,
                     "missing_field": missing_field,
+                    "options": options,
                     "reconnect_app": reconnect_app,
                     "reconnect_route": route if reconnect_app else None,
                     # The missing value (e.g. a spreadsheet name) almost
@@ -688,7 +998,14 @@ async def _run_for_each_items(agent_id, user_id, blueprint, steps, index, step_n
                 agent_id,
                 f"Step {step_number} needs clarification: {question}",
                 level="needs_input",
-                data={"type": "clarification_needed", "step": step_number, "question": question, "reconnect_app": reconnect_app},
+                data={
+                    "type": "clarification_needed",
+                    "step": step_number,
+                    "question": question,
+                    "reconnect_app": reconnect_app,
+                    "options": options,
+                    "input_type": "select" if options else "text",
+                },
             )
             await _persist_run(agent_id, "needs_input", step_logs)
             return "needs_input"
@@ -827,12 +1144,21 @@ async def _resume_for_each_step(agent_id, user_id, blueprint, steps, index, step
     )
 
 
-async def _execute_steps(agent_id, user_id, blueprint, steps, step_results, step_logs, start_index=0):
+async def _execute_steps(agent_id, user_id, blueprint, steps, step_results, step_logs, start_index=0, skipped_step_numbers=None):
     """Runs `steps` starting at `start_index`, mutating `step_results` and
     `step_logs` in place. Returns "success", "failed", or "needs_input" —
     the latter means a step's output looked like a clarifying question, and
     a paused-run context has been stored for resume_agent_workflow to pick
     up later."""
+    if skipped_step_numbers is None:
+        skipped_step_numbers = set()
+    for entry in step_logs:
+        res = entry.get("result")
+        if isinstance(res, dict) and res.get("status") == "skipped":
+            s_num = entry.get("step")
+            if s_num is not None:
+                skipped_step_numbers.add(s_num)
+
     for index in range(start_index, len(steps)):
         step = steps[index]
         step_number = step.get("step_number", index + 1)
@@ -841,6 +1167,30 @@ async def _execute_steps(agent_id, user_id, blueprint, steps, step_results, step
         action = step.get("action", "")
         raw_parameters = dict(step.get("parameters", {}) or {})
         for_each_spec = step.get("for_each")
+        condition = step.get("condition")
+        skip_if_empty = step.get("skip_if_empty")
+
+        # Phase B: Conditional step evaluation & upstream skip cascade
+        should_skip, skip_reason = _evaluate_step_condition(
+            condition=condition,
+            skip_if_empty=skip_if_empty,
+            raw_parameters=raw_parameters,
+            for_each_spec=for_each_spec,
+            step_results=step_results,
+            skipped_step_numbers=skipped_step_numbers,
+        )
+
+        if should_skip:
+            step_results[step_number] = None
+            skipped_step_numbers.add(step_number)
+            step_logs.append(_log_entry(step_number, app, action, route, {"status": "skipped", "reason": skip_reason}))
+            await telemetry_manager.send_log(
+                agent_id,
+                f"Step {step_number} skipped: {skip_reason}",
+                level="info",
+                data={"type": "step_skipped", "step": step_number, "reason": skip_reason},
+            )
+            continue
 
         if route == "ai_generate":
             # Decided purely from blueprint structure — an ai_generate step
@@ -899,6 +1249,21 @@ async def run_agent_workflow(
             await telemetry_manager.send_log(agent_id, f"Agent {agent_id} not found.", level="error")
             return
         _current_trigger_type.set(agent_record.get("trigger_type"))
+        
+        # Record trigger started event for background runs (scheduled or event-triggered)
+        try:
+            trigger_type = agent_record.get("trigger_type") or "on_demand"
+            if trigger_type in ("scheduled", "event_trigger"):
+                from app.services.execution_events import record_trigger_started
+                record_trigger_started(
+                    agent_id=agent_id,
+                    user_id=agent_record.get("user_id") or user_id,
+                    trigger_type=trigger_type,
+                    agent_title=agent_record.get("title") or "Workflow",
+                    run_id=_current_run_id.get(),
+                )
+        except Exception as e:
+            logger.error(f"Error recording trigger started event: {e}")
     except Exception as e:
         traceback.print_exc()
         logger.error(f"Error fetching agent: {e}")
@@ -1000,6 +1365,10 @@ async def resume_agent_workflow(agent_id: str, answer: str):
     await telemetry_manager.send_log(agent_id, f"Resuming with clarification: {answer}", level="info")
 
     step_logs = []
+    skipped_step_numbers = {
+        int(k) for k, v in step_results.items()
+        if v is None and (isinstance(k, int) or (isinstance(k, str) and k.isdigit()))
+    }
     for_each_state = context.get("for_each")
 
     if for_each_state:
@@ -1020,9 +1389,15 @@ async def resume_agent_workflow(agent_id: str, answer: str):
         if outcome == "needs_input":
             return
         if outcome == "success":
-            outcome = await _execute_steps(agent_id, user_id, blueprint, steps, step_results, step_logs, start_index=paused_index + 1)
+            outcome = await _execute_steps(
+                agent_id, user_id, blueprint, steps, step_results, step_logs,
+                start_index=paused_index + 1, skipped_step_numbers=skipped_step_numbers,
+            )
     else:
-        outcome = await _execute_steps(agent_id, user_id, blueprint, steps, step_results, step_logs, start_index=paused_index)
+        outcome = await _execute_steps(
+            agent_id, user_id, blueprint, steps, step_results, step_logs,
+            start_index=paused_index, skipped_step_numbers=skipped_step_numbers,
+        )
         await _maybe_record_learned_fix(step_logs, resumed_step, missing_field, answer)
 
     if outcome == "needs_input":
@@ -1074,7 +1449,15 @@ async def reject_paused_run(agent_id: str, reason: str = "Rejected by user") -> 
         await telemetry_manager.send_log(
             agent_id, f"Step {step_number} rejected by user — skipping (on_failure=skip): {reason}", level="warning",
         )
-        outcome = await _execute_steps(agent_id, user_id, blueprint, steps, step_results, step_logs, start_index=paused_index + 1)
+        skipped_step_numbers = {
+            int(k) for k, v in step_results.items()
+            if v is None and (isinstance(k, int) or (isinstance(k, str) and k.isdigit()))
+        }
+        skipped_step_numbers.add(step_number)
+        outcome = await _execute_steps(
+            agent_id, user_id, blueprint, steps, step_results, step_logs,
+            start_index=paused_index + 1, skipped_step_numbers=skipped_step_numbers,
+        )
         if outcome == "needs_input":
             return
         await _persist_run(agent_id, outcome, step_logs)

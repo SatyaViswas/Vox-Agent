@@ -32,9 +32,12 @@ export const LANGUAGES = [
   { uiCode: "ru", speechCode: "ru-RU", label: "Russian", nativeLabel: "Русский", group: "international" },
 ];
 
-export const DEFAULT_LANGUAGE = LANGUAGES[0]; // English
+export const DEFAULT_LANGUAGE = LANGUAGES.find((l) => l.uiCode === "en") || LANGUAGES[1];
 
 export function getLanguageByUiCode(uiCode) {
+  if (uiCode === "hi") {
+    return LANGUAGES.find((l) => l.uiCode === "hi" && l.speechCode === "hi-IN") || LANGUAGES[0];
+  }
   return LANGUAGES.find((l) => l.uiCode === uiCode) || DEFAULT_LANGUAGE;
 }
 

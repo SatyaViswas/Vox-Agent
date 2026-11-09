@@ -31,18 +31,18 @@ export function LanguageProvider({ children }) {
     setSiteLanguageState(uiCode);
     try {
       localStorage.setItem(STORAGE_KEY, uiCode);
+      const targetLang = getLanguageByUiCode(uiCode);
+      if (targetLang?.speechCode) {
+        localStorage.setItem(VOICE_LANG_STORAGE_KEY, targetLang.speechCode);
+        // Clear override so voice always follows the site language selected in Settings
+        localStorage.removeItem(VOICE_LANG_OVERRIDE_KEY);
+      }
     } catch {
       // ignore
     }
 
-    // Voice mode follows the site language by default — but only until the
-    // user manually overrides the voice picker themselves (tracked below).
     try {
-      const overridden = localStorage.getItem(VOICE_LANG_OVERRIDE_KEY) === "true";
-      if (!overridden) {
-        const speechCode = getLanguageByUiCode(uiCode).speechCode;
-        localStorage.setItem(VOICE_LANG_STORAGE_KEY, speechCode);
-      }
+      window.dispatchEvent(new Event("voxagent_language_changed"));
     } catch {
       // ignore
     }

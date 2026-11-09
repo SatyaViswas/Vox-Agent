@@ -36,40 +36,83 @@ async def execute_browser_action(
             ChatGoogle._cached_get_client = True
             
         llm = ChatGoogle(
-            model="gemini-3.5-flash-lite",
+            model="gemini-3.1-flash-lite",
             api_key=gemini_key
         )
         
         # Setup Browser Context with stored session cookies from Vault if app_name is provided
         storage_state = None
         sensitive_data = None
+        target_url = None
         if app_name:
-            from app.services.vault import get_app_credentials
+            from app.services.vault import get_app_credentials, save_app_credentials
             credentials = get_app_credentials(user_id, app_name)
-            if credentials and "cookies" in credentials:
-                # Playwright expects this exact structure
-                storage_state = credentials
-            elif credentials and (credentials.get("username") or credentials.get("password")):
-                # A portal saved via the App Vault's "web session" form
-                # (name/url/username/password, no cookies) — hand the
-                # username/password to browser_use's own sensitive_data
-                # mechanism so the agent can fill a login form itself. The
-                # LLM only ever sees the placeholder names below, never the
-                # real values (browser_use substitutes them at the browser
-                # layer), so a stored password never enters the model's
-                # context or gets logged.
-                sensitive_data = {
-                    "x_username": credentials.get("username") or "",
-                    "x_password": credentials.get("password") or "",
-                }
-                login_url = credentials.get("url")
-                login_hint = (
-                    f"First navigate to {login_url} and log in" if login_url else "If a login form appears, log in"
-                )
-                task_description = (
-                    f"{login_hint} using the sensitive_data placeholders x_username and x_password. "
-                    f"Then: {task_description}"
-                )
+            if credentials:
+                # 1. Direct url key in credentials
+                target_url = credentials.get("url")
+
+                # 2. Check origins in storage_state
+                if not target_url and credentials.get("origins"):
+                    origins = [o.get("origin") for o in credentials.get("origins", []) if o.get("origin")]
+                    if origins:
+                        target_url = origins[0]
+
+                # 3. Check cookie domains
+                if not target_url and credentials.get("cookies"):
+                    domains = []
+                    for c in credentials.get("cookies", []):
+                        d = (c.get("domain") or "").lstrip(".")
+                        if d and "." in d and d not in domains:
+                            domains.append(d)
+                    app_clean = app_name.lower().replace(" ", "").replace("_", "")
+                    matched = [d for d in domains if app_clean in d.lower()]
+                    if matched:
+                        target_url = f"https://www.{matched[0]}" if not matched[0].startswith("www.") else f"https://{matched[0]}"
+                    elif domains:
+                        target_url = f"https://www.{domains[0]}" if not domains[0].startswith("www.") else f"https://{domains[0]}"
+
+                if target_url and not credentials.get("url"):
+                    credentials["url"] = target_url
+                    try:
+                        save_app_credentials(user_id, app_name, "session_cookie", credentials)
+                    except Exception:
+                        pass
+
+                if "cookies" in credentials:
+                    # Playwright expects this exact structure
+                    storage_state = credentials
+                elif credentials.get("username") or credentials.get("password"):
+                    # A portal saved via the App Vault's "web session" form
+                    # (name/url/username/password, no cookies) — hand the
+                    # username/password to browser_use's own sensitive_data
+                    # mechanism so the agent can fill a login form itself. The
+                    # LLM only ever sees the placeholder names below, never the
+                    # real values (browser_use substitutes them at the browser
+                    # layer), so a stored password never enters the model's
+                    # context or gets logged.
+                    sensitive_data = {
+                        "x_username": credentials.get("username") or "",
+                        "x_password": credentials.get("password") or "",
+                    }
+                    login_hint = (
+                        f"First navigate to {target_url} and log in" if target_url else "If a login form appears, log in"
+                    )
+                    task_description = (
+                        f"{login_hint} using the sensitive_data placeholders x_username and x_password. "
+                        f"Then: {task_description}"
+                    )
+
+        if target_url and not sensitive_data:
+            domain_only = target_url.split("//")[-1].split("/")[0]
+            strict_nav_prompt = (
+                f"TARGET WEBSITE: {target_url}\n"
+                f"STRICT INSTRUCTION: You MUST start by navigating directly to {target_url}. "
+                f"All search, lookup, navigation, product browsing, and data extraction MUST take place strictly on {target_url} (Domain: {domain_only}). "
+                f"NEVER navigate or redirect to a different top-level domain, country domain, or fallback site (for example, do NOT navigate to .com if the target is {domain_only}, and do NOT convert or output prices in foreign currency like USD ($) if {domain_only} uses local currency). "
+                f"Use the authenticated session and inventory directly on {target_url}.\n\n"
+                f"User Task: {task_description}"
+            )
+            task_description = strict_nav_prompt
 
         # Merge manual session_cookies if provided
         if session_cookies and storage_state is None:

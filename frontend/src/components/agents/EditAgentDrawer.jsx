@@ -33,7 +33,8 @@ export default function EditAgentDrawer({ agent, onClose, onSave }) {
   useEffect(() => {
     if (!agent) return;
     setTitle(agent.title || "");
-    setPrompt(agent.original_prompt || "");
+    const initialPrompt = agent.original_prompt || agent.json_blueprint?.original_prompt || agent.title || "";
+    setPrompt(initialPrompt);
     const bp = cloneBlueprint(agent.json_blueprint || { steps: [] });
     setRequireApproval(bp.require_approval !== false); // default true if not set
     setBlueprint(bp);
@@ -103,7 +104,7 @@ export default function EditAgentDrawer({ agent, onClose, onSave }) {
       await onSave({
         title,
         original_prompt: prompt,
-        json_blueprint: { ...blueprint, require_approval: requireApproval },
+        json_blueprint: { ...blueprint, original_prompt: prompt, require_approval: requireApproval },
         trigger_type: triggerType,
         cron_schedule: cronSchedule,
       });

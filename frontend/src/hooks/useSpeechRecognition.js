@@ -30,7 +30,10 @@ export function useSpeechRecognition({ onFinalTranscript, lang = "indic-auto", a
 
   const isSupported =
     typeof window !== "undefined" &&
-    Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+    Boolean(
+      (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ||
+      (window.navigator && (window.navigator.getUserMedia || window.navigator.webkitGetUserMedia))
+    );
 
   const cleanupAudioNodes = useCallback(() => {
     if (vadIntervalRef.current) {
@@ -70,8 +73,14 @@ export function useSpeechRecognition({ onFinalTranscript, lang = "indic-auto", a
   }, [cleanupAudioNodes]);
 
   const start = useCallback(async () => {
+    // Check for Secure Context on mobile
+    if (typeof window !== "undefined" && window.isSecureContext === false && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+      setError("Mobile browsers block microphone on unencrypted HTTP. Please connect via HTTPS (e.g. https://" + location.host + ") or use localhost.");
+      return;
+    }
+
     if (!isSupported) {
-      setError(t("voice.notSupported") || "Microphone recording is not supported in this browser.");
+      setError(t("voice.notSupported") || "Microphone recording is not supported in this browser. Please use HTTPS or a supported mobile browser.");
       return;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -84,27 +93,40 @@ export function useSpeechRecognition({ onFinalTranscript, lang = "indic-auto", a
     audioChunksRef.current = [];
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          sampleRate: 16000,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-      });
+      // Use permissive, mobile-safe audio constraints (avoids OverconstrainedError on iOS Safari)
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        });
+      } catch (constraintErr) {
+        // Fallback to basic audio constraint if specific flags are unsupported
+        console.warn("Retrying getUserMedia with basic audio constraints:", constraintErr);
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
       streamRef.current = stream;
 
-      // Select supported mimeType
-      let mimeType = "audio/webm";
-      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
-        mimeType = "audio/webm;codecs=opus";
-      } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
-        mimeType = "audio/mp4";
-      } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
-        mimeType = "audio/ogg";
+      // Select supported mimeType across Chrome, Android, Safari iOS, etc.
+      let mimeType = "";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+          mimeType = "audio/webm";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+          mimeType = "audio/mp4";
+        } else if (MediaRecorder.isTypeSupported("audio/aac")) {
+          mimeType = "audio/aac";
+        } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+          mimeType = "audio/ogg";
+        }
       }
 
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorderOptions = mimeType ? { mimeType } : undefined;
+      const recorder = new MediaRecorder(stream, recorderOptions);
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
@@ -119,7 +141,8 @@ export function useSpeechRecognition({ onFinalTranscript, lang = "indic-auto", a
           streamRef.current = null;
         }
 
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        const effectiveType = recorder.mimeType || mimeType || "audio/webm";
+        const audioBlob = new Blob(audioChunksRef.current, { type: effectiveType });
         audioChunksRef.current = [];
 
         if (audioBlob.size < 500) {
@@ -133,7 +156,11 @@ export function useSpeechRecognition({ onFinalTranscript, lang = "indic-auto", a
         setInterimTranscript("Transcribing with Gnani Prisma v3.0...");
 
         try {
-          const extension = mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : "webm";
+          const extension = effectiveType.includes("mp4") || effectiveType.includes("aac")
+            ? "mp4"
+            : effectiveType.includes("ogg")
+            ? "ogg"
+            : "webm";
           const result = await transcribeAudio(audioBlob, `speech_input.${extension}`, {
             languageCode: lang,
           });
@@ -163,12 +190,15 @@ export function useSpeechRecognition({ onFinalTranscript, lang = "indic-auto", a
       recorder.start(250); // Slice into 250ms chunks
       setIsRecording(true);
 
-      // Voice Activity Detection (VAD): auto-submits on 1.4s silence after user speaks
+      // Voice Activity Detection (VAD): auto-submits on 1.6s silence after user speaks
       if (autoSilenceStop) {
         try {
           const AudioContextClass = window.AudioContext || window.webkitAudioContext;
           if (AudioContextClass) {
             const audioCtx = new AudioContextClass();
+            if (audioCtx.state === "suspended") {
+              audioCtx.resume().catch(() => {});
+            }
             const source = audioCtx.createMediaStreamSource(stream);
             const analyser = audioCtx.createAnalyser();
             analyser.fftSize = 512;
@@ -193,15 +223,15 @@ export function useSpeechRecognition({ onFinalTranscript, lang = "indic-auto", a
               }
               const rms = Math.sqrt(sum / sampleData.length);
 
-              // RMS threshold for human speech vs background noise
-              if (rms > 0.025) {
+              // RMS threshold for human speech vs background noise (tuned for mobile mics)
+              if (rms > 0.018) {
                 hasSpoken = true;
                 silenceStartTime = null;
               } else if (hasSpoken) {
                 if (silenceStartTime === null) {
                   silenceStartTime = Date.now();
-                } else if (Date.now() - silenceStartTime >= 1400) {
-                  // 1.4s of silence detected after speaking -> auto-submit!
+                } else if (Date.now() - silenceStartTime >= 850) {
+                  // 850ms of silence detected after speaking -> auto-submit!
                   cleanupAudioNodes();
                   stop();
                 }

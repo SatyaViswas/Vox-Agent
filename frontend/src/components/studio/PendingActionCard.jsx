@@ -187,34 +187,34 @@ export default function PendingActionCard({
             <button
               onClick={onApprove}
               disabled={busy || isProcessing}
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white text-sm font-semibold px-4 py-3 sm:py-2 transition-all active:scale-95 shadow-sm"
             >
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
               {t("pendingAction.approve")}
             </button>
             <button
               onClick={onReject}
               disabled={busy || isProcessing}
-              className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-amber-400/50 hover:bg-amber-400/10 disabled:opacity-40 text-amber-700 dark:text-amber-300 text-sm font-medium px-4 py-2 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-amber-400/50 hover:bg-amber-400/10 disabled:opacity-40 text-amber-700 dark:text-amber-300 text-sm font-semibold px-4 py-3 sm:py-2 transition-all active:scale-95"
             >
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />}
               {t("pendingAction.reject")}
             </button>
             <button
               type="button"
               onClick={toggleVoice}
               disabled={busy || isProcessing}
-              className={`flex items-center gap-1.5 rounded-lg text-sm font-medium px-3 py-2 transition-all ${
+              className={`flex items-center gap-1.5 rounded-xl text-sm font-semibold px-3.5 py-3 sm:py-2 transition-all active:scale-95 ${
                 isRecording
-                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
+                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-md"
                   : "bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 border border-amber-400/50"
               }`}
               title="Speak 'Approve' or 'Reject' with Gnani Prisma"
             >
               {isProcessing ? (
-                <Loader2 size={14} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin" />
               ) : (
-                <Mic size={14} className={isRecording ? "animate-bounce" : ""} />
+                <Mic size={16} className={isRecording ? "animate-bounce" : ""} />
               )}
               <span>{isRecording ? "Listening..." : "Voice"}</span>
             </button>
@@ -227,25 +227,51 @@ export default function PendingActionCard({
           )}
         </div>
       ) : inputType === "select" && options?.length ? (
-        <div className="flex flex-wrap gap-2">
-          {options.map((opt) => (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {options.map((opt) => (
+              <button
+                key={opt}
+                onClick={() => onResume(opt)}
+                disabled={busy}
+                className="rounded-lg border border-amber-400/50 hover:bg-amber-400/10 active:scale-95 disabled:opacity-40 text-amber-700 dark:text-amber-300 text-sm font-medium px-4 py-2 transition-all shadow-sm"
+              >
+                {opt}
+              </button>
+            ))}
             <button
-              key={opt}
-              onClick={() => onResume(opt)}
-              disabled={busy}
-              className="rounded-lg border border-amber-400/50 hover:bg-amber-400/10 disabled:opacity-40 text-amber-700 dark:text-amber-300 text-sm font-medium px-4 py-2 transition-colors"
+              type="button"
+              onClick={toggleVoice}
+              disabled={busy || isProcessing}
+              className={`flex items-center gap-1.5 rounded-lg text-sm font-medium px-3 py-2 transition-all active:scale-95 ${
+                isRecording
+                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-md"
+                  : "bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 border border-amber-400/50"
+              }`}
+              title="Speak your choice with Gnani Prisma"
             >
-              {opt}
+              {isProcessing ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Mic size={14} className={isRecording ? "animate-bounce" : ""} />
+              )}
+              <span>{isRecording ? "Listening..." : "Voice"}</span>
             </button>
-          ))}
-          <button
-            type="button"
-            onClick={onReject}
-            disabled={busy}
-            className="flex items-center gap-1.5 rounded-lg border border-red-400/50 hover:bg-red-400/10 disabled:opacity-40 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 transition-colors ml-auto"
-          >
-            <X size={14} /> {t("common.cancel")}
-          </button>
+            <button
+              type="button"
+              onClick={onReject}
+              disabled={busy}
+              className="flex items-center gap-1.5 rounded-lg border border-red-400/50 hover:bg-red-400/10 disabled:opacity-40 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 transition-colors ml-auto"
+            >
+              <X size={14} /> {t("common.cancel")}
+            </button>
+          </div>
+          {isRecording && (
+            <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping inline-block" />
+              <span>Say your choice (e.g. &ldquo;Create New Spreadsheet&rdquo; or &ldquo;Add to Existing Spreadsheet&rdquo;) — stops automatically when you pause.</span>
+            </div>
+          )}
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
@@ -256,7 +282,7 @@ export default function PendingActionCard({
               onChange={(e) => setAnswer(e.target.value)}
               placeholder={isRecording ? "Listening via Gnani Prisma... Speak now" : t("pendingAction.answerPlaceholder")}
               disabled={busy || isProcessing}
-              className={`flex-1 rounded-lg border bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 disabled:opacity-60 transition-colors ${
+              className={`flex-1 rounded-xl border bg-white/70 dark:bg-black/20 px-3.5 py-2.5 text-sm outline-none focus:ring-2 disabled:opacity-60 transition-colors ${
                 isRecording
                   ? "border-amber-500 ring-2 ring-amber-400/50 bg-amber-500/10 text-amber-900 dark:text-amber-100"
                   : "border-amber-400/40 focus:ring-amber-400/50"
@@ -266,9 +292,9 @@ export default function PendingActionCard({
               type="button"
               onClick={toggleVoice}
               disabled={busy || isProcessing}
-              className={`flex items-center gap-1.5 rounded-lg text-sm font-medium px-3 py-2 transition-all shrink-0 ${
+              className={`flex items-center gap-1.5 rounded-xl text-sm font-semibold px-3.5 py-2.5 transition-all shrink-0 active:scale-95 ${
                 isRecording
-                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
+                  ? "bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-md"
                   : "bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 border border-amber-400/50"
               }`}
               title="Speak your answer with Gnani Prisma STT"
@@ -283,7 +309,7 @@ export default function PendingActionCard({
             <button
               type="submit"
               disabled={!answer.trim() || busy || isProcessing}
-              className="flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 transition-colors shrink-0"
+              className="flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2.5 transition-all shrink-0 active:scale-95 shadow-sm"
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
               {busy ? t("pendingAction.resuming") : t("pendingAction.resume")}

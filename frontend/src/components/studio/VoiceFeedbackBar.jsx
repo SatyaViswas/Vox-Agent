@@ -1,6 +1,7 @@
 import React from "react";
 import { Loader2, Sparkles, Square, Volume2, VolumeX } from "lucide-react";
 import { TIMBRE_VOICE_OPTIONS } from "../../hooks/useVoiceFeedback";
+import { useSettings } from "../../context/SettingsContext";
 
 export default function VoiceFeedbackBar({
   enabled,
@@ -11,6 +12,7 @@ export default function VoiceFeedbackBar({
   isLoading,
   onStop,
 }) {
+  const { clonedVoice } = useSettings();
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 rounded-xl bg-slate-900/5 dark:bg-white/5 border border-slate-200/60 dark:border-white/10 text-xs text-slate-600 dark:text-slate-300">
       <div className="flex items-center gap-2">
@@ -38,6 +40,11 @@ export default function VoiceFeedbackBar({
             disabled={!enabled}
             className="bg-transparent font-medium outline-none text-slate-700 dark:text-slate-200 cursor-pointer disabled:opacity-50"
           >
+            {clonedVoice && (
+              <option value="custom-clone" className="dark:bg-slate-900 font-bold text-fuchsia-600 dark:text-fuchsia-400">
+                ✨ My Cloned Voice (Gnani VC)
+              </option>
+            )}
             {TIMBRE_VOICE_OPTIONS.map((opt) => (
               <option key={opt.name} value={opt.name} className="dark:bg-slate-900">
                 {opt.label}

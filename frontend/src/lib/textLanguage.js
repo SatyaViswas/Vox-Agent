@@ -1,13 +1,10 @@
-// Any character outside the printable ASCII range is a strong signal the
-// text isn't plain English (covers all the Indian-regional scripts plus
-// accented/non-Latin international text) — used as a cheap client-side
-// trigger for whether a translate call is worth making at all. Restricted
-// to the printable range (space–tilde) rather than the full byte range so
-// ordinary whitespace/control characters never trigger a false positive.
-const NON_ASCII_RE = /[^ -~\s]/;
+// Unicode block ranges for Indic scripts (Devanagari, Bengali, Gurmukhi, Gujarati, Oriya, Tamil, Telugu, Kannada, Malayalam)
+// Plus Arabic/Persian/Urdu ranges. Deliberately excludes European typographic characters like em-dash (—), curly quotes (‘’), etc.
+const INDIC_AND_NON_LATIN_SCRIPT_RE = /[\u0600-\u06FF\u0900-\u0D7F\u0E00-\u0E7F]/;
 
 export function looksNonEnglish(text) {
-  return NON_ASCII_RE.test(text);
+  if (!text) return false;
+  return INDIC_AND_NON_LATIN_SCRIPT_RE.test(text);
 }
 
 // Whether the translate-before-planning step should run. Deliberately does

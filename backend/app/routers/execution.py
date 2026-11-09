@@ -31,6 +31,7 @@ async def get_paused_runs(x_user_id: Optional[str] = Header(default=None)):
                 "id": row["id"],
                 "question": row["question"],
                 "input_type": row.get("input_type"),
+                "options": row.get("options"),
                 "reconnect_app": (row.get("context_snapshot") or {}).get("reconnect_app"),
                 "reconnect_route": (row.get("context_snapshot") or {}).get("reconnect_route"),
                 "missing_field": (row.get("context_snapshot") or {}).get("missing_field"),
@@ -61,6 +62,9 @@ def _to_public_agent(row: Dict[str, Any]) -> Dict[str, Any]:
     row = dict(row)
     if "is_active" in row:
         row["status"] = "active" if row.pop("is_active") else "paused"
+    if not row.get("original_prompt"):
+        bp = row.get("json_blueprint") or {}
+        row["original_prompt"] = bp.get("original_prompt") or row.get("title") or ""
     return row
 
 
@@ -159,6 +163,9 @@ async def create_agent(request: AgentCreateRequest):
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     payload = request.model_dump()
+    if not payload.get("original_prompt"):
+        bp = payload.get("json_blueprint") or {}
+        payload["original_prompt"] = bp.get("original_prompt") or payload.get("title") or ""
     try:
         response = supabase.table("agents").insert(payload).execute()
         if not response.data:
@@ -408,6 +415,27 @@ async def get_agent_logs(agent_id: str, limit: int = Query(10, le=50), offset: i
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/recent-executions")
+async def get_recent_executions(
+    x_user_id: Optional[str] = Header(default=None),
+    user_id: Optional[str] = Query(default=None),
+    since: Optional[float] = Query(default=None),
+    limit: int = Query(20, le=100),
+):
+    """Returns recent background execution events (both trigger occurrences and workflow execution results)
+    for the requesting user. Used by the web app for real-time notifications and voice announcements."""
+    effective_user_id = x_user_id or user_id
+    from app.services.execution_events import get_recent_execution_events
+    events = get_recent_execution_events(
+        user_id=effective_user_id,
+        since_timestamp=since,
+        limit=limit,
+    )
+    return {
+        "status": "success",
+        "events": events,
+    }
 
 @router.websocket("/ws/telemetry/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):

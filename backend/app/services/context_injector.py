@@ -1,6 +1,18 @@
+import json
+import re
 from typing import Optional, List, Dict, Any
+import numpy as np
 from app.database import supabase
 from app.services.knowledge_ingestion import get_embedding
+
+_CHUNK_PREFIX_RE = re.compile(r"^\[CHUNK:(\d+)/(\d+)\]\n")
+
+def _clean_chunk_content(text: str) -> str:
+    """Strips internal chunk header tag so prompt receives clean business text."""
+    if not text:
+        return ""
+    m = _CHUNK_PREFIX_RE.match(text)
+    return text[m.end():] if m else text
 
 def check_semantic_cache(user_id: str, task_intent: str, threshold: float = 0.95) -> Optional[str]:
     """
@@ -40,85 +52,111 @@ def _retrieve_scoped_context(user_id: str, query_embedding: list, source_names: 
     account, so without this, an automation dedicated to one business can
     surface an unrelated business's content that happens to embed closer to
     a given message. Ranks in Python instead, over just the allowed rows."""
-    import json
-    import numpy as np
-
-    response = (
-        supabase.table("business_knowledge")
-        .select("content, embedding")
-        .eq("user_id", user_id)
-        .in_("source_name", source_names)
-        .execute()
-    )
-    rows = response.data or []
-    if not rows:
+    detailed = retrieve_business_context_detailed(user_id, query_embedding=query_embedding, threshold=threshold, limit=limit, source_names=source_names)
+    if not detailed:
         return ""
-
-    query_vec = np.array(query_embedding, dtype=float)
-    query_norm = np.linalg.norm(query_vec) or 1.0
-
-    scored = []
-    for row in rows:
-        embedding = row.get("embedding")
-        content = row.get("content")
-        if not embedding or not content:
-            continue
-        # PostgREST serializes a pgvector column as a JSON-array-shaped
-        # string (e.g. "[-0.017,0.020,...]"), not a native list.
-        if isinstance(embedding, str):
-            embedding = json.loads(embedding)
-        vec = np.array(embedding, dtype=float)
-        denom = (np.linalg.norm(vec) * query_norm) or 1.0
-        similarity = float(np.dot(query_vec, vec) / denom)
-        if similarity >= threshold:
-            scored.append((similarity, content))
-
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    context_chunks = [content for _similarity, content in scored[:limit]]
+    context_chunks = [
+        f"[{item.get('source_name', 'Business Knowledge')}]\n{item.get('content', '')}"
+        if item.get("source_name")
+        else item.get("content", "")
+        for item in detailed
+    ]
     return "\n\n---\n\n".join(context_chunks)
 
 
+def retrieve_business_context_detailed(
+    user_id: str,
+    task_intent: str = "",
+    query_embedding: Optional[list] = None,
+    threshold: float = 0.45,
+    limit: int = 5,
+    source_names: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Retrieves ranked matching knowledge chunks with metadata (source_name, similarity, content)."""
+    if not supabase:
+        return []
+
+    import json
+    import numpy as np
+
+    try:
+        if query_embedding is None:
+            if not task_intent:
+                return []
+            query_embedding = get_embedding(task_intent)
+
+        # 1. Fetch relevant rows from Supabase
+        query = supabase.table("business_knowledge").select("id, content, embedding, source_name").eq("user_id", user_id)
+        if source_names:
+            query = query.in_("source_name", source_names)
+        
+        response = query.execute()
+        rows = response.data or []
+        if not rows:
+            return []
+
+        query_vec = np.array(query_embedding, dtype=float)
+        query_norm = np.linalg.norm(query_vec) or 1.0
+
+        scored = []
+        for row in rows:
+            embedding = row.get("embedding")
+            content = row.get("content")
+            if not embedding or not content:
+                continue
+            if isinstance(embedding, str):
+                try:
+                    embedding = json.loads(embedding)
+                except Exception:
+                    continue
+            vec = np.array(embedding, dtype=float)
+            denom = (np.linalg.norm(vec) * query_norm) or 1.0
+            similarity = float(np.dot(query_vec, vec) / denom)
+            if similarity >= threshold:
+                clean_content = _clean_chunk_content(content)
+                scored.append({
+                    "id": row.get("id"),
+                    "source_name": row.get("source_name", "Business Knowledge"),
+                    "content": clean_content,
+                    "similarity": round(similarity, 4),
+                })
+
+        scored.sort(key=lambda x: x["similarity"], reverse=True)
+        return scored[:limit]
+    except Exception as e:
+        print(f"Error in retrieve_business_context_detailed: {e}")
+        return []
+
+
 def retrieve_business_context(
-    user_id: str, task_intent: str, threshold: float = 0.7, limit: int = 5, source_names: Optional[List[str]] = None
+    user_id: str, task_intent: str, threshold: float = 0.5, limit: int = 5, source_names: Optional[List[str]] = None
 ) -> str:
     """
     Retrieves relevant business knowledge chunks based on the task intent.
 
     `source_names`, when given, restricts the search to only those knowledge
-    sources — see `_retrieve_scoped_context`. Omit it to search the user's
-    entire knowledge hub via the pgvector RPC (the original, unscoped path).
+    sources — see `_retrieve_scoped_context`.
     """
     if not supabase:
         return ""
 
-    try:
-        query_embedding = get_embedding(task_intent)
-
-        if source_names:
-            return _retrieve_scoped_context(user_id, query_embedding, source_names, threshold, limit)
-
-        # Call the Supabase RPC function
-        response = supabase.rpc(
-            "match_business_knowledge",
-            {
-                "query_embedding": query_embedding,
-                "match_user_id": user_id,
-                "match_threshold": threshold,
-                "match_count": limit
-            }
-        ).execute()
-
-        data = response.data
-        if not data:
-            return ""
-
-        # Combine the retrieved chunks into a single context string
-        context_chunks = [item.get("content") for item in data if item.get("content")]
-        return "\n\n---\n\n".join(context_chunks)
-
-    except Exception as e:
-        print(f"Error retrieving business context: {str(e)}")
+    detailed = retrieve_business_context_detailed(
+        user_id=user_id,
+        task_intent=task_intent,
+        threshold=threshold,
+        limit=limit,
+        source_names=source_names,
+    )
+    if not detailed:
         return ""
+
+    context_chunks = [
+        f"[{item.get('source_name', 'Business Knowledge')}]\n{item.get('content', '')}"
+        if item.get("source_name")
+        else item.get("content", "")
+        for item in detailed
+    ]
+    return "\n\n---\n\n".join(context_chunks)
 
 def save_to_semantic_cache(user_id: str, task_intent: str, llm_output: str) -> bool:
     """

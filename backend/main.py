@@ -2,10 +2,11 @@ import os
 import sys
 from pathlib import Path
 
-# Explicitly prepend the project's local venv/bin path so subprocesses can locate 'playwright'
+# Prepend project's venv/bin and standard Homebrew/Unix paths for ffmpeg and playwright
 venv_bin = str(Path(__file__).parent / "venv" / "bin")
-if venv_bin not in os.environ.get("PATH", ""):
-    os.environ["PATH"] = f"{venv_bin}{os.pathsep}{os.environ.get('PATH', '')}"
+for extra_p in ["/opt/homebrew/bin", "/usr/local/bin", venv_bin]:
+    if extra_p not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = f"{extra_p}{os.pathsep}{os.environ.get('PATH', '')}"
 
 import traceback
 from fastapi import FastAPI

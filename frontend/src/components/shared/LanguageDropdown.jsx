@@ -71,7 +71,7 @@ export default function LanguageDropdown({
 
       {open && (
         <div
-          className={`absolute z-50 mt-2 w-64 max-h-80 overflow-y-auto glass-panel p-2 shadow-xl ${
+          className={`absolute z-50 mt-2 w-64 max-w-[calc(100vw-1.5rem)] max-h-72 overflow-y-auto glass-panel p-2 shadow-2xl rounded-2xl border border-slate-200/80 dark:border-white/10 ${
             align === "right" ? "right-0" : "left-0"
           }`}
         >

@@ -3,8 +3,14 @@ from fastapi import APIRouter, UploadFile, File, Form, Header, HTTPException
 from pydantic import BaseModel
 from app.schemas.blueprint import PlanRequest, WorkflowBlueprint
 from app.services.planner import generate_blueprint
+from app.services.composio_engine import enrich_blueprint_with_connected_resources
 from app.services.transcriber import transcribe_audio, transcribe_audio_detailed
 from app.services.disambiguation import resolve_disambiguation
+from app.services.voice_assistant import (
+    VoiceAssistantContext,
+    VoiceAssistantIntentResult,
+    resolve_voice_intent,
+)
 
 router = APIRouter(tags=["planner"])
 
@@ -23,10 +29,13 @@ class DisambiguationResolveResponse(BaseModel):
     spoken_acknowledgement: str
 
 @router.post("/plan", response_model=WorkflowBlueprint)
-def plan_workflow(request: PlanRequest):
+async def plan_workflow(request: PlanRequest):
     try:
-        blueprint = generate_blueprint(request.prompt)
-        return blueprint
+        blueprint = generate_blueprint(request.prompt, current_blueprint=request.current_blueprint)
+        user_id = request.user_id or "00000000-0000-0000-0000-000000000000"
+        bp_dict = blueprint.model_dump()
+        enriched_dict = await enrich_blueprint_with_connected_resources(bp_dict, user_id=user_id)
+        return WorkflowBlueprint(**enriched_dict)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -73,7 +82,10 @@ async def voice_plan(
         
         # Now use the transcript to generate a blueprint
         blueprint = generate_blueprint(transcript)
-        return blueprint
+        user_id = x_user_id or "00000000-0000-0000-0000-000000000000"
+        bp_dict = blueprint.model_dump()
+        enriched_dict = await enrich_blueprint_with_connected_resources(bp_dict, user_id=user_id)
+        return WorkflowBlueprint(**enriched_dict)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -89,3 +101,19 @@ def resolve_disambig(request: DisambiguationResolveRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class VoiceAssistantIntentRequest(BaseModel):
+    spoken_text: str
+    context: Optional[VoiceAssistantContext] = None
+    language: Optional[str] = "en"
+
+
+@router.post("/voice-assistant/intent", response_model=VoiceAssistantIntentResult)
+def voice_assistant_intent(request: VoiceAssistantIntentRequest):
+    try:
+        ctx = request.context or VoiceAssistantContext()
+        return resolve_voice_intent(request.spoken_text, ctx, language=request.language or "en")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

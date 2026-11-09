@@ -18,9 +18,10 @@ The backend of VoxAgent AI is a Python-based FastAPI service that runs the Tripl
 ## 💻 Tech Stack
 *   **Web Framework:** FastAPI + Uvicorn
 *   **Database:** Supabase PostgreSQL Client (`supabase-py`)
-*   **AI Models:** Google Gemini 1.5/2.0 Flash (Core Planner), Groq Llama-3.3 (Self-Healing Repair)
-*   **Integrations:** Composio SDK (250+ standard APIs), Playwright + `browser-use` (GUI automation)
-*   **Task Scheduling:** APScheduler
+*   **Voice Intelligence:** Gnani AI SDK (Prisma v3.0 ASR, Timbre v3.0 Streaming Expressive TTS, Speaker Embedding Voice Cloning)
+*   **AI Models:** Google Gemini 2.0 Flash / 1.5 Pro (Core Planner), Groq Llama-3.3 (Self-Healing Repair)
+*   **Integrations:** Composio SDK (250+ standard APIs), Playwright Stealth + `browser-use` (GUI automation)
+*   **Task Scheduling & Triggers:** APScheduler (Cron tasks), Telethon (Telegram Client Engine), Webhooks
 
 ---
 
@@ -80,7 +81,9 @@ Follow these steps to set up the backend service locally:
 | `GEMINI_API_KEY` | Google Gemini API key. Powers the workflow planner and browser agent engines. | **Yes** |
 | `SUPABASE_URL` | The URL of your Supabase project (from Settings > API). | **Yes** |
 | `SUPABASE_SERVICE_ROLE_KEY` | The privileged service role secret (do not expose this key). | **Yes** |
-| `COMPOSIO_API_KEY` | Key for Composio SDK integration (1000+ third-party tools). | **Yes** |
+| `COMPOSIO_API_KEY` | Key for Composio SDK integration (250+ third-party tools). | **Yes** |
+| `GNANI_API_KEY` | Gnani AI API key. Powers Prisma v3.0 ASR, Timbre v3.0 Expressive TTS, and Voice Cloning. | **Yes (Voice)** |
+| `GNANI_BASE_URL` | Gnani AI API base endpoint (default: `https://api.vachana.ai`). | Optional |
 | `GROQ_API_KEY` | Groq API key. Powers the Llama-3.3 repair engine for MutAgent self-healing. | Optional |
 | `TELEGRAM_API_ID` | Telegram Client API ID (from my.telegram.org) for automated chat logins. | Optional |
 | `TELEGRAM_API_HASH` | Telegram Client API Hash. | Optional |
@@ -100,16 +103,24 @@ Follow these steps to set up the backend service locally:
 │   ├── database.py           # Supabase DB client initializer
 │   ├── routers/              # FastAPI API endpoints
 │   │   ├── auth.py           # User authentication routes
-│   │   ├── execution.py      # Agent setup, deletion, and manual execution triggers
-│   │   ├── planner.py        # Generation of executable JSON blueprints
+│   │   ├── execution.py      # Agent setup, deletion, logs, and /recent-executions background notifications
+│   │   ├── planner.py        # Generation of executable JSON blueprints & voice transcription
 │   │   ├── vault.py          # connected_apps credentials and vault_notes endpoints
-│   │   └── knowledge.py      # RAG-based business knowledge ingestion routes
+│   │   ├── knowledge.py      # RAG-based business knowledge ingestion & audio transcription routes
+│   │   ├── translate.py      # Multilingual IndicTrans2 and text translation endpoints
+│   │   └── tts.py            # Gnani Timbre streaming TTS and speech endpoints
 │   ├── schemas/              # Pydantic schemas for request/response validation
 │   └── services/             # Core orchestration logic
-│       ├── orchestrator.py   # Primary workflow execution loop
-│       ├── composio_engine.py# Composio tool integration handler
-│       ├── browser_agent.py  # Playwright & browser-use GUI agent handler
-│       ├── knowledge_ingestion.py # File parsing (PDF/CSV/HTML) and vector embedding
+│       ├── orchestrator.py   # Primary workflow execution loop & step runner
+│       ├── gnani_service.py  # Gnani AI Prisma STT, Timbre TTS & voice cloning client
+│       ├── asr_context.py    # Dynamic user entity booster for Prisma v3.0 STT
+│       ├── disambiguation.py # Conversational voice disambiguation & Hinglish entity extractor
+│       ├── execution_events.py# Real-time background execution event ring buffer & persister
+│       ├── composio_engine.py# Composio tool integration handler & self-healing sheet creator
+│       ├── browser_engine.py # Playwright Stealth & browser-use GUI agent handler
+│       ├── browser_login_engine.py # Interactive remote browser session manager
+│       ├── telegram_client_engine.py # Telethon personal Telegram listener & sender
+│       ├── knowledge_ingestion.py # File parsing (PDF/CSV/Audio) and vector embedding
 │       ├── context_injector.py   # Semantic similarity context ranker for RAG
 │       └── mutagent/         # MutAgent self-healing engine modules
 ```

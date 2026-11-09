@@ -8,6 +8,16 @@ from app.config import settings
 from composio import Composio
 from google import genai
 from google.genai import types as genai_types
+from app.services.resource_matcher import (
+    calculate_resource_similarity,
+    find_closest_resource_match,
+    find_closest_resource_item,
+)
+from app.services.parameter_normalizer import (
+    normalize_datetime_value,
+    unwrap_dict_for_field,
+    _DATETIME_PARAM_KEYWORDS,
+)
 
 # Initialize Composio safely
 composio = None
@@ -46,6 +56,33 @@ def toolkit_exists(app_slug: str) -> bool:
 # with planner.py's client since the two have no other coupling.
 _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else None
 
+FALLBACK_GEMINI_MODELS = [
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3-flash-preview",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+]
+
+def _gemini_generate_with_fallback(contents, config=None):
+    if not _gemini_client:
+        return None
+    last_err = None
+    for model_name in FALLBACK_GEMINI_MODELS:
+        try:
+            return _gemini_client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=config,
+            )
+        except Exception as e:
+            last_err = e
+            continue
+    if last_err:
+        raise last_err
+    return None
+
 GUEST_USER_ID = "00000000-0000-0000-0000-000000000000"
 
 GMAIL_SEND_ACTION_SLUG = "GMAIL_SEND_EMAIL"  # the real Composio tool slug — "GMAIL_SEND_AN_EMAIL" does not exist
@@ -58,6 +95,90 @@ GMAIL_ACTION_ALIASES = {
     "SEARCH": "GMAIL_FETCH_EMAILS",
     "LIST_MESSAGES": "GMAIL_FETCH_EMAILS",
     "GMAIL_LIST_MESSAGES": "GMAIL_FETCH_EMAILS",
+    "GET_MESSAGE": "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+    "GET_MESSAGE_CONTENT": "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+    "GMAIL_GET_MESSAGE_CONTENT": "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+    "GMAIL_GET_MESSAGE": "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+}
+
+COMMON_ACTION_ALIASES = {
+    # Gmail
+    **GMAIL_ACTION_ALIASES,
+    "GMAIL_SEND_AN_EMAIL": "GMAIL_SEND_EMAIL",
+
+    # GitHub
+    "GITHUB_LIST_NOTIFICATIONS": "GITHUB_LIST_NOTIFICATIONS",
+    "GITHUB_LIST_NOTIFICATIONS_FOR_AUTHENTICATED_USER": "GITHUB_LIST_NOTIFICATIONS",
+    "GITHUB_LIST_NOTIFICATIONS_FOR_THE_AUTHENTICATED_USER": "GITHUB_LIST_NOTIFICATIONS",
+    "GITHUB_GET_NOTIFICATIONS": "GITHUB_LIST_NOTIFICATIONS",
+    "GITHUB_CHECK_NOTIFICATIONS": "GITHUB_LIST_NOTIFICATIONS",
+    "GITHUB_FETCH_NOTIFICATIONS": "GITHUB_LIST_NOTIFICATIONS",
+    "GITHUB_LIST_USER_NOTIFICATIONS": "GITHUB_LIST_NOTIFICATIONS",
+    "GITHUB_LIST_ISSUES": "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS",
+    "GITHUB_GET_ISSUES": "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS",
+    "GITHUB_FETCH_ISSUES": "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS",
+    "GITHUB_SEARCH_ISSUES": "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS",
+    "GITHUB_FIND_ISSUES": "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS",
+    "GITHUB_CHECK_ISSUES": "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS",
+    "GITHUB_LIST_REPOS": "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+    "GITHUB_LIST_REPOSITORIES": "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+    "GITHUB_GET_REPOSITORIES": "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+    "GITHUB_GET_USER_REPOSITORIES": "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+    "GITHUB_CREATE_ISSUE": "GITHUB_CREATE_AN_ISSUE",
+    "GITHUB_POST_ISSUE": "GITHUB_CREATE_AN_ISSUE",
+    "GITHUB_CREATE_ISSUE_COMMENT": "GITHUB_CREATE_AN_ISSUE_COMMENT",
+    "GITHUB_ADD_COMMENT": "GITHUB_CREATE_AN_ISSUE_COMMENT",
+    "GITHUB_GET_ABOUT_THE_AUTHENTICATED_USER": "GITHUB_GET_THE_AUTHENTICATED_USER",
+
+    # Google Calendar
+    "GOOGLECALENDAR_GET_SCHEDULE": "GOOGLECALENDAR_FIND_EVENT",
+    "GOOGLECALENDAR_CHECK_SCHEDULE": "GOOGLECALENDAR_FIND_EVENT",
+    "GOOGLECALENDAR_LIST_EVENTS": "GOOGLECALENDAR_FIND_EVENT",
+    "GOOGLECALENDAR_GET_EVENTS": "GOOGLECALENDAR_FIND_EVENT",
+    "GOOGLECALENDAR_GET_TOMORROW_SCHEDULE": "GOOGLECALENDAR_FIND_EVENT",
+    "GOOGLECALENDAR_GET_TODAY_SCHEDULE": "GOOGLECALENDAR_FIND_EVENT",
+    "GOOGLECALENDAR_FETCH_EVENTS": "GOOGLECALENDAR_FIND_EVENT",
+    "GOOGLECALENDAR_SEARCH_EVENTS": "GOOGLECALENDAR_FIND_EVENT",
+    "GOOGLECALENDAR_SCHEDULE_EVENT": "GOOGLECALENDAR_CREATE_EVENT",
+    "GOOGLECALENDAR_ADD_EVENT": "GOOGLECALENDAR_CREATE_EVENT",
+
+    # Google Sheets
+    "GOOGLESHEETS_APPEND_ROW": "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+    "GOOGLESHEETS_ADD_ROW": "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+    "GOOGLESHEETS_ADD_ROWS": "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+    "GOOGLESHEETS_APPEND_ROWS": "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+    "GOOGLESHEETS_INSERT_ROW": "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+    "GOOGLESHEETS_VALUES_APPEND": "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
+    "GOOGLESHEETS_GET_ROW": "GOOGLESHEETS_BATCH_GET",
+    "GOOGLESHEETS_GET_ROWS": "GOOGLESHEETS_BATCH_GET",
+    "GOOGLESHEETS_READ_SHEET": "GOOGLESHEETS_BATCH_GET",
+    "GOOGLESHEETS_READ_ROWS": "GOOGLESHEETS_BATCH_GET",
+    "GOOGLESHEETS_GET_SPREADSHEET_VALUES": "GOOGLESHEETS_BATCH_GET",
+    "GOOGLESHEETS_GET_SHEET_VALUES": "GOOGLESHEETS_BATCH_GET",
+    "GOOGLESHEETS_FIND_ROW": "GOOGLESHEETS_LOOKUP_SPREADSHEET_ROW",
+    "GOOGLESHEETS_SEARCH_ROW": "GOOGLESHEETS_LOOKUP_SPREADSHEET_ROW",
+
+    # Slack
+    "SLACK_POST_MESSAGE": "SLACK_SEND_MESSAGE",
+    "SLACK_SEND_MSG": "SLACK_SEND_MESSAGE",
+    "SLACK_WRITE_MESSAGE": "SLACK_SEND_MESSAGE",
+
+    # Notion
+    "NOTION_ADD_PAGE": "NOTION_CREATE_NOTION_PAGE",
+    "NOTION_CREATE_PAGE": "NOTION_CREATE_NOTION_PAGE",
+    "NOTION_SEARCH_PAGES": "NOTION_SEARCH_NOTION_PAGE",
+    "NOTION_FIND_PAGE": "NOTION_SEARCH_NOTION_PAGE",
+
+    # Google Drive
+    "GOOGLEDRIVE_SEARCH_FILES": "GOOGLEDRIVE_FIND_FILE",
+    "GOOGLEDRIVE_SEARCH_FILE": "GOOGLEDRIVE_FIND_FILE",
+    "GOOGLEDRIVE_GET_FILES": "GOOGLEDRIVE_LIST_FILES",
+    "GOOGLEDRIVE_SEARCH": "GOOGLEDRIVE_FIND_FILE",
+
+    # YouTube
+    "YOUTUBE_SEARCH_VIDEOS": "YOUTUBE_SEARCH_YOU_TUBE",
+    "YOUTUBE_SEARCH_VIDEO": "YOUTUBE_SEARCH_YOU_TUBE",
+    "YOUTUBE_FIND_VIDEOS": "YOUTUBE_SEARCH_YOU_TUBE",
 }
 
 # Generic, app-agnostic English synonym groups used by
@@ -81,6 +202,7 @@ _GENERIC_PARAM_SYNONYM_BUCKETS = [
     {"message", "content", "text", "body", "text_body", "message_text", "description", "commentary"},
     {"rows", "row", "values", "value", "data", "items", "records", "entries"},
     {"subject", "title", "heading", "summary"},
+    {"query", "q", "search", "search_query", "filter", "search_term"},
 ]
 
 
@@ -142,7 +264,7 @@ def _synonym_bucket_for_tokens(tokens: set) -> set | None:
     return None
 
 
-def _coerce_value_type(value, prop_schema: dict):
+def _coerce_value_type(value, prop_schema: dict, prop_name: str = ""):
     """Loosely aligns a value's type with what the schema declares — planner
     output is JSON but LLMs don't always match declared types exactly.
 
@@ -174,16 +296,10 @@ def _coerce_value_type(value, prop_schema: dict):
         is_nested_array = isinstance(items_schema, dict) and items_schema.get("type") == "array"
 
         if isinstance(value, list):
-            # A batch call passing a whole prior step's result directly
-            # (e.g. "rows": "{{step_1_result}}" — 5 AI-generated captions,
-            # one call instead of 5 for_each calls) hands a flat list of
-            # scalars/dicts where the schema wants one row PER element, not
-            # one flat row. Only reshape when every element still needs it
-            # (a plain flat list of strings/numbers, or a list of dicts);
-            # a list that's already row-shaped (elements are themselves
-            # lists) passes through untouched.
             if is_nested_array and value and not any(isinstance(v, list) for v in value):
-                return [list(v.values()) if isinstance(v, dict) else [v] for v in value]
+                if any(isinstance(v, dict) for v in value):
+                    return [list(v.values()) if isinstance(v, dict) else [v] for v in value]
+                return [value]
             return value
 
         if isinstance(value, dict):
@@ -193,8 +309,30 @@ def _coerce_value_type(value, prop_schema: dict):
             return [[value]]
         return [value]
 
+    # Handle dictionary passed to scalar/string field (e.g. {{trigger_data}} mapped to recipient_email)
+    if isinstance(value, dict) and "array" not in types:
+        unwrapped = unwrap_dict_for_field(prop_name, value)
+        if unwrapped is not None:
+            value = unwrapped
+        elif "string" in types or not types or types == [None]:
+            value = json.dumps(value)
+
     if not isinstance(value, str):
         return value
+
+    # Datetime normalization for date/time schema properties (Google Calendar, Tasks, Notion, Linear, etc.)
+    prop_k_clean = re.sub(r"[^a-z0-9_]", "", prop_name.lower())
+    desc = str(prop_schema.get("description") or "").lower()
+    if (
+        prop_k_clean in _DATETIME_PARAM_KEYWORDS
+        or any(k in prop_k_clean for k in ("time", "date", "due", "since", "until", "timestamp"))
+        or any(w in desc for w in ("rfc3339", "iso 8601", "iso8601", "date-time", "datetime"))
+    ):
+        is_end = any(term in prop_k_clean for term in ("max", "end", "until", "before", "to"))
+        norm_dt = normalize_datetime_value(value, is_end_bound=is_end)
+        if norm_dt:
+            return norm_dt
+
     if "integer" in types:
         try:
             return int(value)
@@ -275,7 +413,71 @@ def _normalize_parameters_via_schema(action_name: str, parameters: dict) -> dict
     normalized = {}
     for key, value in (parameters or {}).items():
         final_key = _resolve_schema_key(properties, key) or key
-        normalized[final_key] = _coerce_value_type(value, properties.get(final_key, {}))
+        normalized[final_key] = _coerce_value_type(value, properties.get(final_key, {}), prop_name=final_key)
+
+    # Smart parameter normalization & defaults for common SaaS tools
+    act_upper = (action_name or "").upper()
+
+    # 1. GitHub Issue Searches & Queries
+    if "GITHUB" in act_upper and "SEARCH_ISSUES" in act_upper:
+        if "q" not in normalized or not str(normalized.get("q") or "").strip():
+            q_parts = ["is:issue"]
+            state = parameters.get("state") or parameters.get("status")
+            if state and str(state).lower() in ("open", "closed"):
+                q_parts.append(f"state:{str(state).lower()}")
+            else:
+                q_parts.append("state:open")
+
+            custom_query = parameters.get("query") or parameters.get("filter") or parameters.get("search")
+            if custom_query and isinstance(custom_query, str) and custom_query.strip():
+                q_parts.append(custom_query.strip())
+            else:
+                q_parts.append("involves:@me")
+
+            normalized["q"] = " ".join(q_parts)
+
+        if "sort" in properties and "sort" not in normalized:
+            normalized["sort"] = "updated"
+        if "order" in properties and "order" not in normalized:
+            normalized["order"] = "desc"
+
+    # 2. Google Sheets Appends & Reads
+    if "GOOGLESHEETS" in act_upper:
+        if "spreadsheetId" in properties and "spreadsheetId" not in normalized:
+            for alt_k in ("spreadsheet_name", "spreadsheet_id", "sheet_id", "spreadsheet", "sheet_name", "doc_id", "file_id"):
+                if alt_k in parameters:
+                    val = parameters[alt_k]
+                    if isinstance(val, dict):
+                        unwrapped_val = unwrap_dict_for_field("spreadsheetId", val) or val.get("spreadsheetId") or val.get("id")
+                        if unwrapped_val:
+                            val = unwrapped_val
+                    if val and str(val).strip():
+                        normalized["spreadsheetId"] = val
+                        break
+        if "CREATE" in act_upper:
+            if "title" in properties and "title" not in normalized:
+                for alt_k in ("spreadsheet_name", "sheet_name", "name", "spreadsheet_title", "title", "filename"):
+                    if alt_k in parameters and str(parameters[alt_k]).strip():
+                        normalized["title"] = parameters[alt_k]
+                        break
+        if "APPEND" in act_upper:
+            if "valueInputOption" in properties and "valueInputOption" not in normalized:
+                normalized["valueInputOption"] = "USER_ENTERED"
+            if "range" in properties and "range" not in normalized:
+                normalized["range"] = "A1"
+            # Ensure row/data mapped to values
+            if "values" not in normalized:
+                for alt_k in ("row", "rows", "data", "row_data", "items"):
+                    if alt_k in parameters:
+                        normalized["values"] = _coerce_value_type(parameters[alt_k], properties.get("values", {}), prop_name="values")
+                        break
+
+    # 3. Google Calendar
+    if "GOOGLECALENDAR" in act_upper:
+        if "calendarId" in properties and "calendarId" not in normalized and "calendar_id" not in normalized:
+            normalized["calendarId"] = "primary"
+        elif "calendar_id" in properties and "calendar_id" not in normalized and "calendarId" not in normalized:
+            normalized["calendar_id"] = "primary"
 
     return normalized
 
@@ -309,7 +511,8 @@ def find_array_batch_param(app: str, action: str, item_keys: list) -> str | None
 
 def _normalize_gmail_action(action_name: str) -> str:
     """Map common Gmail action aliases onto the standard Composio action slug."""
-    return GMAIL_ACTION_ALIASES.get(action_name, action_name)
+    clean = (action_name or "").upper().strip()
+    return COMMON_ACTION_ALIASES.get(clean, GMAIL_ACTION_ALIASES.get(clean, clean))
 
 
 _resolved_action_cache: dict = {}
@@ -328,42 +531,72 @@ def _resolve_action_slug(app: str, action_name: str) -> str:
     instead — the same "ask Composio what's actually there" approach already
     used for parameter alignment (_normalize_parameters_via_schema).
     """
-    if action_name in _resolved_action_cache:
-        return _resolved_action_cache[action_name]
-    if not composio:
-        return action_name
+    clean_action = (action_name or "").upper().strip()
+    if clean_action in _resolved_action_cache:
+        return _resolved_action_cache[clean_action]
 
-    if _get_action_schema(action_name):
+    # 1. Check comprehensive alias registry first (0ms, 100% deterministic)
+    if clean_action in COMMON_ACTION_ALIASES:
+        resolved = COMMON_ACTION_ALIASES[clean_action]
+        _resolved_action_cache[clean_action] = resolved
+        return resolved
+
+    if not composio:
+        return clean_action
+
+    if _get_action_schema(clean_action):
         # The guess is already a real tool — nothing to resolve.
-        _resolved_action_cache[action_name] = action_name
-        return action_name
+        _resolved_action_cache[clean_action] = clean_action
+        return clean_action
 
     toolkit_slug = slugify_app_name(app)
-    search_words = action_name.replace("_", " ").strip()
+
+    # 2. Search tools in toolkit without the app prefix
+    # e.g. "GITHUB_LIST_NOTIFICATIONS_FOR_USER" -> search="LIST NOTIFICATIONS FOR USER"
+    prefix = toolkit_slug.replace("-", "").replace("_", "").lower()
+    parts = clean_action.split("_")
+    if parts and parts[0].lower() == prefix:
+        search_words = " ".join(parts[1:]).strip()
+    else:
+        search_words = clean_action.replace("_", " ").strip()
+
     try:
-        candidates = composio.tools.get_raw_composio_tools(toolkits=[toolkit_slug], search=search_words, limit=8)
+        candidates = composio.tools.get_raw_composio_tools(toolkits=[toolkit_slug], search=search_words, limit=10)
+        if not candidates and " " in search_words:
+            # Fall back to searching significant words (excluding filler verbs)
+            core_words = [w for w in parts[1:] if w.lower() not in ("get", "list", "fetch", "check", "the", "a", "an")]
+            if core_words:
+                candidates = composio.tools.get_raw_composio_tools(toolkits=[toolkit_slug], search=" ".join(core_words), limit=10)
         if not candidates:
             candidates = composio.tools.get_raw_composio_tools(toolkits=[toolkit_slug], limit=40)
     except Exception as e:
         traceback.print_exc()
-        print(f"Warning: Failed to search tools for toolkit '{toolkit_slug}' while resolving '{action_name}': {e}")
-        _resolved_action_cache[action_name] = action_name
-        return action_name
+        print(f"Warning: Failed to search tools for toolkit '{toolkit_slug}' while resolving '{clean_action}': {e}")
+        _resolved_action_cache[clean_action] = clean_action
+        return clean_action
 
     if not candidates:
-        _resolved_action_cache[action_name] = action_name
-        return action_name
+        _resolved_action_cache[clean_action] = clean_action
+        return clean_action
 
-    # Composio's own search ranking is keyword-based and unreliable for this
-    # (it can rank e.g. "ADD_SHEET" above the real "append a row of data"
-    # tool just because both contain "ADD") — a real tool's own description
-    # says what it actually does, so let a focused AI call pick from the
-    # shortlist by intent rather than trusting search order or string
-    # similarity. Falls back to the top search result if that call fails.
-    resolved_name = _pick_best_action_via_ai(action_name, candidates) or candidates[0].slug
-    if resolved_name != action_name:
-        print(f"Info: Resolved guessed action '{action_name}' to real tool '{resolved_name}' for toolkit '{toolkit_slug}'.")
-    _resolved_action_cache[action_name] = resolved_name
+    # 3. Disambiguate via AI by intent from real tool descriptions
+    resolved_name = _pick_best_action_via_ai(clean_action, candidates)
+    if not resolved_name:
+        # Check if any candidate has word overlap before arbitrarily falling back to candidates[0]
+        action_words = set(w.lower() for w in parts if len(w) > 2)
+        best_cand = None
+        best_overlap = 0
+        for c in candidates:
+            c_words = set(w.lower() for w in c.slug.split("_") if len(w) > 2)
+            overlap = len(action_words & c_words)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_cand = c.slug
+        resolved_name = best_cand or candidates[0].slug
+
+    if resolved_name != clean_action:
+        print(f"Info: Resolved guessed action '{clean_action}' to real tool '{resolved_name}' for toolkit '{toolkit_slug}'.")
+    _resolved_action_cache[clean_action] = resolved_name
     return resolved_name
 
 
@@ -382,12 +615,11 @@ def _pick_best_action_via_ai(guessed_action: str, candidates: list) -> str | Non
         "nothing else. If none of them are a reasonable match, respond with NONE."
     )
     try:
-        response = _gemini_client.models.generate_content(
-            model='gemini-3.5-flash-lite',
+        response = _gemini_generate_with_fallback(
             contents=[genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])],
             config=genai_types.GenerateContentConfig(temperature=0.0),
         )
-        picked = (response.text or "").strip().strip('"').strip()
+        picked = (response.text or "").strip().strip('"').strip() if response else None
     except Exception as e:
         traceback.print_exc()
         print(f"Warning: AI action-resolution call failed for '{guessed_action}': {e}")
@@ -411,12 +643,11 @@ def ai_pick_best_match(context: str, candidates: list) -> str | None:
     listing = "\n".join(f"- {slug}: {(desc or '')[:220]}" for slug, desc in candidates)
     prompt = f"{context}\n\nOptions:\n{listing}\n\nRespond with ONLY the single best slug, nothing else. If none fit, respond NONE."
     try:
-        response = _gemini_client.models.generate_content(
-            model='gemini-3.5-flash-lite',
+        response = _gemini_generate_with_fallback(
             contents=[genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])],
             config=genai_types.GenerateContentConfig(temperature=0.0),
         )
-        picked = (response.text or "").strip().strip('"').strip()
+        picked = (response.text or "").strip().strip('"').strip() if response else None
     except Exception as e:
         traceback.print_exc()
         print(f"Warning: AI disambiguation call failed: {e}")
@@ -448,12 +679,11 @@ def ai_content_matches_condition(condition: str, content: str) -> bool:
         "\"NEW LEAD\", etc.) rather than requiring an exact literal match. Respond with ONLY YES or NO."
     )
     try:
-        response = _gemini_client.models.generate_content(
-            model='gemini-3.5-flash-lite',
+        response = _gemini_generate_with_fallback(
             contents=[genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])],
             config=genai_types.GenerateContentConfig(temperature=0.0),
         )
-        answer = (response.text or "").strip().upper()
+        answer = (response.text or "").strip().upper() if response else ""
     except Exception as e:
         traceback.print_exc()
         print(f"Warning: Event-condition match check failed, letting the event through: {e}")
@@ -552,12 +782,11 @@ def generate_sample_trigger_payload(blueprint: dict) -> dict:
         "(the body/content — a few sentences, containing whatever the reaction steps need to extract)."
     )
     try:
-        response = _gemini_client.models.generate_content(
-            model='gemini-3.5-flash-lite',
+        response = _gemini_generate_with_fallback(
             contents=[genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])],
             config=genai_types.GenerateContentConfig(response_mime_type="application/json", temperature=0.6),
         )
-        data = json.loads(response.text)
+        data = json.loads(response.text) if response else fallback
     except Exception as e:
         traceback.print_exc()
         print(f"Warning: Failed to generate a sample trigger payload, using a generic placeholder instead: {e}")
@@ -822,19 +1051,89 @@ def _item_id(item: dict) -> str | None:
     return None
 
 
-def _extract_named_id(result, name: str) -> str | None:
+def _is_google_sheets_append_action(app: str, action_name: str) -> bool:
+    is_gsheet = "sheet" in (app or "").lower() or "sheet" in (action_name or "").lower()
+    is_append = any(w in (action_name or "").upper() for w in ("APPEND", "WRITE", "ADD", "INSERT", "ROW"))
+    return is_gsheet and is_append
+
+
+def _is_google_sheets_create_action(app: str, action_name: str) -> bool:
+    is_gsheet = "sheet" in (app or "").lower() or "sheet" in (action_name or "").lower()
+    is_create = "CREATE" in (action_name or "").upper() and not ("ROW" in (action_name or "").upper() and "CREATE" in (action_name or "").upper())
+    return is_gsheet and is_create
+
+
+def _extract_spreadsheet_id_from_result(result) -> str | None:
+    if not result:
+        return None
+    data = result.get("data") if isinstance(result, dict) else getattr(result, "data", None)
+    if isinstance(data, dict):
+        for k in ("spreadsheetId", "spreadsheet_id", "id", "file_id", "fileId"):
+            if data.get(k):
+                return str(data[k]).strip()
+        for sub_v in data.values():
+            if isinstance(sub_v, dict):
+                for k in ("spreadsheetId", "spreadsheet_id", "id", "file_id"):
+                    if sub_v.get(k):
+                        return str(sub_v[k]).strip()
+    if isinstance(result, dict):
+        for k in ("spreadsheetId", "spreadsheet_id", "id", "file_id"):
+            if result.get(k):
+                return str(result[k]).strip()
+    res_str = str(result)
+    m = re.search(r"docs\.google\.com/spreadsheets/d/([a-zA-Z0-9-_]+)", res_str)
+    if m:
+        return m.group(1).strip()
+    return None
+
+
+def _extract_named_id(result, name: str, threshold: float = 0.55) -> str | None:
     """Picks whichever search result's name/title best matches `name`
-    (falling back to the first result) and returns its id-shaped field."""
+    using high-precision exact and fuzzy matching.
+    
+    If the closest match has confidence >= threshold (0.55), returns its id.
+    If the best match is below threshold (irrelevant detail), returns None
+    rather than blindly picking an arbitrary resource.
+    """
     items = _list_search_tool_items(result)
-    if not items:
+    if not items or not name:
         return None
 
     lowered_name = name.strip().lower()
-    best = next(
-        (item for item in items if lowered_name and lowered_name in str(item.get("name") or item.get("title") or "").lower()),
-        items[0],
-    )
-    return _item_id(best)
+
+    # Pass 1: Exact case-insensitive match (highest priority - never let a partial match preempt an exact one)
+    for item in items:
+        item_title = str(item.get("name") or item.get("title") or item.get("summary") or "").strip().lower()
+        if item_title and item_title == lowered_name:
+            item_id = _item_id(item)
+            if item_id:
+                return item_id
+
+    # Pass 2: Query as full prefix or contained substring in item title (e.g. "Trending" in "Trending Laptops")
+    for item in items:
+        item_title = str(item.get("name") or item.get("title") or item.get("summary") or "").strip().lower()
+        if item_title and lowered_name in item_title:
+            item_id = _item_id(item)
+            if item_id:
+                return item_id
+
+    # Pass 3: Fuzzy closest-resource resolution
+    best_item, best_score = find_closest_resource_item(name, items, threshold=threshold)
+    if best_item:
+        item_id = _item_id(best_item)
+        if item_id:
+            matched_title = str(best_item.get("name") or best_item.get("title") or best_item.get("summary") or "")
+            print(f"Info: Closest match found for '{name}' -> '{matched_title}' (confidence: {best_score:.2f})")
+            return item_id
+
+    # Pass 4: If only one item exists and name is non-empty, check if it's plausible (>= 0.40)
+    if len(items) == 1:
+        single_item = items[0]
+        _, single_score = find_closest_resource_item(name, [single_item], threshold=0.40)
+        if single_score >= 0.40:
+            return _item_id(single_item)
+
+    return None
 
 
 async def _auto_resolve_missing_ids(app: str, action_name: str, parameters: dict, entity_id: str) -> tuple:
@@ -863,6 +1162,22 @@ async def _auto_resolve_missing_ids(app: str, action_name: str, parameters: dict
     schema = _get_action_schema(action_name)
     required = (schema or {}).get("required") or []
     properties = (schema or {}).get("properties") or {}
+
+    # If any parameter holds a dictionary from an earlier step (e.g. {{step_1_result}}), unwrap it!
+    for k, v in list(parameters.items()):
+        if isinstance(v, dict):
+            unwrapped = unwrap_dict_for_field(k, v)
+            if unwrapped:
+                parameters[k] = unwrapped
+
+    # If any required id field is missing or empty, check if another parameter holds an opaque ID
+    for r in required:
+        if _looks_like_id_field(r) and (r not in parameters or not str(parameters.get(r) or "").strip()):
+            for alt_k, alt_v in list(parameters.items()):
+                if alt_k != r and isinstance(alt_v, str) and _looks_like_opaque_id(alt_v):
+                    print(f"Info: Mapping opaque ID from '{alt_k}' to required field '{r}': {alt_v}")
+                    parameters[r] = alt_v
+                    break
 
     target_field = next(
         (
@@ -939,12 +1254,46 @@ async def _auto_resolve_missing_ids(app: str, action_name: str, parameters: dict
 
     resolved_id = _extract_named_id(result, name_value)
     if not resolved_id:
-        print(f"Info: Searched for '{app}' item named \"{name_value}\" via '{search_tool.slug}' — found nothing.")
+        # Fallback: if search with exact query yielded nothing (common with API server filters on typos),
+        # list available resources and perform closest-match resolution
+        try:
+            listing_result = await _execute_composio_with_timeout(
+                slug=search_tool.slug,
+                arguments={query_param: ""} if query_param else {},
+                user_id=entity_id,
+                dangerously_skip_version_check=True,
+            )
+            resolved_id = _extract_named_id(listing_result, name_value, threshold=0.55)
+        except Exception:
+            pass
+
+    if not resolved_id:
+        if _is_google_sheets_append_action(app, action_name) and name_value and not _looks_like_opaque_id(name_value):
+            # SELF-HEALING: User/planner intended to append to a sheet named `name_value`,
+            # but it was not found in Google Drive. Automatically create it and proceed!
+            print(f"Self-Healing: Google Sheet '{name_value}' not found in Drive. Automatically creating new spreadsheet '{name_value}'...")
+            try:
+                create_res = await _execute_composio_with_timeout(
+                    slug="GOOGLESHEETS_CREATE_GOOGLE_SHEET1",
+                    arguments={"title": name_value},
+                    user_id=entity_id,
+                    dangerously_skip_version_check=True,
+                )
+                new_sheet_id = _extract_spreadsheet_id_from_result(create_res)
+                if new_sheet_id:
+                    print(f"Self-Healing Success: Created new Google Sheet '{name_value}' (ID: {new_sheet_id}). Continuing append.")
+                    updated = dict(parameters)
+                    updated[target_field] = new_sheet_id
+                    return updated, None
+            except Exception as e:
+                print(f"Self-Healing Warning: Failed to auto-create Google Sheet '{name_value}': {e}")
+
+        print(f"Info: Searched for '{app}' item named \"{name_value}\" via '{search_tool.slug}' — found nothing matching sufficiently.")
         updated = dict(parameters)
         updated.pop(target_field, None)
         return updated, {"field": target_field, "name": name_value}
 
-    print(f"Info: Auto-resolved '{target_field}' to '{resolved_id}' via '{search_tool.slug}' search for \"{name_value}\".")
+    print(f"Info: Auto-resolved '{target_field}' to '{resolved_id}' via '{search_tool.slug}' for \"{name_value}\".")
     updated = dict(parameters)
     updated[target_field] = resolved_id
     return updated, None
@@ -1243,11 +1592,198 @@ async def _enrich_thin_composio_result(app: str, action_name: str, output: dict,
         return output
 
 
+def _is_payload_too_large_error(e: Exception) -> bool:
+    s = str(e).lower()
+    return "413" in s or "payloadtoolarge" in s or "payload is too large" in s or "upstream_payloadtoolarge" in s
+
+
+def _clean_html_text(html_content: str) -> str:
+    if not isinstance(html_content, str):
+        return str(html_content or "")
+    if "<html" in html_content.lower() or "<body" in html_content.lower() or "<div" in html_content.lower():
+        cleaned = re.sub(r'<(style|script)[^>]*>.*?</\1>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r'<[^>]+>', ' ', cleaned)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        return cleaned[:8000]
+    return html_content[:8000]
+
+
+_LIMIT_PARAMETER_KEYS = (
+    "max_results", "maxResults", "limit", "pageSize", "page_size",
+    "per_page", "perPage", "count", "maxRecords", "top", "first",
+)
+
+
+def _apply_intelligent_data_extraction_limits(
+    app: str,
+    action_name: str,
+    parameters: dict,
+    result_limit: int | None = None,
+) -> dict:
+    """Intelligently enforces safe data extraction bounds across all SaaS apps.
+    
+    1. If the user/prompt specified an explicit count (or result_limit is passed),
+       clamps to a safe operational envelope [1, 50].
+    2. If the user did NOT specify how much data to extract, chooses an optimal,
+       safe default tailored to that app category (e.g. 5 for chat/email/calendar,
+       10 for CRM/drive/databases, bounded range for Google Sheets) so requests
+       never overwhelm the tool or throw 413 PayloadTooLarge errors.
+    """
+    updated_params = dict(parameters or {})
+    schema = _get_action_schema(action_name)
+    properties = (schema or {}).get("properties") or {}
+
+    # Check if this tool accepts any pagination/limit parameters
+    supported_limit_keys = [k for k in _LIMIT_PARAMETER_KEYS if k in properties]
+
+    app_lower = (app or "").lower()
+    act_lower = action_name.lower()
+
+    # Determine if action is a listing/fetching action
+    is_listing = bool(supported_limit_keys) or any(
+        w in act_lower for w in (
+            "fetch", "list", "get_all", "search", "query", "find", "read",
+            "get_messages", "get_spreadsheet_values", "get_rows", "history",
+            "records", "issues", "commits", "events", "cards", "tickets", "posts"
+        )
+    )
+
+    # 1. Detect if single/latest is requested
+    query_text = " ".join(str(v) for k, v in updated_params.items() if isinstance(v, (str, int))).lower()
+    is_latest_single = any(k in query_text for k in ("latest", "last", "newest", "recent single", "most recent", "newest single"))
+
+    # 2. Check if a limit parameter is already present
+    existing_limit_key = next((k for k in _LIMIT_PARAMETER_KEYS if k in updated_params and updated_params[k] is not None), None)
+
+    if existing_limit_key:
+        try:
+            val = int(updated_params[existing_limit_key])
+            # If user specified, honor up to safe ceiling of 50
+            updated_params[existing_limit_key] = max(1, min(val, 50))
+        except (ValueError, TypeError):
+            updated_params[existing_limit_key] = 5
+    elif result_limit:
+        # User specified limit via planner hint
+        target_key = supported_limit_keys[0] if supported_limit_keys else ("max_results" if "gmail" in app_lower else "limit")
+        updated_params[target_key] = max(1, min(int(result_limit), 50))
+    elif is_listing and (supported_limit_keys or "gmail" in app_lower):
+        # User did not specify: select intelligent default by app category
+        target_key = supported_limit_keys[0] if supported_limit_keys else "max_results"
+        if is_latest_single:
+            default_val = 1
+        elif any(k in app_lower for k in ("gmail", "outlook", "mail")):
+            default_val = 5
+        elif any(k in app_lower for k in ("slack", "discord", "teams", "chat", "telegram")):
+            default_val = 5
+        elif any(k in app_lower for k in ("calendar", "event")):
+            default_val = 5
+        elif any(k in app_lower for k in ("github", "gitlab", "jira", "trello", "linear", "asana", "clickup")):
+            default_val = 5
+        elif any(k in app_lower for k in ("sheet", "airtable", "notion", "supabase", "database")):
+            default_val = 10
+        elif any(k in app_lower for k in ("hubspot", "salesforce", "zoho", "crm")):
+            default_val = 10
+        elif any(k in app_lower for k in ("drive", "dropbox", "onedrive", "box")):
+            default_val = 10
+        elif any(k in app_lower for k in ("twitter", "x", "linkedin")):
+            default_val = 5
+        else:
+            default_val = 5
+
+        updated_params[target_key] = default_val
+
+    # 3. Special handling for Google Sheets reading
+    if "sheet" in app_lower and ("range" in properties or "range" in updated_params or "get" in act_lower):
+        current_range = str(updated_params.get("range") or "").strip()
+        if not current_range or current_range in ("A:Z", "A1:Z"):
+            updated_params["range"] = "A1:Z30"
+        elif current_range.endswith("!"):
+            updated_params["range"] = f"{current_range}A1:Z30"
+        elif not re.search(r"[A-Za-z]{1,3}\d*:[A-Za-z]{0,3}\d*", current_range) and not re.fullmatch(r"^[A-Za-z]{1,3}\d+$", current_range):
+            # Only sheet title provided, e.g. "Sheet1" -> "Sheet1!A1:Z30"
+            updated_params["range"] = f"{current_range}!A1:Z30"
+
+    # 4. Special handling for Google Calendar reading & finding
+    if "calendar" in app_lower or "calendar" in act_lower:
+        if "calendar_id" not in updated_params and "calendarId" not in updated_params:
+            if "calendarId" in properties:
+                updated_params["calendarId"] = "primary"
+            else:
+                updated_params["calendar_id"] = "primary"
+        # If time_min is set (e.g. tomorrow start 00:00:00Z) and time_max is not set:
+        t_min = updated_params.get("time_min") or updated_params.get("timeMin")
+        if t_min and isinstance(t_min, str) and ("time_max" not in updated_params and "timeMax" not in updated_params):
+            if "T00:00:00Z" in t_min:
+                day_part = t_min.split("T")[0]
+                t_max_k = "timeMax" if "timeMax" in properties else "time_max"
+                updated_params[t_max_k] = f"{day_part}T23:59:59Z"
+        if "single_events" not in updated_params and "singleEvents" not in updated_params:
+            if "singleEvents" in properties:
+                updated_params["singleEvents"] = True
+            elif "single_events" in properties:
+                updated_params["single_events"] = True
+        if "order_by" not in updated_params and "orderBy" not in updated_params:
+            if "orderBy" in properties:
+                updated_params["orderBy"] = "startTime"
+            elif "order_by" in properties:
+                updated_params["order_by"] = "startTime"
+
+    return updated_params
+
+
+_user_email_cache: dict = {}
+
+
+async def resolve_user_primary_email(user_id: str) -> str | None:
+    """Discovers the connected user's primary email address so actions like
+    'email me a digest' resolve to their real inbox without failing on 'me'."""
+    if not user_id:
+        return None
+    if user_id in _user_email_cache:
+        return _user_email_cache[user_id]
+
+    # 1. Try GMAIL_GET_PROFILE if Gmail is connected
+    try:
+        res = await _execute_composio_with_timeout(
+            slug="GMAIL_GET_PROFILE",
+            arguments={"user_id": "me"},
+            user_id=user_id,
+            dangerously_skip_version_check=True,
+        )
+        if isinstance(res, dict):
+            data = res.get("data") or {}
+            email = data.get("emailAddress") or data.get("email")
+            if email and "@" in email:
+                _user_email_cache[user_id] = email
+                return email
+    except Exception:
+        pass
+
+    # 2. Try Supabase users table
+    try:
+        from app.database import supabase
+        if supabase:
+            u = supabase.table("users").select("email").eq("id", user_id).execute()
+            if u.data and u.data[0].get("email"):
+                email = u.data[0]["email"]
+                if "@" in email and not email.endswith("@example.com"):
+                    _user_email_cache[user_id] = email
+                    return email
+    except Exception:
+        pass
+
+    return None
+
+
 async def execute_composio_action(app: str, action: str, parameters: dict, entity_id: str = "default") -> dict:
     if not composio:
         return {"status": "error", "error": "COMPOSIO_API_KEY is not configured or Composio client is uninitialized.", "message": "COMPOSIO_API_KEY is not configured or Composio client is uninitialized."}
 
     parameters = dict(parameters or {})
+    # Strip internal orchestrator flags before tool dispatch
+    parameters.pop("_is_test_run", None)
+    parameters.pop("_as_list", None)
+
     # An internal-only hint the planner may set when the user's prompt names
     # a count ("top 5", "latest 10") — stripped before real params reach the
     # target action, same convention as `_is_test_run`/`_as_list` elsewhere.
@@ -1267,8 +1803,133 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
     entity_id = resolve_connected_user_id(entity_id, app)
     parameters, not_found_hint = await _auto_resolve_missing_ids(app, action_name, parameters, entity_id)
 
-    if action_name == "GMAIL_FETCH_EMAILS" and "max_results" not in parameters:
-        parameters["max_results"] = 100
+    # Auto-resolve self-recipient for email actions (e.g. 'email me a digest')
+    if "gmail" in app.lower() or "mail" in action_name.lower():
+        recip = parameters.get("recipient_email") or parameters.get("to")
+        if not recip or str(recip).strip().lower() in ("me", "myself", "self", "user", "{{me}}"):
+            resolved_email = await resolve_user_primary_email(entity_id)
+            if resolved_email:
+                parameters["recipient_email"] = resolved_email
+
+    # Intelligently apply data extraction bounds across all apps
+    parameters = _apply_intelligent_data_extraction_limits(app, action_name, parameters, result_limit=result_limit)
+    parameters = _normalize_parameters_via_schema(action_name, parameters)
+
+    if _is_google_sheets_create_action(app, action_name):
+        duplicate_choice = parameters.pop("_duplicate_sheet_action", None) or parameters.get("clarification_answer")
+        existing_sheet_id = parameters.pop("_existing_sheet_id", None)
+        title = parameters.get("title") or parameters.get("spreadsheet_name") or parameters.get("name")
+
+        if duplicate_choice:
+            choice_str = str(duplicate_choice).lower().strip()
+            # If user chose to add to existing spreadsheet
+            if any(w in choice_str for w in ("add", "append", "existing", "update", "current", "use existing")):
+                if not existing_sheet_id and title:
+                    toolkit_slug = slugify_app_name(app)
+                    search_tool = _find_search_tool(toolkit_slug)
+                    if search_tool:
+                        query_param = _search_tool_query_param(search_tool)
+                        try:
+                            s_res = await _execute_composio_with_timeout(
+                                slug=search_tool.slug,
+                                arguments={query_param: title} if query_param else {},
+                                user_id=entity_id,
+                                dangerously_skip_version_check=True,
+                            )
+                            existing_sheet_id = _extract_named_id(s_res, title, threshold=0.75)
+                        except Exception:
+                            pass
+
+                if existing_sheet_id:
+                    print(f"Info: User chose to add to existing Google Sheet '{title}' ({existing_sheet_id}).")
+                    if parameters.get("values"):
+                        try:
+                            append_params = {"spreadsheet_id": existing_sheet_id, "values": parameters["values"]}
+                            if parameters.get("range"):
+                                append_params["range"] = parameters["range"]
+                            append_res = await _execute_composio_with_timeout(
+                                slug="GOOGLESHEETS_APPEND_ROW",
+                                arguments=append_params,
+                                user_id=entity_id,
+                                dangerously_skip_version_check=True,
+                            )
+                            return _build_execution_result(append_res, app, "GOOGLESHEETS_APPEND_ROW", append_params)
+                        except Exception as e:
+                            print(f"Warning: Failed to append to existing sheet: {e}")
+
+                    return {
+                        "status": "success",
+                        "output": {
+                            "spreadsheetId": existing_sheet_id,
+                            "spreadsheet_id": existing_sheet_id,
+                            "id": existing_sheet_id,
+                            "title": title,
+                            "reused_existing": True,
+                            "data": {
+                                "spreadsheetId": existing_sheet_id,
+                                "spreadsheet_id": existing_sheet_id,
+                                "id": existing_sheet_id,
+                                "title": title,
+                            },
+                            "message": f"Using existing Google Spreadsheet '{title}' ({existing_sheet_id}).",
+                        },
+                    }
+            elif any(w in choice_str for w in ("create", "new", "fresh", "make new", "separate")):
+                # User chose to create a new spreadsheet with almost the same name
+                m = re.search(r"^(.*?)(?:\s*\((?:New|\d+)\))?$", str(title or ""), re.I)
+                base_title = m.group(1).strip() if (m and m.group(1).strip()) else (title or "Spreadsheet")
+                toolkit_slug = slugify_app_name(app)
+                search_tool = _find_search_tool(toolkit_slug)
+                existing_titles = set()
+                if search_tool:
+                    query_param = _search_tool_query_param(search_tool)
+                    try:
+                        listing = await _execute_composio_with_timeout(
+                            slug=search_tool.slug,
+                            arguments={query_param: ""} if query_param else {},
+                            user_id=entity_id,
+                            dangerously_skip_version_check=True,
+                        )
+                        for it in _list_search_tool_items(listing):
+                            it_name = str(it.get("name") or it.get("title") or "").strip().lower()
+                            if it_name:
+                                existing_titles.add(it_name)
+                    except Exception:
+                        pass
+
+                cand_title = f"{base_title} (New)"
+                if cand_title.lower() in existing_titles:
+                    idx = 2
+                    while f"{base_title} ({idx})".lower() in existing_titles:
+                        idx += 1
+                    cand_title = f"{base_title} ({idx})"
+
+                print(f"Info: User chose 'Create New'. Creating with unique name: '{cand_title}'")
+                parameters["title"] = cand_title
+        elif title and not _looks_like_opaque_id(title) and not str(title).startswith("{{"):
+            toolkit_slug = slugify_app_name(app)
+            search_tool = _find_search_tool(toolkit_slug)
+            if search_tool:
+                query_param = _search_tool_query_param(search_tool)
+                try:
+                    s_res = await _execute_composio_with_timeout(
+                        slug=search_tool.slug,
+                        arguments={query_param: title} if query_param else {},
+                        user_id=entity_id,
+                        dangerously_skip_version_check=True,
+                    )
+                    found_id = _extract_named_id(s_res, title, threshold=0.85)
+                    if found_id:
+                        print(f"Duplicate sheet detected: Found existing spreadsheet named '{title}' ({found_id}). Asking user.")
+                        return {
+                            "status": "needs_input",
+                            "question": f"A Google Spreadsheet named '{title}' already exists in your Google Drive. Would you like to create a new spreadsheet, or add to the existing one?",
+                            "missing_field": "_duplicate_sheet_action",
+                            "options": ["Create New Spreadsheet", "Add to Existing Spreadsheet"],
+                            "_existing_sheet_id": found_id,
+                        }
+                except Exception as e:
+                    print(f"Warning: Checking duplicate sheet existence failed: {e}")
 
     if action_name in ("LINKEDIN_CREATE_POST", "LINKEDIN_CREATE_LINKED_IN_POST") and "author" not in (parameters or {}):
         try:
@@ -1290,7 +1951,6 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
         except Exception as e:
             print(f"Warning: Failed to fetch LinkedIn profile for author auto-resolution: {e}")
 
-
     try:
         result = await _execute_composio_with_timeout(
             slug=action_name,
@@ -1298,45 +1958,126 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
             user_id=entity_id,
             dangerously_skip_version_check=True
         )
-        if action_name == "GMAIL_FETCH_EMAILS":
-            if isinstance(result, dict) and "data" in result and isinstance(result["data"], dict):
-                messages = result["data"].get("messages", [])
-                if isinstance(messages, list):
-                    for msg in messages:
-                        if isinstance(msg, dict):
-                            # Remove the massive raw payload to save tokens (we already have messageText)
-                            msg.pop("payload", None)
-                            msg.pop("raw", None)
-
-        execution_result = _build_execution_result(result, app, action_name, parameters, not_found_hint)
-        if execution_result.get("status") == "success":
-            execution_result["output"] = await _enrich_thin_composio_result(
-                app, action_name, execution_result["output"], entity_id, result_limit
-            )
-        return execution_result
     except Exception as e:
-        traceback.print_exc()
-        if _looks_like_api_key_permission_error(e):
-            error_message = _friendly_permission_message(action_name)
+        if _is_payload_too_large_error(e):
+            print(f"Warning: PayloadTooLarge (413) on {action_name}. Attempting auto-healing by reducing limit...")
+            recovered_params = dict(parameters or {})
+            reduced = False
+            for k in _LIMIT_PARAMETER_KEYS:
+                if k in recovered_params and isinstance(recovered_params[k], (int, str)):
+                    try:
+                        v = int(recovered_params[k])
+                        if v > 1:
+                            recovered_params[k] = 1 if v <= 5 else max(1, v // 2)
+                            reduced = True
+                    except (ValueError, TypeError):
+                        pass
+
+            if "range" in recovered_params and isinstance(recovered_params["range"], str):
+                r = recovered_params["range"]
+                if "Z" in r:
+                    recovered_params["range"] = re.sub(r'Z\d+', 'Z10', r)
+                    reduced = True
+
+            if "gmail" in app.lower() or action_name == "GMAIL_FETCH_EMAILS":
+                recovered_params["max_results"] = 1
+                reduced = True
+
+            if reduced:
+                try:
+                    result = await _execute_composio_with_timeout(
+                        slug=action_name,
+                        arguments=recovered_params,
+                        user_id=entity_id,
+                        dangerously_skip_version_check=True
+                    )
+                    parameters = recovered_params
+                except Exception as retry_err:
+                    try:
+                        recovered_params["include_payload"] = False
+                        recovered_params["verbose"] = False
+                        result = await _execute_composio_with_timeout(
+                            slug=action_name,
+                            arguments=recovered_params,
+                            user_id=entity_id,
+                            dangerously_skip_version_check=True
+                        )
+                        parameters = recovered_params
+                    except Exception:
+                        traceback.print_exc()
+                        return {"status": "error", "error": str(retry_err), "message": str(retry_err)}
+            else:
+                traceback.print_exc()
+                return {"status": "error", "error": str(e), "message": str(e)}
+        else:
+            traceback.print_exc()
+            if _looks_like_api_key_permission_error(e):
+                error_message = _friendly_permission_message(action_name)
+                return {"status": "error", "error": error_message, "message": error_message}
+            if _looks_like_auth_error(e):
+                return {
+                    "status": "needs_input",
+                    "question": f"{app} isn't connected right now. Connect it in App Vault, then answer here (anything) to retry.",
+                    "error": _friendly_auth_message(app),
+                    "missing_field": None,
+                    "reconnect_app": app,
+                }
+            error_message = str(e)
             return {"status": "error", "error": error_message, "message": error_message}
-        if _looks_like_auth_error(e):
-            # A disconnected/expired app is recoverable mid-run — connecting
-            # it in App Vault and retrying fixes it — so this pauses the
-            # workflow the same way a missing parameter does (reusing the
-            # exact same clarification popup, see orchestrator.py) instead
-            # of hard-failing the whole run. "reconnect_app" lets the
-            # frontend show a "Connect {app}" action instead of a bare text
-            # box, though answering with anything and retrying also works
-            # once the app is actually reconnected elsewhere.
-            return {
-                "status": "needs_input",
-                "question": f"{app} isn't connected right now. Connect it in App Vault, then answer here (anything) to retry.",
-                "error": _friendly_auth_message(app),
-                "missing_field": None,
-                "reconnect_app": app,
-            }
-        error_message = str(e)
-        return {"status": "error", "error": error_message, "message": error_message}
+
+    if action_name == "GMAIL_FETCH_EMAILS":
+        if isinstance(result, dict) and "data" in result and isinstance(result["data"], dict):
+            messages = result["data"].get("messages", [])
+            if isinstance(messages, list):
+                for msg in messages:
+                    if isinstance(msg, dict):
+                        # Remove the massive raw payload to save tokens (we already have messageText)
+                        msg.pop("payload", None)
+                        msg.pop("raw", None)
+                        if "messageText" in msg and isinstance(msg["messageText"], str):
+                            msg["messageText"] = _clean_html_text(msg["messageText"])
+
+    if _tool_result_unsuccessful(result) and _is_google_sheets_append_action(app, action_name):
+        err_msg = _tool_error_message(result).lower()
+        if any(w in err_msg for w in ("not found", "404", "unable to parse range", "does not exist")):
+            sheet_title = parameters.get("spreadsheet_name") or parameters.get("title") or "Untitled Spreadsheet"
+            print(f"Self-Healing: Append failed with '{err_msg}'. Auto-creating spreadsheet '{sheet_title}' and retrying...")
+            try:
+                c_res = await _execute_composio_with_timeout(
+                    slug="GOOGLESHEETS_CREATE_GOOGLE_SHEET1",
+                    arguments={"title": str(sheet_title)},
+                    user_id=entity_id,
+                    dangerously_skip_version_check=True,
+                )
+                new_id = _extract_spreadsheet_id_from_result(c_res)
+                if new_id:
+                    for id_f in ("spreadsheet_id", "spreadsheetId", "file_id"):
+                        if id_f in parameters:
+                            parameters[id_f] = new_id
+                    result = await _execute_composio_with_timeout(
+                        slug=action_name,
+                        arguments=parameters or {},
+                        user_id=entity_id,
+                        dangerously_skip_version_check=True,
+                    )
+            except Exception as e:
+                print(f"Self-Healing Warning: Retry after auto-creating sheet failed: {e}")
+
+    execution_result = _build_execution_result(result, app, action_name, parameters, not_found_hint)
+    if execution_result.get("status") == "success":
+        if _is_google_sheets_create_action(app, action_name):
+            new_id = _extract_spreadsheet_id_from_result(result)
+            if new_id and isinstance(execution_result.get("output"), dict):
+                execution_result["output"]["spreadsheetId"] = new_id
+                execution_result["output"]["spreadsheet_id"] = new_id
+                execution_result["output"]["id"] = new_id
+                sheet_title = parameters.get("title") or parameters.get("spreadsheet_name")
+                if sheet_title:
+                    execution_result["output"]["title"] = sheet_title
+        execution_result["output"] = await _enrich_thin_composio_result(
+            app, action_name, execution_result["output"], entity_id, result_limit
+        )
+    return execution_result
 
 
 def _derive_auth_mode(item) -> str:
@@ -1656,3 +2397,277 @@ def connect_app_with_credentials(user_id: str, app_slug: str, credentials: dict)
         raise Exception(f"Failed to connect {app_slug}: {str(e)}") from e
 
     return {"connected_account_id": connection_request.id, "connection_status": connection_request.status}
+
+
+# --- Phase B: Connected Resource Introspection for Disambiguation -------
+
+_introspection_tool_cache: dict = {}
+
+def is_introspectable_resource_param(parameter_key: str, app: str = "") -> bool:
+    """Returns True ONLY if a parameter is genuinely a discoverable resource container
+    (like a spreadsheet name, channel name, database, or repository).
+    
+    Strictly returns False for emails, messages, subjects, usernames, phone numbers,
+    queries, and any free-form user inputs across all apps.
+    """
+    if not parameter_key:
+        return False
+    
+    p = parameter_key.lower().strip()
+
+    # 1. Telegram account type special case
+    if "telegram" in (app or "").lower() or "telegram" in p:
+        if any(k in p for k in ("type", "account", "identity")):
+            return True
+
+    # Tokenize parameter key to avoid substring collisions (e.g. 'cc' in 'account')
+    tokens = set(re.split(r"[^a-z0-9]+", p))
+
+    # 2. Non-resource blocklist (emails, messages, subjects, identities, free-form text)
+    FREEFORM_TOKENS = {
+        "email", "emails", "recipient", "recipients", "to", "cc", "bcc", "from", "sender", "mail",
+        "subject", "body", "message", "messages", "content", "text", "prompt", "description",
+        "summary", "note", "notes", "caption", "comment", "comments", "title", "query", "search",
+        "phone", "mobile", "user", "username", "password", "token", "key",
+        "amount", "count", "limit", "date", "time", "price", "url", "link",
+        "file_content", "code", "headers", "row_data", "values"
+    }
+    if any(tok in FREEFORM_TOKENS for tok in tokens):
+        return False
+
+    # Substring safety check for key terms that must never be select options
+    if any(k in p for k in ("email", "recipient", "phone", "message", "subject", "body")):
+        return False
+
+    # 3. Explicit allowed resource container keywords
+    ALLOWED_RESOURCE_KEYWORDS = (
+        "spreadsheet", "sheet", "channel", "database", "table", "base", "repository", "repo"
+    )
+    return any(k in p for k in ALLOWED_RESOURCE_KEYWORDS)
+
+
+def _find_resource_listing_tool(toolkit_slug: str, parameter_key: str = ""):
+    if not is_introspectable_resource_param(parameter_key):
+        return None
+
+    cache_key = f"{toolkit_slug}::{parameter_key.lower()}"
+    if cache_key in _introspection_tool_cache:
+        return _introspection_tool_cache[cache_key]
+    if not composio:
+        return None
+
+    search_terms = []
+    p_lower = parameter_key.lower()
+    if any(k in p_lower for k in ("channel", "chat")):
+        search_terms = ["list channels", "search channels", "get channels"]
+    elif any(k in p_lower for k in ("sheet", "spreadsheet")):
+        search_terms = ["search spreadsheets", "list spreadsheets", "search by name"]
+    elif any(k in p_lower for k in ("database", "table", "base")):
+        search_terms = ["list databases", "list bases", "search"]
+    elif any(k in p_lower for k in ("repo", "repository")):
+        search_terms = ["list repositories", "search repositories"]
+    else:
+        return None
+
+    candidates = []
+    for term in search_terms:
+        try:
+            candidates = composio.tools.get_raw_composio_tools(toolkits=[toolkit_slug], search=term, limit=10)
+            if candidates:
+                break
+        except Exception:
+            continue
+
+    tool = None
+    if candidates:
+        tool = next((c for c in candidates if any(w in c.slug for w in ("LIST", "SEARCH", "FIND", "GET_ALL"))), candidates[0])
+
+    if not tool:
+        tool = _find_search_tool(toolkit_slug)
+
+    _introspection_tool_cache[cache_key] = tool
+    return tool
+
+
+async def introspect_app_resources(user_id: str, app: str, parameter_key: str = "") -> list:
+    """Introspects available resource names (spreadsheets, channels, databases, etc.)
+    for a user's connected account in `app`. Returns a list of up to 8 clean names."""
+    if not app or not is_introspectable_resource_param(parameter_key, app):
+        return []
+
+    app_lower = app.lower()
+    if "telegram" in app_lower:
+        if any(k in parameter_key.lower() for k in ("type", "account", "identity")) or not parameter_key:
+            return ["Telegram Bot", "Telegram Personal Account"]
+
+    if not composio:
+        return []
+
+    active_user_id = resolve_connected_user_id(user_id, app)
+    toolkit_slug = slugify_app_name(app)
+
+    # Check if there is an active connected account for this toolkit
+    candidates = _candidate_user_ids(active_user_id)
+    try:
+        accounts = composio.connected_accounts.list(
+            user_ids=candidates,
+            toolkit_slugs=[toolkit_slug] if toolkit_slug else None,
+            statuses=["ACTIVE"],
+        )
+        has_active = bool(list(getattr(accounts, "items", accounts) or []))
+        if not has_active:
+            return []
+    except Exception as e:
+        print(f"Warning: Failed to check connection for introspection on '{app}': {e}")
+        return []
+
+    tool = _find_resource_listing_tool(toolkit_slug, parameter_key)
+    if not tool:
+        return []
+
+    query_param = _search_tool_query_param(tool)
+    args = {query_param: ""} if query_param else {}
+
+    try:
+        result = await _execute_composio_with_timeout(
+            slug=tool.slug,
+            arguments=args,
+            user_id=active_user_id,
+            dangerously_skip_version_check=True,
+        )
+    except Exception as e:
+        print(f"Warning: Introspection execution '{tool.slug}' failed for '{app}': {e}")
+        return []
+
+    items = _list_search_tool_items(result)
+    names = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = (
+            item.get("name")
+            or item.get("title")
+            or item.get("summary")
+            or item.get("channel_name")
+            or item.get("full_name")
+            or item.get("label")
+        )
+        if name and isinstance(name, str):
+            clean_name = name.strip()
+            if clean_name and not _looks_like_opaque_id(clean_name):
+                if clean_name not in names:
+                    names.append(clean_name)
+
+    return names[:15]
+
+
+async def enrich_blueprint_with_connected_resources(blueprint_dict: dict, user_id: str) -> dict:
+    """Enriches blueprint with live resources discovered from the user's connected accounts.
+    
+    1. Inspects step parameters: if the user provided a resource name (like a Google Sheet
+       name or channel) that does not match an opaque ID, attempts to match it against
+       connected resources using closest-match fuzzy resolution (threshold >= 0.55).
+       If a close match is found, updates the parameter to the real resource name and marks
+       it resolved. If irrelevant (score < 0.55), leaves it for the user to select.
+    2. Enriches missing_parameters with live resource options and auto-assumes closest
+       matches if tentative values were provided.
+    """
+    if not blueprint_dict or not isinstance(blueprint_dict, dict):
+        return blueprint_dict
+
+    steps = blueprint_dict.get("steps") or []
+    step_app_map = {s.get("step_number"): s.get("app") for s in steps if s.get("step_number") is not None}
+
+    # 1. Inspect existing step parameters for closest-match resolution
+    resolved_keys = set()
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        app = step.get("app")
+        params = step.get("parameters")
+        s_num = step.get("step_number")
+        if not app or not isinstance(params, dict):
+            continue
+
+        for param_key, param_val in list(params.items()):
+            if any(k in param_key.lower() for k in ("spreadsheet", "sheet", "channel", "database", "repo")):
+                if isinstance(param_val, str) and param_val.strip() and not _looks_like_opaque_id(param_val):
+                    try:
+                        resources = await introspect_app_resources(user_id=user_id, app=app, parameter_key=param_key)
+                        if resources:
+                            closest_match, score = find_closest_resource_match(param_val, resources, threshold=0.55)
+                            if closest_match:
+                                print(f"Info: Closest match resolved for step {s_num} '{param_key}': '{param_val}' -> '{closest_match}' (score: {score:.2f})")
+                                params[param_key] = closest_match
+                                resolved_keys.add((s_num, param_key))
+                    except Exception as e:
+                        print(f"Warning: Failed resolving closest match for step parameter '{param_key}' on '{app}': {e}")
+
+    missing_params = blueprint_dict.get("missing_parameters")
+    if not missing_params or not isinstance(missing_params, list):
+        return blueprint_dict
+
+    # Filter out missing parameters that were just resolved by closest-match
+    if resolved_keys:
+        missing_params = [
+            p for p in missing_params
+            if not (isinstance(p, dict) and (p.get("step_number"), p.get("parameter_key")) in resolved_keys)
+        ]
+
+    updated_params = []
+
+    for param in missing_params:
+        if not isinstance(param, dict):
+            updated_params.append(param)
+            continue
+
+        p_copy = dict(param)
+        s_num = p_copy.get("step_number")
+        p_key = p_copy.get("parameter_key", "")
+
+        app = None
+        if s_num == "trigger":
+            app = blueprint_dict.get("trigger", {}).get("event_app")
+        elif isinstance(s_num, int):
+            app = step_app_map.get(s_num)
+
+        # STRICT FREEFORM GUARD: If parameter is not an introspectable resource container
+        # (e.g. recipient email, subject, body, phone, text), strip any stale options
+        # and ensure suggested_type is never "select".
+        if not is_introspectable_resource_param(p_key, app or ""):
+            if "options" in p_copy:
+                del p_copy["options"]
+            if p_copy.get("suggested_type") == "select":
+                p_copy["suggested_type"] = "email" if any(k in p_key.lower() for k in ("email", "recipient", "to")) else "text"
+            updated_params.append(p_copy)
+            continue
+
+        existing_options = p_copy.get("options")
+        if existing_options and len(existing_options) > 0:
+            updated_params.append(p_copy)
+            continue
+
+        if not app:
+            updated_params.append(p_copy)
+            continue
+
+        try:
+            resources = await introspect_app_resources(user_id=user_id, app=app, parameter_key=p_key)
+            if resources:
+                p_copy["options"] = resources
+                p_copy["suggested_type"] = "select"
+
+                # Check if user had a tentative value (e.g. from prompt or previous edit)
+                tentative = p_copy.get("default_value") or p_copy.get("value")
+                if tentative and isinstance(tentative, str):
+                    closest_opt, opt_score = find_closest_resource_match(tentative, resources, threshold=0.55)
+                    if closest_opt:
+                        p_copy["default_value"] = closest_opt
+        except Exception as e:
+            print(f"Warning: Failed enriching missing param '{p_key}' for '{app}': {e}")
+
+        updated_params.append(p_copy)
+
+    blueprint_dict["missing_parameters"] = updated_params
+    return blueprint_dict
+

@@ -19,10 +19,10 @@ export default function StepEditor({ step, onFieldChange, onParamChange, onParam
   };
 
   return (
-    <div className="rounded-xl border border-slate-200/70 dark:border-white/10 overflow-hidden">
+    <div className="rounded-xl border border-slate-200/70 dark:border-white/10 overflow-hidden bg-white/40 dark:bg-black/10">
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
+        className="w-full flex items-center justify-between gap-2 px-3.5 py-3 text-left hover:bg-slate-900/5 dark:hover:bg-white/5 active:bg-slate-900/10 transition-colors touch-manipulation"
       >
         <div className="flex items-center gap-2 min-w-0">
           <span
@@ -30,23 +30,23 @@ export default function StepEditor({ step, onFieldChange, onParamChange, onParam
           >
             {step.step_number}
           </span>
-          <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium shrink-0 ${route.classes}`}>
+          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium shrink-0 ${route.classes}`}>
             <RouteIcon size={10} />
             {route.label}
           </span>
-          <span className="text-sm truncate">{step.action}</span>
+          <span className="text-sm font-medium truncate">{step.action}</span>
         </div>
-        <ChevronDown size={15} className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
       </button>
 
       {expanded && (
-        <div className="p-3 pt-1 border-t border-slate-200/70 dark:border-white/10 space-y-3">
+        <div className="p-3.5 pt-1 border-t border-slate-200/70 dark:border-white/10 space-y-3">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-slate-600 dark:text-slate-300">{t("stepEditor.action")}</label>
             <input
               value={step.action}
               onChange={(e) => onFieldChange(step.step_number, "action", e.target.value)}
-              className="rounded-lg border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
+              className="rounded-xl border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -54,11 +54,11 @@ export default function StepEditor({ step, onFieldChange, onParamChange, onParam
             <input
               value={step.app}
               onChange={(e) => onFieldChange(step.step_number, "app", e.target.value)}
-              className="rounded-lg border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
+              className="rounded-xl border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-400/50"
             />
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-2">
             <label className="text-xs font-medium text-slate-600 dark:text-slate-300">{t("stepEditor.parameters")}</label>
             {Object.entries(step.parameters || {}).map(([key, value]) => (
               <div key={key} className="flex items-center gap-2">
@@ -66,14 +66,14 @@ export default function StepEditor({ step, onFieldChange, onParamChange, onParam
                 <input
                   value={typeof value === "object" ? JSON.stringify(value) : value}
                   onChange={(e) => onParamChange(step.step_number, key, e.target.value)}
-                  className="flex-1 rounded-lg border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-2.5 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-brand-400/50"
+                  className="flex-1 rounded-xl border border-slate-300/70 dark:border-white/15 bg-white/70 dark:bg-black/20 px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-brand-400/50 min-h-[38px]"
                 />
                 <button
                   onClick={() => onParamRemove(step.step_number, key)}
-                  className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
+                  className="flex items-center justify-center w-9 h-9 rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-500/10 active:scale-95 transition-all shrink-0 touch-manipulation"
                   aria-label={t("stepEditor.removeParam", { key })}
                 >
-                  <X size={13} />
+                  <X size={15} />
                 </button>
               </div>
             ))}
@@ -83,20 +83,20 @@ export default function StepEditor({ step, onFieldChange, onParamChange, onParam
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
                 placeholder={t("stepEditor.newParamKeyPlaceholder")}
-                className="w-1/3 rounded-lg border border-dashed border-slate-300/70 dark:border-white/15 bg-transparent px-2.5 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-brand-400/50 shrink-0"
+                className="w-1/3 rounded-xl border border-dashed border-slate-300/70 dark:border-white/15 bg-transparent px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-brand-400/50 shrink-0 min-h-[38px]"
               />
               <input
                 value={newValue}
                 onChange={(e) => setNewValue(e.target.value)}
                 placeholder={t("stepEditor.valuePlaceholder")}
-                className="flex-1 rounded-lg border border-dashed border-slate-300/70 dark:border-white/15 bg-transparent px-2.5 py-1.5 text-xs font-mono outline-none focus:ring-2 focus:ring-brand-400/50"
+                className="flex-1 rounded-xl border border-dashed border-slate-300/70 dark:border-white/15 bg-transparent px-3 py-2 text-xs font-mono outline-none focus:ring-2 focus:ring-brand-400/50 min-h-[38px]"
               />
               <button
                 onClick={handleAddParam}
-                className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-brand-500 hover:bg-brand-500/10 transition-colors shrink-0"
+                className="flex items-center justify-center w-9 h-9 rounded-xl text-slate-400 hover:text-brand-500 hover:bg-brand-500/10 active:scale-95 transition-all shrink-0 touch-manipulation"
                 aria-label={t("stepEditor.addParameter")}
               >
-                <Plus size={14} />
+                <Plus size={16} />
               </button>
             </div>
           </div>

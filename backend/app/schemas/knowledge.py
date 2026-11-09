@@ -23,3 +23,23 @@ class URLUploadRequest(BaseModel):
     
 class TextUploadRequest(BaseModel):
     text: str
+
+
+class KnowledgeTestQueryRequest(BaseModel):
+    query: str
+    language: Optional[str] = "en"
+
+
+class KnowledgeTestQueryResponse(BaseModel):
+    query: str
+    answer: str
+    grounded: bool
+    sources: List[str] = []
+    confidence: float = 0.0
+    snippets: List[str] = []
+
+
+class PillarUpdateRequest(BaseModel):
+    pillar_key: str  # "profile", "pricing", "policies", "faq"
+    title: str
+    content: str

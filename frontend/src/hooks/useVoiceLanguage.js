@@ -1,32 +1,37 @@
 import { useCallback, useState } from "react";
-import { useLanguage, VOICE_LANG_STORAGE_KEY } from "../context/LanguageContext";
+import { useLanguage } from "../context/LanguageContext";
 import { getLanguageBySpeechCode } from "../i18n/languages";
 
-const OVERRIDE_KEY = "voxagent_voice_lang_overridden";
+const PROMPT_LANG_STORAGE_KEY = "voxagent_prompt_speech_lang";
 
-function getStoredVoiceSpeechCode(siteSpeechCode) {
+function getStoredPromptSpeechCode(defaultSpeechCode) {
   try {
-    const stored = localStorage.getItem(VOICE_LANG_STORAGE_KEY);
+    const stored = localStorage.getItem(PROMPT_LANG_STORAGE_KEY);
     if (stored) return stored;
   } catch {
     // ignore
   }
-  return siteSpeechCode;
+  return defaultSpeechCode || "indic-auto";
 }
 
-// Voice-mode language picker used by both Studio and Knowledge Hub. Defaults
-// to the site-wide language (see LanguageContext) but can be overridden
-// per-session; once overridden, it stops following site-language changes
-// until the user clears it by picking a language again from the dropdown.
+/**
+ * Prompt Input Language Hook.
+ *
+ * Exclusively determines the language used for:
+ * 1. Listening to / transcribing the user's spoken prompt via SpeechRecognition (Prisma STT).
+ * 2. Translating non-English prompt inputs into English before planning.
+ *
+ * CRITICAL INVARIANT: Selecting a language here NEVER alters the website UI language
+ * or the voice language spoken by VoxAgent (which are strictly driven by Settings).
+ */
 export function useVoiceLanguage() {
   const { currentLanguage } = useLanguage();
-  const [speechCode, setSpeechCodeState] = useState(() => getStoredVoiceSpeechCode(currentLanguage.speechCode));
+  const [speechCode, setSpeechCodeState] = useState(() => getStoredPromptSpeechCode(currentLanguage?.speechCode));
 
   const setVoiceLanguage = useCallback((code) => {
     setSpeechCodeState(code);
     try {
-      localStorage.setItem(VOICE_LANG_STORAGE_KEY, code);
-      localStorage.setItem(OVERRIDE_KEY, "true");
+      localStorage.setItem(PROMPT_LANG_STORAGE_KEY, code);
     } catch {
       // ignore
     }

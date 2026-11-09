@@ -4,13 +4,13 @@ import LanguageDropdown from "./LanguageDropdown";
 // Compact voice-language picker used next to the mic button in Studio and
 // Knowledge Hub. Keyed by BCP-47 speechCode (what SpeechRecognition.lang
 // expects), separate from the site-wide uiCode picker in Settings.
-export default function VoiceLanguagePicker({ value, onChange, className = "" }) {
+export default function VoiceLanguagePicker({ value, onChange, align = "right", className = "" }) {
   return (
     <LanguageDropdown
       value={value}
       onChange={onChange}
       getCode={(lang) => lang.speechCode}
-      align="right"
+      align={align}
       className={className}
       trigger={
         <>

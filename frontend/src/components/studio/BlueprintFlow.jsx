@@ -1,8 +1,14 @@
 import { useTranslation } from "react-i18next";
-import { Workflow } from "lucide-react";
+import { Workflow, PlusCircle } from "lucide-react";
 import StepNode from "./StepNode";
 
-export default function BlueprintFlow({ blueprint, stepStatuses }) {
+export default function BlueprintFlow({
+  blueprint,
+  stepStatuses,
+  stepSkipReasons,
+  onOpenUpdateModal,
+  planning = false,
+}) {
   const { t } = useTranslation();
   if (!blueprint) {
     return (
@@ -37,10 +43,23 @@ export default function BlueprintFlow({ blueprint, stepStatuses }) {
             key={step.step_number}
             step={step}
             status={stepStatuses?.[step.step_number] || "pending"}
+            skipReason={stepSkipReasons?.[step.step_number]}
             isLast={i === blueprint.steps.length - 1}
           />
         ))}
       </div>
+
+      {onOpenUpdateModal && (
+        <button
+          type="button"
+          onClick={onOpenUpdateModal}
+          disabled={planning}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-dashed border-brand-500/35 bg-brand-500/5 hover:bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-semibold transition-all mt-4 hover:border-brand-500/60 active:scale-[0.99] cursor-pointer shadow-xs"
+        >
+          <PlusCircle size={15} />
+          <span>{t("studio.addStepButton", "+ Add Step or Update Workflow")}</span>
+        </button>
+      )}
     </div>
   );
 }

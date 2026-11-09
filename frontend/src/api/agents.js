@@ -1,7 +1,11 @@
 import { apiClient, BASE_URL } from "./client";
 
-export function planWorkflow(prompt, userId) {
-  return apiClient.post("/plan", { prompt, user_id: userId });
+export function planWorkflow(prompt, userId, currentBlueprint = null) {
+  return apiClient.post("/plan", {
+    prompt,
+    user_id: userId,
+    current_blueprint: currentBlueprint || undefined,
+  });
 }
 
 function mapTriggerType(triggerType) {
@@ -38,6 +42,10 @@ export function resumeAgent(agentId, answer) {
 // every request) — see backend/app/routers/execution.py's GET /paused.
 export function getPausedRuns() {
   return apiClient.get("/paused");
+}
+
+export function getRecentExecutions({ since, limit } = {}) {
+  return apiClient.get("/recent-executions", { params: { since, limit } });
 }
 
 export function approvePendingAction(pendingId) {
@@ -77,6 +85,14 @@ export function deleteAgent(agentId) {
 }
 
 export function telemetrySocketUrl(clientId) {
-  const wsBase = BASE_URL.replace(/^http/, "ws");
-  return `${wsBase}/ws/telemetry/${clientId}`;
+  let wsOrigin = "";
+  if (BASE_URL.startsWith("http")) {
+    wsOrigin = BASE_URL.replace(/^http/, "ws");
+  } else if (typeof window !== "undefined") {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    wsOrigin = `${proto}//${window.location.host}${BASE_URL}`;
+  } else {
+    wsOrigin = "ws://localhost:8000/api/v1";
+  }
+  return `${wsOrigin}/ws/telemetry/${clientId}`;
 }

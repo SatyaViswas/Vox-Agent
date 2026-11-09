@@ -89,3 +89,29 @@ export async function updateKnowledgeSource(sourceName, content) {
   if (!res.ok) throw new ApiError(data?.detail || "Failed to update", res.status, data);
   return data;
 }
+
+/** Test query against the user's business knowledge base (Feature 3: Live Playground). */
+export async function testKnowledgeQuery({ query, language = "en" }) {
+  const userId = getUserId();
+  const res = await fetch(`${BASE_URL}/knowledge/test-query`, {
+    method: "POST",
+    headers: { "X-User-Id": userId, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, language }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(data?.detail || "Failed to test query", res.status, data);
+  return data;
+}
+
+/** Save or update one of the 4 Structured Business Knowledge Pillars (Feature 1). */
+export async function saveBusinessPillar({ pillar_key, title, content }) {
+  const userId = getUserId();
+  const res = await fetch(`${BASE_URL}/knowledge/pillar`, {
+    method: "POST",
+    headers: { "X-User-Id": userId, "Content-Type": "application/json" },
+    body: JSON.stringify({ pillar_key, title, content }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(data?.detail || "Failed to save pillar", res.status, data);
+  return data;
+}

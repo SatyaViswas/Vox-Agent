@@ -21,6 +21,9 @@ class WorkflowStep(BaseModel):
     # producing step, e.g. "{{step_1_result}}"; inside this step's own
     # parameters, {{item}} resolves to the current item on each iteration.
     for_each: Optional[str] = None
+    # Phase B: Execution Precision — Conditional Step Guards & Filtering
+    condition: Optional[str] = None
+    skip_if_empty: Optional[bool] = False
     # MutAgent groundwork (Phase 0) — not read by any code path yet; Phase 2+
     # wires these into the mutation controller. Optional/permissively typed
     # (on_failure is a plain str, not a Literal) so a plan that omits them,
@@ -56,7 +59,9 @@ class WorkflowBlueprint(BaseModel):
     # Declaring it for real, with the same default, makes that behavior
     # explicit instead of an undocumented convention.
     require_approval: bool = True
+    original_prompt: Optional[str] = None
 
 class PlanRequest(BaseModel):
     prompt: str
     user_id: Optional[str] = None
+    current_blueprint: Optional[Dict[str, Any]] = None

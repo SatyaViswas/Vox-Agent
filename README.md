@@ -1,15 +1,17 @@
-# 🤖 VoxAgent AI — Triple-Engine Hybrid Automation Platform
+# 🤖 VoxAgent AI — Sovereign Multilingual Voice-First Hybrid Automation Platform
 
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/Frontend-React-61DAFB.svg?style=flat&logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Build%20Tool-Vite-646CFF.svg?style=flat&logo=vite&logoColor=white)](https://vite.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Styling-Tailwind%20CSS-06B6D4.svg?style=flat&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Database-Supabase-3ECF8E.svg?style=flat&logo=supabase&logoColor=white)](https://supabase.com/)
+[![Gnani AI](https://img.shields.io/badge/Voice%20Intelligence-Gnani%20AI%20v3.0-4F46E5.svg?style=flat)](https://gnani.ai/)
 [![MutAgent Self-Healing](https://img.shields.io/badge/Self--Healing-MutAgent%20Engine-FF5722.svg?style=flat)](https://github.com/mutagent)
 
-**VoxAgent AI** is a state-of-the-art automation framework that converts casual speech or plain-text instructions into fully executed, self-healing digital workflows across any web application or third-party service.
+**VoxAgent AI** is a state-of-the-art sovereign voice-native automation platform that converts casual speech (in English, Indian vernacular languages, and code-mixed dialects like Hinglish) or plain-text instructions into fully executed, self-healing digital workflows across any web application, API, or third-party service.
 
-> **Hackathon Team Identity:** Team NxtGen — `[hackindia-team:hackindia-spark-11-hyderabad-telangana-south-central-region:nxtgen]`
+> **Hackathon Team Identity:** Team NxtGen — `[hackindia-team:hackindia-spark-11-hyderabad-telangana-south-central-region:nxtgen]`  
+> **Challenge Track:** Gnani AI & Innovation Challenge Submission
 
 ---
 
@@ -24,35 +26,74 @@ https://github.com/user-attachments/assets/3c9e659f-1fef-4a67-86bc-1a95efd1ce44
 
 ## 📖 Table of Contents
 1. [Core Vision & Architecture](#-core-vision--architecture)
-2. [Project Directory Structure](#%EF%B8%8F-project-directory-structure)
-3. [MutAgent Self-Healing Integration](#-mutagent-self-healing-integration)
-4. [Database DDL Setup (Supabase)](#-database-ddl-setup-supabase)
-5. [Quick-Start Installation Guide](#-quick-start-installation-guide)
-    - [Prerequisites](#prerequisites)
-    - [Backend Setup](#1-backend-setup)
-    - [Frontend Setup](#2-frontend-setup)
-6. [Development Workflow & Commands](#%EF%B8%8F-development-workflow--commands)
+2. [Gnani AI Sovereign Voice Intelligence](#-gnani-ai-sovereign-voice-intelligence)
+3. [Conversational Disambiguation & Self-Healing Intent](#-conversational-disambiguation--self-healing-intent)
+4. [Real-Time Notification Hub](#-real-time-notification-hub)
+5. [Project Directory Structure](#%EF%B8%8F-project-directory-structure)
+6. [MutAgent Self-Healing Integration](#-mutagent-self-healing-integration)
+7. [Database DDL Setup (Supabase)](#-database-ddl-setup-supabase)
+8. [Quick-Start Installation Guide](#-quick-start-installation-guide)
+9. [Development Workflow & Commands](#%EF%B8%8F-development-workflow--commands)
 
 ---
 
 ## 🔮 Core Vision & Architecture
 
-VoxAgent AI uses a **Triple-Engine Hybrid Automation Architecture** to execute tasks across any software layer seamlessly:
+VoxAgent AI combines **Sovereign Voice Intelligence**, a **Zero-Guess Cognitive Planner**, and a **Triple-Engine Hybrid Automation Architecture** to execute tasks across any software layer seamlessly:
 
 ```mermaid
 graph TD
-    A[User Request: Speech / Text] --> B(LLM Workflow Planner)
-    B --> C{Engine Router}
-    C -->|No Public API| D[Engine 1: Browser GUI Agent<br/>browser-use + Playwright]
-    C -->|Public APIs / 250+ Integrations| E[Engine 2: Dynamic API Tools<br/>Composio SDK]
-    C -->|REST / Custom Webhooks| F[Engine 3: Autonomous HTTP<br/>FastAPI / n8n Requests]
-    D & E & F --> G[(Supabase / Vault)]
-    D & E & F --> H[MutAgent Interceptor<br/>Self-Healing Loop]
+    A[User Voice / Text in 10+ Languages & Hinglish] --> B[Gnani Prisma v3.0 Dynamic Context-Boosted ASR]
+    B --> C[IndicTrans2 / Multilingual Normalizer]
+    C --> D(LLM Workflow Planner)
+    D -->|Missing Field / Ambiguity| E[Hands-Free Voice Disambiguation<br/>Gnani Timbre v3.0 TTS Loop]
+    E -->|User Clarification| D
+    D --> F{Triple-Engine Router}
+    F -->|No Public API / Legacy Portals| G[Engine 1: Browser GUI Agent<br/>browser-use + Playwright Stealth + Mobile Live View]
+    F -->|250+ Standard Integrations| H[Engine 2: Dynamic API Tools<br/>Composio SDK & Google Workspace]
+    F -->|REST / Telegram / Webhooks| I[Engine 3: Autonomous HTTP & Client<br/>Telethon & FastAPI Background Workers]
+    G & H & I --> J[(Supabase / Vault)]
+    G & H & I --> K[MutAgent Interceptor<br/>Self-Healing Loop]
+    K -->|Status / Progress| L[Real-Time Notification Hub<br/>Visual Badge + Browser Push + Timbre Voice Alerts]
 ```
 
-*   **Engine 1 (Browser GUI Agent):** Powered by `browser-use` and `Playwright` to automate sites lacking APIs (e.g., college ERPs, legacy web apps, Instagram, Canva, WhatsApp Web).
-*   **Engine 2 (Dynamic API Tools):** Uses the `Composio SDK` to connect to 250+ tools (e.g., Google Workspace, Slack, Notion, GitHub).
-*   **Engine 3 (Autonomous HTTP):** Dynamically invokes custom webhooks and REST endpoints.
+*   **Gnani Voice Intelligence:** Real-time speech-to-text powered by **Gnani Prisma v3.0** with dynamic keyterm boosting, streaming speech synthesis via **Gnani Timbre v3.0**, and 768-dim **Voice Cloning**.
+*   **Engine 1 (Browser GUI Agent):** Powered by `browser-use` and `Playwright Stealth` to automate sites lacking APIs (college ERPs, Amazon, Canva, Instagram, WhatsApp Web), featuring an interactive mobile live-view preview.
+*   **Engine 2 (Dynamic API Tools):** Uses the `Composio SDK` to connect to 250+ tools (Google Workspace, Slack, Notion, GitHub) with self-healing spreadsheet creation and parameter normalization.
+*   **Engine 3 (Autonomous HTTP & Native Clients):** Runs custom webhooks, REST calls, and native personal Telegram / WhatsApp automation (Telethon) with real-time chat listeners.
+
+---
+
+## 🎙️ Gnani AI Sovereign Voice Intelligence
+
+VoxAgent AI is built from the ground up to support Indian vernacular and code-mixed speech:
+
+1. **Prisma v3.0 Dynamic Context-Boosted ASR:**
+   - Real-time Speech-to-Text with Automatic Language Identification (Auto-LID) and code-mixing support across Hindi, Telugu, Tamil, Kannada, Marathi, Bengali, Gujarati, Punjabi, Malayalam, and Indian English.
+   - **Dynamic Entity Boosting:** Injects user-specific tools, CRM entities, Google Sheet names, and automation keyterms directly into Prisma's decoding graph, preventing phonetic degradation of SaaS terms.
+2. **Timbre v3.0 Expressive TTS:**
+   - Ultra-low latency streaming voice responses with natural Indian accents (Shivani, etc.) and expressive pacing.
+3. **Voice-First Knowledge Base & Voice Cloning:**
+   - Operators can upload or record audio voice memos, strategy meetings, and audio SOPs. VoxAgent transcribes via Prisma and embeds them into semantic RAG storage to ground future workflow plans.
+   - Clones executive voices using 768-dimensional speaker embeddings for custom audio workflow confirmations.
+
+---
+
+## 🤝 Conversational Disambiguation & Self-Healing Intent
+
+*   **Zero-Guess Principle:** When instructions omit required fields (e.g., *"Save these leads to my spreadsheet"* without naming the sheet), the planner halts rather than hallucinating fake data.
+*   **Two-Way Voice Clarification:** VoxAgent speaks back via Timbre TTS asking clarifying questions. The user answers naturally in speech (*"Outreach Leads 2026 sheet me daal do"*), and the system extracts parameters, confirms, and continues execution hands-free.
+*   **Drive & Sheets Self-Healing:**
+   - If an existing sheet with the requested name exists, VoxAgent disambiguates between creating a new non-colliding sheet (`<Title> (New)`) or appending to the existing one.
+   - If an append operation targets a missing sheet, the execution engine self-heals by automatically creating the Google Sheet on the fly.
+
+---
+
+## 🔔 Real-Time Notification Hub
+
+*   **Background Event Alerts:** When unattended cron jobs trigger (via APScheduler) or incoming webhook/Telegram events arrive, VoxAgent immediately alerts the user that background execution has started.
+*   **Execution Outcome Notifications:** Detailed visual and spoken reports upon completion (success, failed, or skipped steps due to unmet conditions).
+*   **Multi-Modal Delivery:** Simultaneous desktop browser push notifications (`Notification` API), interactive cards in the web notification drawer, and natural spoken announcements through the Gnani Timbre voice queue.
 
 ---
 

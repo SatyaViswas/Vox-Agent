@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, List, Optional, Tuple, Union
+from typing import Any, BinaryIO, Dict, Iterator, List, Optional, Tuple, Union
 
 import requests
 from app.config import settings
@@ -22,7 +22,7 @@ from app.config import settings
 # Attempt import of gnani SDK
 try:
     from gnani.stt import GnaniSTTClient, GnaniSTTBatchClient
-    from gnani.tts import GnaniTTSClient
+    from gnani.tts import GnaniTTSClient, GnaniTTSStreamClient, AudioConfig
     _GNANI_SDK_AVAILABLE = True
 except ImportError:
     _GNANI_SDK_AVAILABLE = False
@@ -54,6 +54,7 @@ DEFAULT_AUTOMATION_KEYTERMS = [
 
 _stt_client: Optional[Any] = None
 _tts_client: Optional[Any] = None
+_tts_stream_client: Optional[Any] = None
 _batch_stt_client: Optional[Any] = None
 
 
@@ -88,6 +89,19 @@ def get_tts_client() -> Any:
     return _tts_client
 
 
+def get_tts_stream_client() -> Any:
+    """Lazy-load and return singleton GnaniTTSStreamClient for low-latency chunked synthesis."""
+    global _tts_stream_client
+    if not is_gnani_configured():
+        raise ValueError("GNANI_API_KEY is not configured in backend/.env")
+    if _tts_stream_client is None:
+        _tts_stream_client = GnaniTTSStreamClient(
+            api_key=settings.GNANI_API_KEY,
+            base_url=settings.GNANI_BASE_URL or "https://api.vachana.ai",
+        )
+    return _tts_stream_client
+
+
 def get_batch_stt_client() -> Any:
     """Lazy-load and return singleton GnaniSTTBatchClient."""
     global _batch_stt_client
@@ -104,25 +118,37 @@ def get_batch_stt_client() -> Any:
 def ensure_supported_audio(
     file_bytes: bytes, filename: str
 ) -> Tuple[bytes, str]:
-    """Ensure audio data is in a format Gnani Prisma accepts (WAV, MP3, OGG, FLAC, AAC, M4A).
-    If WebM or unknown format is provided (e.g., from browser MediaRecorder), converts to 16kHz WAV via ffmpeg.
+    """Ensure audio data is in a format Gnani Prisma/VC accepts (WAV, MP3, etc.).
+    If WebM, M4A, or non-PCM audio is provided, converts to 16kHz mono 16-bit WAV via ffmpeg.
     """
-    ext = Path(filename).suffix.lower()
-    supported_extensions = {".wav", ".mp3", ".ogg", ".flac", ".aac", ".m4a"}
+    is_true_wav = (
+        len(file_bytes) >= 12
+        and file_bytes[:4] == b"RIFF"
+        and file_bytes[8:12] == b"WAVE"
+    )
 
-    if ext in supported_extensions:
+    # If it is already a genuine RIFF WAVE file, pass directly
+    if is_true_wav and Path(filename).suffix.lower() == ".wav":
         return file_bytes, filename
 
-    # Attempt ffmpeg transcoding if non-standard (e.g. .webm)
+    # Resolve ffmpeg binary from standard locations
+    ffmpeg_cmd = "ffmpeg"
+    for candidate in ["ffmpeg", "/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"]:
+        import shutil
+        if shutil.which(candidate):
+            ffmpeg_cmd = candidate
+            break
+
+    ext = Path(filename).suffix.lower() or ".webm"
     try:
-        with tempfile.NamedTemporaryFile(suffix=ext or ".webm", delete=False) as in_f:
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as in_f:
             in_f.write(file_bytes)
             in_path = in_f.name
 
-        out_path = in_path + ".wav"
+        out_path = in_path + "_converted.wav"
 
         cmd = [
-            "ffmpeg",
+            ffmpeg_cmd,
             "-y",
             "-i",
             in_path,
@@ -140,16 +166,17 @@ def ensure_supported_audio(
             converted_bytes = out_f.read()
 
         # Clean up temp files
-        try:
-            os.remove(in_path)
-            os.remove(out_path)
-        except OSError:
-            pass
+        for p in [in_path, out_path]:
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except OSError:
+                pass
 
         return converted_bytes, "converted_audio.wav"
     except Exception as e:
         logger.warning(
-            f"FFmpeg conversion skipped/failed ({e}), falling back to original audio format."
+            f"FFmpeg conversion failed ({e}), falling back to original audio format."
         )
         return file_bytes, filename
 
@@ -274,13 +301,50 @@ def _transcribe_rest_fallback(
 # 2. Text-to-Speech (Gnani Timbre v3.0)
 # =========================================================================
 
+GNANI_LANGUAGE_MAP = {
+    "te": "te-IN",
+    "te-in": "te-IN",
+    "hi": "hi-IN",
+    "hi-in": "hi-IN",
+    "ta": "ta-IN",
+    "ta-in": "ta-IN",
+    "kn": "kn-IN",
+    "kn-in": "kn-IN",
+    "bn": "bn-IN",
+    "bn-in": "bn-IN",
+    "mr": "mr-IN",
+    "mr-in": "mr-IN",
+    "gu": "gu-IN",
+    "gu-in": "gu-IN",
+    "pa": "pa-IN",
+    "pa-in": "pa-IN",
+    "ml": "ml-IN",
+    "ml-in": "ml-IN",
+    "en": "en-IN",
+    "en-us": "en-IN",
+    "en-in": "en-IN",
+}
+
+
+def normalize_gnani_language(lang: Optional[str]) -> str:
+    """Normalize any language code (e.g. 'te', 'hi', 'en-US') to Gnani's BCP-47 tag."""
+    if not lang:
+        return "hi-IN"
+    return GNANI_LANGUAGE_MAP.get(lang.strip().lower(), lang)
+
+
+# Global re-entrant lock to prevent Gnani 429 concurrency errors ("Only 1 active request is allowed at a time")
+import threading
+import time
+_gnani_tts_lock = threading.RLock()
+
 def synthesize_speech_timbre(
     text: str,
     voice: str = "Shivani",
     language: str = "hi-IN",
     model: str = "timbre-v3.0",
     speed: float = 1.0,
-    container: str = "wav",
+    container: str = "mp3",
     output_file: Optional[Union[str, Path]] = None,
 ) -> bytes:
     """Synthesize expressive speech using Gnani Timbre.
@@ -298,32 +362,34 @@ def synthesize_speech_timbre(
 
     # Clamping speed within Gnani valid range (0.85 to 1.15)
     clamped_speed = max(0.85, min(1.15, float(speed)))
+    resolved_lang = normalize_gnani_language(language)
 
-    try:
-        client = get_tts_client()
-        audio_bytes = client.synthesize(
-            text=text.strip(),
-            voice=voice,
-            model=model,
-            language=language,
-            speed=clamped_speed,
-            output_file=output_file,
-        )
-        logger.info(
-            f"[Gnani Timbre TTS] Synthesized audio ({len(audio_bytes)} bytes) | voice={voice} | lang={language}"
-        )
-        return audio_bytes
-    except Exception as e:
-        logger.error(f"[Gnani Timbre TTS] SDK call error: {e}. Trying REST direct fallback...")
-        return _synthesize_rest_fallback(
-            text=text,
-            voice=voice,
-            language=language,
-            model=model,
-            speed=clamped_speed,
-            container=container,
-            output_file=output_file,
-        )
+    with _gnani_tts_lock:
+        try:
+            client = get_tts_client()
+            audio_bytes = client.synthesize(
+                text=text.strip(),
+                voice=voice,
+                model=model,
+                language=resolved_lang,
+                speed=clamped_speed,
+                output_file=output_file,
+            )
+            logger.info(
+                f"[Gnani Timbre TTS] Synthesized audio ({len(audio_bytes)} bytes) | voice={voice} | lang={resolved_lang}"
+            )
+            return audio_bytes
+        except Exception as e:
+            logger.error(f"[Gnani Timbre TTS] SDK call error: {e}. Trying REST direct fallback...")
+            return _synthesize_rest_fallback(
+                text=text,
+                voice=voice,
+                language=resolved_lang,
+                model=model,
+                speed=clamped_speed,
+                container=container,
+                output_file=output_file,
+            )
 
 
 def _synthesize_rest_fallback(
@@ -355,6 +421,11 @@ def _synthesize_rest_fallback(
     }
 
     resp = requests.post(url, headers=headers, json=payload, timeout=45)
+    if resp.status_code == 429:
+        logger.warning("[Gnani TTS REST] 429 Rate limited. Waiting 0.5s for previous request to clear...")
+        time.sleep(0.5)
+        resp = requests.post(url, headers=headers, json=payload, timeout=45)
+
     if resp.status_code != 200:
         raise RuntimeError(f"Gnani TTS REST failed ({resp.status_code}): {resp.text}")
 
@@ -364,6 +435,61 @@ def _synthesize_rest_fallback(
             f.write(audio_bytes)
 
     return audio_bytes
+
+
+def stream_speech_timbre(
+    text: str,
+    voice: str = "Shivani",
+    language: str = "hi-IN",
+    model: str = "timbre-v3.0",
+    speed: float = 1.0,
+    container: str = "mp3",
+    sample_rate: int = 48000,
+) -> Iterator[bytes]:
+    """Progressively stream synthesized audio chunks using Gnani Timbre SSE streaming.
+    
+    Time-To-First-Audio (TTFA) is sub-400ms, streaming audio chunks to client immediately.
+    """
+    if not is_gnani_configured():
+        raise ValueError("GNANI_API_KEY is not configured in backend/.env")
+
+    if not text or not text.strip():
+        return
+
+    clamped_speed = max(0.85, min(1.15, float(speed)))
+    resolved_lang = normalize_gnani_language(language)
+
+    # Serialize streaming with lock acquisition to respect Gnani 1-active-request limit
+    with _gnani_tts_lock:
+        try:
+            client = get_tts_stream_client()
+            audio_cfg = AudioConfig(
+                container=container,
+                sample_rate=sample_rate,
+            )
+            stream = client.synthesize_stream(
+                text=text.strip(),
+                voice=voice,
+                model=model,
+                language=resolved_lang,
+                speed=clamped_speed,
+                audio_config=audio_cfg,
+            )
+            for chunk in stream:
+                if chunk:
+                    yield chunk
+        except Exception as e:
+            logger.error(f"[Gnani Timbre Stream] Streaming exception ({e}). Falling back to full synthesis.")
+            full_audio = synthesize_speech_timbre(
+                text=text,
+                voice=voice,
+                language=resolved_lang,
+                model=model,
+                speed=speed,
+                container=container,
+            )
+            if full_audio:
+                yield full_audio
 
 
 # =========================================================================
@@ -385,7 +511,8 @@ def create_voice_clone_embedding(
     audio_data, clean_filename = ensure_supported_audio(file_bytes, filename)
     url = f"{settings.GNANI_BASE_URL.rstrip('/')}/api/v1/tts/voice-clone/embeddings"
     headers = {"X-API-Key-ID": settings.GNANI_API_KEY}
-    files = {"audio_file": (clean_filename, audio_data, "application/octet-stream")}
+    mime_type = "audio/wav" if clean_filename.endswith(".wav") else "audio/mpeg"
+    files = {"audio_file": (clean_filename, audio_data, mime_type)}
 
     resp = requests.post(url, headers=headers, files=files, timeout=60)
     if resp.status_code != 200:
@@ -406,6 +533,7 @@ def create_voice_clone_embedding(
 def synthesize_cloned_voice(
     text: str,
     speaker_embedding: Dict[str, Any],
+    language: str = "hi-IN",
     sample_rate: int = 44100,
     container: str = "wav",
 ) -> bytes:
@@ -416,6 +544,10 @@ def synthesize_cloned_voice(
     if not is_gnani_configured():
         raise ValueError("GNANI_API_KEY is not configured in backend/.env")
 
+    emb_data = speaker_embedding.get("voice_clone_embedding") or speaker_embedding
+
+    resolved_lang = normalize_gnani_language(language)
+
     url = f"{settings.GNANI_BASE_URL.rstrip('/')}/api/v1/tts/inference"
     headers = {
         "X-API-Key-ID": settings.GNANI_API_KEY,
@@ -424,23 +556,30 @@ def synthesize_cloned_voice(
     payload = {
         "text": text.strip(),
         "model": "vachana-vc-v1",
+        "language": resolved_lang,
         "audio_config": {
             "sample_rate": sample_rate,
             "encoding": "linear_pcm",
             "container": container,
         },
         "speaker_embedding": {
-            "embedding": speaker_embedding.get("embedding"),
-            "shape": speaker_embedding.get("shape", [1, 768]),
-            "dtype": speaker_embedding.get("dtype", "torch.bfloat16"),
+            "embedding": emb_data.get("embedding"),
+            "shape": emb_data.get("shape", [1, 768]),
+            "dtype": emb_data.get("dtype", "torch.bfloat16"),
         },
     }
 
-    resp = requests.post(url, headers=headers, json=payload, timeout=60)
-    if resp.status_code != 200:
-        raise RuntimeError(f"Gnani Cloned Voice TTS failed ({resp.status_code}): {resp.text}")
+    with _gnani_tts_lock:
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        if resp.status_code == 429:
+            logger.warning("[Gnani Cloned Voice] 429 Rate limited. Waiting 0.5s for previous request to clear...")
+            time.sleep(0.5)
+            resp = requests.post(url, headers=headers, json=payload, timeout=60)
 
-    return resp.content
+        if resp.status_code != 200:
+            raise RuntimeError(f"Gnani Cloned Voice TTS failed ({resp.status_code}): {resp.text}")
+
+        return resp.content
 
 
 # =========================================================================

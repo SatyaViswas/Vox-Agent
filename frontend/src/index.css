@@ -72,3 +72,46 @@ body {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* Mobile-native touch & voice visualizer animations */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  touch-action: manipulation;
+}
+
+@keyframes voiceGlow {
+  0%, 100% {
+    box-shadow: 0 0 16px rgba(109, 84, 255, 0.4), 0 0 32px rgba(217, 70, 239, 0.25);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(109, 84, 255, 0.75), 0 0 55px rgba(217, 70, 239, 0.45);
+    transform: scale(1.04);
+  }
+}
+
+@keyframes waveRing {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.2;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0.9;
+  }
+}
+
+@utility animate-voice-glow {
+  animation: voiceGlow 2.5s ease-in-out infinite;
+}
+
+@utility animate-wave-ring {
+  animation: waveRing 2s ease-in-out infinite;
+}

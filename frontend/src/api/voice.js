@@ -1,4 +1,46 @@
-import { apiClient } from "./client";
+import { apiClient, BASE_URL } from "./client";
+
+/**
+ * Generate sub-second streaming audio URL for Gnani Timbre TTS.
+ * Browser begins audio playback in <400ms without waiting for full synthesis.
+ * @param {object} params
+ * @param {string} params.text
+ * @param {string} [params.voice="Shivani"]
+ * @param {string} [params.language="hi-IN"]
+ * @param {string} [params.model="timbre-v3.0"]
+ * @param {number} [params.speed=1.0]
+ * @param {string} [params.container="mp3"]
+ * @returns {string} Streaming endpoint URL
+ */
+export function getStreamingSpeechUrl({
+  text,
+  voice = "Shivani",
+  language = "hi-IN",
+  model = "timbre-v3.0",
+  speed = 1.05,
+  container = "mp3",
+}) {
+  const base = BASE_URL.startsWith("http")
+    ? BASE_URL
+    : (typeof window !== "undefined" ? window.location.origin : "") + BASE_URL;
+  const params = new URLSearchParams({
+    text: text.trim(),
+    voice,
+    language,
+    model,
+    speed: String(speed),
+    container,
+  });
+  return `${base}/tts/stream?${params.toString()}`;
+}
+
+/**
+ * Returns audio streaming object with instant URL.
+ */
+export async function streamSpeech(params) {
+  const audioUrl = getStreamingSpeechUrl(params);
+  return { audioUrl };
+}
 
 /**
  * Transcribe an audio recording using Gnani Prisma v3.0 (with Auto-LID, code-mix, and context boosting).
@@ -32,8 +74,8 @@ export async function synthesizeSpeech({
   voice = "Shivani",
   language = "hi-IN",
   model = "timbre-v3.0",
-  speed = 1.0,
-  container = "wav",
+  speed = 1.05,
+  container = "mp3",
 }) {
   const blob = await apiClient.post("/tts/synthesize", {
     text,
@@ -79,12 +121,14 @@ export async function extractVoiceEmbedding(audioBlob, filename = "sample.wav") 
 export async function synthesizeClonedVoice({
   text,
   speaker_embedding,
+  language = "hi-IN",
   sample_rate = 44100,
   container = "wav",
 }) {
   const blob = await apiClient.post("/tts/voice-clone/synthesize", {
     text,
     speaker_embedding,
+    language,
     sample_rate,
     container,
   });
@@ -115,4 +159,32 @@ export async function resolveDisambiguation({
     existing_values: existingValues,
   });
 }
+
+/**
+ * Resolve spoken text into a multi-purpose assistant intent (create workflow, update blueprint, resume paused run, navigate, etc.).
+ * @param {string} spokenText
+ * @param {object} [context={}]
+ * @returns {Promise<{
+ *   intent: string,
+ *   action?: string,
+ *   answer?: string,
+ *   prompt?: string,
+ *   route?: string,
+ *   agent_id?: string,
+ *   agent_name?: string,
+ *   resolved_values?: object,
+ *   all_resolved?: boolean,
+ *   spoken_acknowledgement: string,
+ *   display_title: string,
+ *   display_detail: string
+ * }>}
+ */
+export async function resolveVoiceAssistantIntent(spokenText, context = {}, language = "en") {
+  return apiClient.post("/voice-assistant/intent", {
+    spoken_text: spokenText,
+    context,
+    language,
+  });
+}
+
 

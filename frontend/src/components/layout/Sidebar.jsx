@@ -1,11 +1,13 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ChevronsLeft, ChevronsRight, Sparkles, LogOut, LogIn } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Sparkles, LogOut, LogIn, Settings } from "lucide-react";
 import { NAV_ITEMS } from "../../config/nav";
 import { useAuth } from "../../context/AuthContext";
+import { useSettings } from "../../context/SettingsContext";
 
 export default function Sidebar({ collapsed, onToggle }) {
   const { isGuest, signOut } = useAuth();
+  const { openSettings } = useSettings();
   const navigate = useNavigate();
   const { t } = useTranslation();
 
@@ -53,6 +55,17 @@ export default function Sidebar({ collapsed, onToggle }) {
           </NavLink>
         ))}
       </nav>
+
+      {/* Settings Button */}
+      <button
+        type="button"
+        onClick={() => openSettings("general")}
+        className="flex items-center gap-3 px-4 h-12 border-t border-slate-200/70 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:text-brand-500 hover:bg-slate-900/5 dark:hover:bg-white/5 text-sm font-medium transition-colors shrink-0"
+        title={collapsed ? "Settings" : undefined}
+      >
+        <Settings size={19} className="shrink-0" />
+        {!collapsed && <span>Settings</span>}
+      </button>
 
       <button
         onClick={handleAuthAction}

@@ -1,5 +1,5 @@
 import traceback
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, WebSocket
 from pydantic import BaseModel
 from typing import Dict, Any, Literal, Optional
 from app.services.vault import (
@@ -14,6 +14,7 @@ from app.services.composio_engine import (
     disconnect_composio_account,
     get_app_connect_url,
     get_toolkit_connect_requirements,
+    introspect_app_resources,
     list_composio_apps,
     list_composio_connected_accounts,
     slugify_app_name,
@@ -25,6 +26,8 @@ from app.services.whatsapp_engine import (
 )
 from app.services.browser_login_engine import (
     start_browser_login_session,
+    start_mobile_browser_login_session,
+    handle_mobile_stream,
     capture_browser_login_session,
     cancel_browser_login_session,
 )
@@ -68,6 +71,21 @@ async def get_composio_connections(user_id: str = Query("00000000-0000-0000-0000
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/vault/introspect-resources")
+async def introspect_resources(
+    app: str = Query(..., description="App name, e.g. 'Google Sheets' or 'Slack'"),
+    user_id: str = Query("00000000-0000-0000-0000-000000000000"),
+    parameter_key: Optional[str] = Query(None, description="Optional parameter key, e.g. 'spreadsheet_name' or 'channel'"),
+):
+    """Dynamically introspects connected app resources (e.g. spreadsheet names,
+    slack channels, notion databases) to populate dropdown/selection pills."""
+    try:
+        resources = await introspect_app_resources(user_id=user_id, app=app, parameter_key=parameter_key or "")
+        return {"status": "success", "app": app, "resources": resources}
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "error", "app": app, "resources": [], "error": str(e)}
 
 _BUILTIN_APPS = {"voxagent ai", "voxagent vault notes"}
 
@@ -312,25 +330,43 @@ class BrowserLoginStartRequest(BaseModel):
     user_id: str = "00000000-0000-0000-0000-000000000000"
     app_name: str
     login_url: Optional[str] = None
+    is_mobile: Optional[bool] = False
+    viewport_width: Optional[int] = 390
+    viewport_height: Optional[int] = 844
 
 
 @router.post("/vault/browser-login/start")
 async def start_browser_login(request: BrowserLoginStartRequest):
-    """Opens a real, visible Chromium window for the user to log into
-    `app_name` themselves — no password ever passed through VoxAgent. See
-    browser_login_engine.py: the window stays open until the frontend calls
-    the capture or cancel endpoint below."""
+    """Opens a real Chromium browser for logging into `app_name`.
+    - On desktop/laptop (is_mobile=False): opens a visible Chromium window on the host screen.
+    - On mobile (is_mobile=True): launches headless Chromium with low-latency CDP screencasting
+      streamed directly to the mobile device over WebSocket.
+    """
     try:
+        if request.is_mobile:
+            return await start_mobile_browser_login_session(
+                request.user_id,
+                request.app_name,
+                request.login_url,
+                width=request.viewport_width or 390,
+                height=request.viewport_height or 844,
+            )
         return await start_browser_login_session(request.user_id, request.app_name, request.login_url)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.websocket("/vault/browser-login/stream/{session_id}")
+async def stream_browser_login(websocket: WebSocket, session_id: str):
+    """Real-time bi-directional screencast and touch-interaction stream for mobile browser login."""
+    await handle_mobile_stream(websocket, session_id)
+
+
 @router.post("/vault/browser-login/{session_id}/capture")
 async def capture_browser_login(session_id: str):
     """Called once the user confirms they've finished logging in — reads
-    the browser's cookies and stores them, then closes the window."""
+    the browser's cookies and stores them, then closes the session."""
     result = await capture_browser_login_session(session_id)
     if result.get("status") == "error":
         raise HTTPException(status_code=400, detail=result.get("error"))

@@ -1,6 +1,8 @@
 import { normalizeUserId } from "../lib/auth";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
+// If VITE_API_BASE_URL is set, use it. Otherwise, default to relative "/api/v1" so it works identically
+// on localhost and mobile over Vite's reverse proxy without Mixed-Content or IP mismatch issues.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
 class ApiError extends Error {
   constructor(message, status, body) {
@@ -16,7 +18,11 @@ function getUserId() {
 }
 
 async function request(path, { method = "GET", body, headers = {}, params, signal } = {}) {
-  const url = new URL(`${BASE_URL}${path}`);
+  // Use window.location.origin as base if BASE_URL is a relative path like "/api/v1"
+  const base = BASE_URL.startsWith("http")
+    ? BASE_URL
+    : (typeof window !== "undefined" ? window.location.origin : "http://localhost:5173") + BASE_URL;
+  const url = new URL(`${base}${path}`);
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) url.searchParams.set(key, value);

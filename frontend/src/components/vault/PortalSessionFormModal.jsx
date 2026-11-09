@@ -3,6 +3,15 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { AlertCircle, ChevronDown, Loader2, LogIn, Save, X } from "lucide-react";
 import { cancelBrowserLogin, captureBrowserLogin, saveSession, startBrowserLogin } from "../../api/vault";
+import MobileBrowserLiveView from "./MobileBrowserLiveView";
+
+const checkIsMobile = () => {
+  if (typeof window === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  const hasTouch = "ontouchstart" in window || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+  return Boolean(isMobileUA || (hasTouch && window.innerWidth <= 820));
+};
 
 // Connecting a browser_agent app used to mean typing a username/password
 // into VoxAgent's own UI and hoping the target site's bot detection didn't
@@ -23,8 +32,9 @@ export default function PortalSessionFormModal({ open, mode, initialName, lockNa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  const [phase, setPhase] = useState("idle"); // idle | starting | waiting | capturing
+  const [phase, setPhase] = useState("idle"); // idle | starting | waiting | mobile_streaming | capturing
   const [sessionId, setSessionId] = useState(null);
+  const [isMobileSession, setIsMobileSession] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -36,6 +46,7 @@ export default function PortalSessionFormModal({ open, mode, initialName, lockNa
     setError(null);
     setPhase("idle");
     setSessionId(null);
+    setIsMobileSession(false);
   }, [open, initialName]);
 
   // If the modal is closed (or unmounted) while a login window is still
@@ -56,9 +67,25 @@ export default function PortalSessionFormModal({ open, mode, initialName, lockNa
     setError(null);
     setPhase("starting");
     try {
-      const res = await startBrowserLogin({ userId, appName: name, loginUrl: url || undefined });
+      const mobile = checkIsMobile();
+      const vpWidth = mobile && typeof window !== "undefined" ? Math.round(window.innerWidth) : 390;
+      const vpHeight = mobile && typeof window !== "undefined" ? Math.round(window.innerHeight - 82) : 844;
+      const res = await startBrowserLogin({
+        userId,
+        appName: name,
+        loginUrl: url || undefined,
+        isMobile: mobile,
+        viewportWidth: mobile ? vpWidth : undefined,
+        viewportHeight: mobile ? vpHeight : undefined,
+      });
       setSessionId(res.session_id);
-      setPhase("waiting");
+      if (res.is_mobile) {
+        setIsMobileSession(true);
+        setPhase("mobile_streaming");
+      } else {
+        setIsMobileSession(false);
+        setPhase("waiting");
+      }
     } catch (err) {
       setError(err.message || t("vault.portalModal.browserLoginStartFailed"));
       setPhase("idle");
@@ -67,16 +94,18 @@ export default function PortalSessionFormModal({ open, mode, initialName, lockNa
 
   const handleDone = async () => {
     setError(null);
+    const prevPhase = phase;
     setPhase("capturing");
     try {
       await captureBrowserLogin(sessionId);
       setSessionId(null);
       setPhase("idle");
+      setIsMobileSession(false);
       onConnected?.();
       onClose();
     } catch (err) {
       setError(err.message || t("vault.portalModal.browserLoginCaptureFailed"));
-      setPhase("waiting");
+      setPhase(prevPhase);
     }
   };
 
@@ -84,6 +113,7 @@ export default function PortalSessionFormModal({ open, mode, initialName, lockNa
     const sid = sessionId;
     setSessionId(null);
     setPhase("idle");
+    setIsMobileSession(false);
     if (sid) await cancelBrowserLogin(sid).catch(() => {});
   };
 
@@ -102,7 +132,21 @@ export default function PortalSessionFormModal({ open, mode, initialName, lockNa
     }
   };
 
-  const waiting = phase === "waiting" || phase === "capturing";
+  if (phase === "mobile_streaming" || (phase === "capturing" && isMobileSession)) {
+    return createPortal(
+      <MobileBrowserLiveView
+        sessionId={sessionId}
+        appName={name}
+        onDone={handleDone}
+        onCancel={handleCancelLogin}
+        capturing={phase === "capturing"}
+        error={error}
+      />,
+      document.body
+    );
+  }
+
+  const waiting = phase === "waiting" || (phase === "capturing" && !isMobileSession);
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

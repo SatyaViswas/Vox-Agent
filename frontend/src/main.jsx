@@ -7,6 +7,7 @@ import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
 import { LanguageProvider } from "./context/LanguageContext.jsx";
+import { SettingsProvider } from "./context/SettingsContext.jsx";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
@@ -14,7 +15,9 @@ createRoot(document.getElementById("root")).render(
       <ThemeProvider>
         <LanguageProvider>
           <AuthProvider>
-            <App />
+            <SettingsProvider>
+              <App />
+            </SettingsProvider>
           </AuthProvider>
         </LanguageProvider>
       </ThemeProvider>

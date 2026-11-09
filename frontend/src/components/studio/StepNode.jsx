@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Circle, Loader2, CheckCircle2, XCircle, HelpCircle, Wand2 } from "lucide-react";
+import { ChevronDown, Circle, Loader2, CheckCircle2, XCircle, HelpCircle, Wand2, MinusCircle } from "lucide-react";
 import { getRouteConfig } from "../../lib/routeConfig";
 
 const STATUS_CONFIG = {
@@ -47,9 +47,15 @@ const STATUS_CONFIG = {
     ring: "ring-amber-400/70 shadow-[0_0_0_4px_rgba(245,158,11,0.12)]",
     badge: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
   },
+  skipped: {
+    label: "Skipped",
+    icon: MinusCircle,
+    ring: "ring-slate-400/50 shadow-[0_0_0_4px_rgba(148,163,184,0.1)]",
+    badge: "bg-slate-500/15 text-slate-600 dark:text-slate-400 border border-slate-400/20",
+  },
 };
 
-export default function StepNode({ step, status = "pending", isLast }) {
+export default function StepNode({ step, status = "pending", skipReason, isLast }) {
   const [expanded, setExpanded] = useState(false);
   const route = getRouteConfig(step.route);
   const RouteIcon = route.icon;
@@ -84,9 +90,27 @@ export default function StepNode({ step, status = "pending", isLast }) {
                 <StatusIcon size={11} className={statusConfig.spin ? "animate-spin" : ""} />
                 {statusConfig.label}
               </span>
+              {step.condition && (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20">
+                  ⚡ If: {step.condition}
+                </span>
+              )}
+              {step.skip_if_empty && (
+                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-300 border border-blue-500/20">
+                  Skip if empty
+                </span>
+              )}
             </div>
             <h4 className="font-medium text-sm truncate">{step.action}</h4>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{step.app}</p>
+            {status === "skipped" && (
+              <div className="mt-2.5 flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-slate-500/10 border border-slate-500/20 text-slate-600 dark:text-slate-300 animate-fadeIn">
+                <MinusCircle size={13} className="text-slate-400 shrink-0" />
+                <span className="font-medium">
+                  {skipReason ? `Skipped: ${skipReason}` : "Skipped: Condition was not met (no action performed)"}
+                </span>
+              </div>
+            )}
           </div>
 
           {hasParams && (

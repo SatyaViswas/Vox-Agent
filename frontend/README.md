@@ -18,10 +18,11 @@ The frontend of VoxAgent AI is a modern React web application built with Vite an
 *   **Framework:** React 19 (JavaScript)
 *   **Build Tool:** Vite + HMR (Hot Module Replacement)
 *   **Styling:** Tailwind CSS + Lucide Icons
-*   **State Management:** Zustand (lightweight stores for auth, agents, and logs)
-*   **API Queries:** Fetch API + WebSocket connections for real-time telemetry streaming
+*   **State Management:** Zustand (lightweight stores for auth, agents, studio, and notifications)
+*   **Voice Integration:** Gnani Prisma v3.0 STT & Timbre v3.0 TTS Audio Feedback
+*   **API Queries:** Fetch API + WebSocket connections for real-time telemetry streaming & notifications
 *   **Routing:** React Router v7
-*   **Internationalization:** i18next
+*   **Internationalization:** i18next (supports 10+ languages)
 *   **Linter:** Oxlint (high-speed rust-based linter)
 
 ---
@@ -32,11 +33,14 @@ The user interface consists of the following key views located in `src/pages/`:
 
 *   **`Landing.jsx` (Welcome & Entry):** Introduces VoxAgent AI and serves as the landing dashboard.
 *   **`Auth.jsx` (Secure Access):** Manages user registration and logins integrated with Supabase auth.
-*   **`AgentStudio.jsx` (Interactive Builder & Telemetry):** The core playground. Let's users describe an objective, watch Gemini formulate a multi-step execution blueprint, run the agent, and stream step-by-step progress, screenshots, and logs in real-time. Also handles human-in-the-loop pauses.
-*   **`AppVault.jsx` (Application Manager):** A credential manager to connect accounts (e.g., Slack, GitHub, Google Drive) using Composio and encrypted storage.
-*   **`KnowledgeBase.jsx` (RAG Knowledge Hub):** Allows users to upload documents (PDF, CSV, or Web URLs) to store text embeddings for vector retrieval.
-*   **`MyAgents.jsx` (Agent Catalog):** Displays the status (active, paused, completed) of all created agents and lets users manage scheduled runs or triggers.
+*   **`AgentStudio.jsx` (Interactive Builder & Telemetry):** The core playground. Lets users describe an objective via voice (with Gnani Prisma ASR) or text, watch Gemini formulate a multi-step execution blueprint, run the agent, and stream step-by-step progress, screenshots, and logs in real-time. Also handles human-in-the-loop pauses and hands-free voice disambiguation.
+*   **`AppVault.jsx` (Application Manager):** A credential manager to connect accounts (Slack, GitHub, Google Drive, Telegram, WhatsApp) using Composio and encrypted storage. Features remote live-view browser authentication for mobile and desktop devices.
+*   **`KnowledgeBase.jsx` (RAG Knowledge Hub):** Allows users to upload documents (PDF, CSV, or Web URLs) or record audio memos directly (via Gnani Prisma) to store text embeddings for vector retrieval.
+*   **`MyAgents.jsx` (Agent Catalog):** Displays the status (active, paused, completed) of all created agents and lets users manage scheduled cron runs or live event triggers.
 *   **`VaultNotes.jsx` (Extracted Notes):** View and search notes or structural outputs compiled by automated scrapers.
+*   **Global Layout & Notifications (`AppShell.jsx`, `NotificationsDropdown.jsx`, `BottomNav.jsx`):**
+    - **Global Voice FAB:** One-tap voice modal for hands-free workflow generation and agent queries.
+    - **Live Notification Hub:** Tracks unattended background executions (scheduled cron runs, incoming Telegram/webhook triggers), dispatches desktop push notifications, and speaks natural voice completion alerts.
 
 ---
 
