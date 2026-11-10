@@ -1,3 +1,4 @@
+import re
 import traceback
 import uuid
 import asyncio
@@ -24,6 +25,8 @@ _pending_logins: dict = {}
 # headless browser overhead.
 _live_clients: dict[str, "TelegramClient"] = {}
 _client_locks: dict[str, asyncio.Lock] = {}
+_client_me_ids: dict[str, int] = {}
+_background_tasks: set[asyncio.Task] = set()
 
 # agent_id -> {"user_id", "chat_filter"} for agents currently listening.
 _active_agents: dict = {}
@@ -263,8 +266,13 @@ async def _dispatch_event(agent_id: str, user_id: str, payload: dict) -> None:
 
 
 def _register_event_handler(client: TelegramClient, user_id: str, app_name: str) -> None:
+    client_key = f"{user_id}:{app_name}"
+
     @client.on(events.NewMessage())
     async def _on_new_message(event):
+        if app_name == TELEGRAM_BOT_APP_NAME and getattr(event, "out", False):
+            return
+
         matching_agents = [
             aid for aid, info in _active_agents.items()
             if info["user_id"] == user_id and info.get("app_name") == app_name
@@ -273,8 +281,14 @@ def _register_event_handler(client: TelegramClient, user_id: str, app_name: str)
             return
 
         try:
-            me = await client.get_me()
-            is_saved = bool(event.is_private and event.chat_id == me.id)
+            me_id = _client_me_ids.get(client_key)
+            if me_id is None:
+                me = await client.get_me()
+                me_id = getattr(me, "id", None)
+                if me_id is not None:
+                    _client_me_ids[client_key] = me_id
+
+            is_saved = bool(me_id is not None and event.is_private and event.chat_id == me_id)
             chat = await event.get_chat()
             chat_title = getattr(chat, "title", None)
             chat_username = getattr(chat, "username", None)
@@ -296,7 +310,9 @@ def _register_event_handler(client: TelegramClient, user_id: str, app_name: str)
         for agent_id in matching_agents:
             chat_filter = _active_agents.get(agent_id, {}).get("chat_filter")
             if _matches_filter(is_saved, chat_title, chat_username, chat_filter):
-                await _dispatch_event(agent_id, user_id, payload)
+                task = asyncio.create_task(_dispatch_event(agent_id, user_id, payload))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
 
 
 async def _get_or_start_live_client(user_id: str, app_name: str) -> TelegramClient:
@@ -390,6 +406,7 @@ async def disconnect_user(user_id: str, app_name: str = TELEGRAM_PERSONAL_APP_NA
     App Vault — tears down the live client and stops any agents listening
     through it, since the underlying session credential is gone."""
     client_key = f"{user_id}:{app_name}"
+    _client_me_ids.pop(client_key, None)
     client = _live_clients.pop(client_key, None)
     if client:
         try:
@@ -438,7 +455,15 @@ async def execute_telegram_client_action(user_id: str, action: str, parameters: 
             "missing_field": "target" if not target else "text",
         }
 
-    entity = "me" if str(target).strip().lower() in ("me", "myself", "saved messages") else target
+    entity_str = str(target).strip()
+    if entity_str.lower() in ("me", "myself", "saved messages"):
+        entity = "me"
+    elif re.fullmatch(r"-?\d+", entity_str):
+        # Integer IDs passed as strings make Telethon interpret them as phone numbers,
+        # which causes bots to raise "Cannot get entity by phone number as a bot".
+        entity = int(entity_str)
+    else:
+        entity = target
     try:
         sent = await client.send_message(entity, str(text))
         return {

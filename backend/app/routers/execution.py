@@ -23,7 +23,7 @@ async def get_paused_runs(x_user_id: Optional[str] = Header(default=None)):
     # every user's pending items with no filtering at all. Omitting the
     # header still lists everything, matching the old behavior for any
     # caller that doesn't send it (e.g. a script/curl).
-    rows = pending_actions.list_pending_actions(user_id=x_user_id)
+    rows = await asyncio.to_thread(pending_actions.list_pending_actions, user_id=x_user_id)
     return {
         "status": "success",
         "paused_runs": {
@@ -427,7 +427,8 @@ async def get_recent_executions(
     for the requesting user. Used by the web app for real-time notifications and voice announcements."""
     effective_user_id = x_user_id or user_id
     from app.services.execution_events import get_recent_execution_events
-    events = get_recent_execution_events(
+    events = await asyncio.to_thread(
+        get_recent_execution_events,
         user_id=effective_user_id,
         since_timestamp=since,
         limit=limit,

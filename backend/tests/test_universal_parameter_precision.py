@@ -104,6 +104,58 @@ class TestUniversalParameterPrecision(unittest.TestCase):
         self.assertTrue(updated.get("single_events"))
         self.assertEqual(updated.get("order_by"), "startTime")
 
+    def test_telegram_numeric_chat_id_preservation(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.services.telegram_client_engine import execute_telegram_client_action
+
+        # 1. Parameter normalizer should preserve integer chat IDs without stringifying
+        self.assertEqual(normalize_action_parameter("Telegram Bot", "SEND_MESSAGE", "target", 123456789), 123456789)
+        self.assertIsInstance(normalize_action_parameter("Telegram Bot", "SEND_MESSAGE", "target", 123456789), int)
+        self.assertEqual(normalize_action_parameter("Telegram Bot", "SEND_MESSAGE", "target", -100123456), -100123456)
+
+        # 2. execute_telegram_client_action must pass integer peer IDs to Telethon even if supplied as string
+        mock_client = MagicMock()
+        mock_sent = MagicMock(id=42, date=None)
+        mock_client.send_message = AsyncMock(return_value=mock_sent)
+
+        async def _run():
+            with patch("app.services.telegram_client_engine._get_or_start_live_client", AsyncMock(return_value=mock_client)):
+                res = await execute_telegram_client_action(
+                    user_id="test_user",
+                    action="SEND_MESSAGE",
+                    parameters={"target": "652837192", "message": "Hello from bakery!"},
+                    app_name="Telegram Bot",
+                )
+                self.assertEqual(res["status"], "success")
+                mock_client.send_message.assert_awaited_with(652837192, "Hello from bakery!")
+
+                res_neg = await execute_telegram_client_action(
+                    user_id="test_user",
+                    action="SEND_MESSAGE",
+                    parameters={"target": "-1001928374", "message": "Group reply"},
+                    app_name="Telegram Bot",
+                )
+                self.assertEqual(res_neg["status"], "success")
+                mock_client.send_message.assert_awaited_with(-1001928374, "Group reply")
+
+        asyncio.run(_run())
+
+    def test_content_and_prompt_skip_llm_normalizer(self):
+        from unittest.mock import patch
+        with patch("app.services.parameter_normalizer._gemini_client") as mock_gemini:
+            prompt_val = "You are a helpful bakery support assistant. Reply warmly to the customer."
+            msg_val = "Hello! We have custom chocolate cakes starting at $35."
+            self.assertEqual(
+                normalize_action_parameter("VoxAgent AI", "GENERATE_TEXT", "prompt", prompt_val),
+                prompt_val,
+            )
+            self.assertEqual(
+                normalize_action_parameter("Telegram Bot", "SEND_MESSAGE", "message", msg_val),
+                msg_val,
+            )
+            mock_gemini.models.generate_content.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

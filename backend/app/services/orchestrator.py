@@ -582,7 +582,9 @@ def _looks_like_auth_required_text(text) -> bool:
 
 
 async def _load_agent_blueprint(agent_id: str):
-    agent_response = supabase.table("agents").select("*").eq("id", agent_id).execute()
+    agent_response = await asyncio.to_thread(
+        lambda: supabase.table("agents").select("*").eq("id", agent_id).execute()
+    )
     if not agent_response.data:
         return None, None
     agent_record = agent_response.data[0]
@@ -597,14 +599,17 @@ async def _load_agent_blueprint(agent_id: str):
 
 async def _persist_run(agent_id: str, status: str, step_logs: list):
     log_id = None
+    run_id = _current_run_id.get()
     try:
-        res = supabase.table("execution_logs").insert({
-            "agent_id": agent_id,
-            "run_id": _current_run_id.get(),
-            "status": status,
-            "log_messages": step_logs,
-            "proof_screenshot_url": None
-        }).execute()
+        res = await asyncio.to_thread(
+            lambda: supabase.table("execution_logs").insert({
+                "agent_id": agent_id,
+                "run_id": run_id,
+                "status": status,
+                "log_messages": step_logs,
+                "proof_screenshot_url": None
+            }).execute()
+        )
         if res and res.data and len(res.data) > 0:
             log_id = res.data[0].get("id")
     except Exception as e:
@@ -641,15 +646,16 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
     if isinstance(trigger_data, dict) and trigger_data.get("is_test"):
         parameters["_is_test_run"] = True
 
-    # Universal parameter normalization across all app types and routes
-    from app.services.parameter_normalizer import normalize_action_parameter
-    clean_params = {}
-    for k, v in (parameters or {}).items():
-        if k.startswith("_"):
-            clean_params[k] = v
-        else:
-            clean_params[k] = normalize_action_parameter(app, action, k, v)
-    parameters = clean_params
+    # Universal parameter normalization across external API/tool routes (not ai_generate prompts)
+    if route != "ai_generate":
+        from app.services.parameter_normalizer import normalize_action_parameter
+        clean_params = {}
+        for k, v in (parameters or {}).items():
+            if k.startswith("_"):
+                clean_params[k] = v
+            else:
+                clean_params[k] = await asyncio.to_thread(normalize_action_parameter, app, action, k, v)
+        parameters = clean_params
 
     if is_vault_notes_target(app):
         # No real destination was specified for extracted data (see
@@ -709,7 +715,13 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
         # everything" behavior for them.
         knowledge_sources = (blueprint or {}).get("knowledge_sources") or None
         try:
-            content = generate_ai_content(prompt, as_list=as_list, user_id=user_id, knowledge_sources=knowledge_sources)
+            content = await asyncio.to_thread(
+                generate_ai_content,
+                prompt,
+                as_list=as_list,
+                user_id=user_id,
+                knowledge_sources=knowledge_sources,
+            )
             return {"status": "success", "output": content}
         except Exception as e:
             traceback.print_exc()

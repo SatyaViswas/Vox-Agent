@@ -263,15 +263,15 @@ def normalize_action_parameter(
     
     Works generically across Google Sheets, Gmail, Slack, and 500+ Composio tools.
     """
-    if raw_value is None:
-        return raw_value
-
     if isinstance(raw_value, dict):
         unwrapped = unwrap_dict_for_field(parameter_key, raw_value)
         if unwrapped is not None:
             raw_value = unwrapped
         else:
             return raw_value
+
+    if raw_value is None or isinstance(raw_value, (bool, int, float, list)):
+        return raw_value
 
     raw_str = str(raw_value).strip()
     if not raw_str:
@@ -282,6 +282,15 @@ def normalize_action_parameter(
     if fast_result:
         logger.info(f"[ParameterNormalizer] Fast normalized '{raw_str}' -> '{fast_result}' for {app}.{parameter_key}")
         return fast_result
+
+    # Skip expensive LLM normalization for free-form text/content fields, prompts, or long payloads
+    _CONTENT_PARAM_KEYS = {
+        "prompt", "message", "text", "body", "content", "description", "summary",
+        "subject", "note", "instructions", "answer", "reply", "caption", "html",
+        "markdown", "values", "data", "rows", "snippet",
+    }
+    if parameter_key.lower().strip() in _CONTENT_PARAM_KEYS or len(raw_str) > 150 or "\n" in raw_str:
+        return raw_str
 
     # If it's already a clean ID or short technical value without filler, keep as-is
     if len(raw_str.split()) == 1 and not re.search(r"[#]", raw_str):

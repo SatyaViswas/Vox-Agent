@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 # Sliding in-memory buffer for recent execution events (max 200 events)
 _recent_events: collections.deque = collections.deque(maxlen=200)
 _seen_event_ids: set = set()
+_SERVER_BOOT_TIME_MS: int = int(time.time() * 1000)
 
 
 def _is_valid_uuid(val: Any) -> bool:
@@ -208,8 +209,9 @@ def get_recent_execution_events(
             seen_dedup_keys.add(dedup_key)
             results.append(evt)
 
-    # 2. Backfill / enrich from Supabase execution_logs
-    if supabase and (effective_user_id is None or _is_valid_uuid(effective_user_id)):
+    # 2. Backfill / enrich from Supabase execution_logs only when cold-starting or querying pre-boot history
+    needs_db_backfill = since_timestamp is None or since_timestamp < _SERVER_BOOT_TIME_MS
+    if needs_db_backfill and supabase and (effective_user_id is None or _is_valid_uuid(effective_user_id)):
         try:
             agents_query = supabase.table("agents").select("id, title, trigger_type, user_id")
             if effective_user_id:
