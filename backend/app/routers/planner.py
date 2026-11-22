@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, UploadFile, File, Form, Header, HTTPException
 from pydantic import BaseModel
@@ -31,7 +32,7 @@ class DisambiguationResolveResponse(BaseModel):
 @router.post("/plan", response_model=WorkflowBlueprint)
 async def plan_workflow(request: PlanRequest):
     try:
-        blueprint = generate_blueprint(request.prompt, current_blueprint=request.current_blueprint)
+        blueprint = await asyncio.to_thread(generate_blueprint, request.prompt, current_blueprint=request.current_blueprint)
         user_id = request.user_id or "00000000-0000-0000-0000-000000000000"
         bp_dict = blueprint.model_dump()
         enriched_dict = await enrich_blueprint_with_connected_resources(bp_dict, user_id=user_id)
@@ -48,7 +49,8 @@ async def transcribe(
 ):
     try:
         file_bytes = await file.read()
-        res = transcribe_audio_detailed(
+        res = await asyncio.to_thread(
+            transcribe_audio_detailed,
             file_bytes=file_bytes,
             filename=file.filename or "audio.webm",
             language_code=language_code or "indic-auto",
@@ -74,14 +76,15 @@ async def voice_plan(
 ):
     try:
         file_bytes = await file.read()
-        transcript = transcribe_audio(
+        transcript = await asyncio.to_thread(
+            transcribe_audio,
             file_bytes=file_bytes,
             filename=file.filename or "audio.webm",
             user_id=x_user_id,
         )
         
         # Now use the transcript to generate a blueprint
-        blueprint = generate_blueprint(transcript)
+        blueprint = await asyncio.to_thread(generate_blueprint, transcript)
         user_id = x_user_id or "00000000-0000-0000-0000-000000000000"
         bp_dict = blueprint.model_dump()
         enriched_dict = await enrich_blueprint_with_connected_resources(bp_dict, user_id=user_id)

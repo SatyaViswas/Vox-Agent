@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Header
 from typing import List, Optional
 from app.schemas.knowledge import (
@@ -112,19 +113,18 @@ async def get_knowledge_sources(x_user_id: Optional[str] = Header(None)):
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not initialized")
         
-    # We select DISTINCT ON (source_name) to get one entry per source
-    response = supabase.table("business_knowledge") \
-        .select("id, user_id, source_type, source_name, content, created_at") \
-        .eq("user_id", user_id) \
-        .execute()
-        
-    # Grouping logic (since supabase python client doesn't directly support DISTINCT ON)
-    unique_sources = {}
-    for item in response.data:
-        if item["source_name"] not in unique_sources:
-            unique_sources[item["source_name"]] = item
-            
-    return list(unique_sources.values())
+    def _fetch():
+        response = supabase.table("business_knowledge") \
+            .select("id, user_id, source_type, source_name, content, created_at") \
+            .eq("user_id", user_id) \
+            .execute()
+        unique_sources = {}
+        for item in response.data:
+            if item["source_name"] not in unique_sources:
+                unique_sources[item["source_name"]] = item
+        return list(unique_sources.values())
+
+    return await asyncio.to_thread(_fetch)
 
 
 @router.delete("/{source_name}")
@@ -136,16 +136,15 @@ async def delete_knowledge_source(source_name: str, x_user_id: Optional[str] = H
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not initialized")
         
-    # Delete from knowledge base
-    supabase.table("business_knowledge") \
-        .delete() \
-        .eq("user_id", user_id) \
-        .eq("source_name", source_name) \
-        .execute()
-        
-    # Invalidate semantic cache
-    supabase.table("semantic_cache").delete().eq("user_id", user_id).execute()
-    
+    def _delete():
+        supabase.table("business_knowledge") \
+            .delete() \
+            .eq("user_id", user_id) \
+            .eq("source_name", source_name) \
+            .execute()
+        supabase.table("semantic_cache").delete().eq("user_id", user_id).execute()
+
+    await asyncio.to_thread(_delete)
     return {"message": f"Deleted source '{source_name}' and invalidated cache."}
 
 from pydantic import BaseModel
@@ -219,11 +218,13 @@ async def get_knowledge_source_content(source_name: str, x_user_id: Optional[str
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    response = supabase.table("business_knowledge") \
-        .select("id, content, created_at") \
-        .eq("user_id", user_id) \
-        .eq("source_name", source_name) \
+    response = await asyncio.to_thread(
+        lambda: supabase.table("business_knowledge")
+        .select("id, content, created_at")
+        .eq("user_id", user_id)
+        .eq("source_name", source_name)
         .execute()
+    )
         
     if not response.data:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -237,13 +238,15 @@ async def rename_knowledge_source(source_name: str, request: RenameRequest, x_us
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not initialized")
         
-    supabase.table("business_knowledge") \
-        .update({"source_name": request.new_name.strip()}) \
-        .eq("user_id", user_id) \
-        .eq("source_name", source_name) \
-        .execute()
-        
-    supabase.table("semantic_cache").delete().eq("user_id", user_id).execute()
+    def _rename():
+        supabase.table("business_knowledge") \
+            .update({"source_name": request.new_name.strip()}) \
+            .eq("user_id", user_id) \
+            .eq("source_name", source_name) \
+            .execute()
+        supabase.table("semantic_cache").delete().eq("user_id", user_id).execute()
+
+    await asyncio.to_thread(_rename)
     return {"message": "Renamed successfully"}
 
 @router.put("/{source_name}")
@@ -252,33 +255,39 @@ async def update_knowledge_source(source_name: str, request: UpdateRequest, x_us
     if not supabase:
         raise HTTPException(status_code=500, detail="Database not initialized")
         
-    # Get the original source type from one of the chunks
-    response = supabase.table("business_knowledge") \
-        .select("source_type") \
-        .eq("user_id", user_id) \
-        .eq("source_name", source_name) \
-        .limit(1) \
-        .execute()
+    def _update():
+        # Get the original source type from one of the chunks
+        response = supabase.table("business_knowledge") \
+            .select("source_type") \
+            .eq("user_id", user_id) \
+            .eq("source_name", source_name) \
+            .limit(1) \
+            .execute()
+            
+        if not response.data:
+            return None
+            
+        source_type = response.data[0]["source_type"]
         
-    if not response.data:
+        # Delete old chunks
+        supabase.table("business_knowledge") \
+            .delete() \
+            .eq("user_id", user_id) \
+            .eq("source_name", source_name) \
+            .execute()
+            
+        # Re-ingest
+        process_and_store_knowledge(
+            user_id=user_id,
+            source_type=source_type,
+            source_name=source_name,
+            content=request.content
+        )
+        return True
+
+    res = await asyncio.to_thread(_update)
+    if not res:
         raise HTTPException(status_code=404, detail="Source not found")
-        
-    source_type = response.data[0]["source_type"]
-    
-    # Delete old chunks
-    supabase.table("business_knowledge") \
-        .delete() \
-        .eq("user_id", user_id) \
-        .eq("source_name", source_name) \
-        .execute()
-        
-    # Re-ingest
-    process_and_store_knowledge(
-        user_id=user_id,
-        source_type=source_type,
-        source_name=source_name,
-        content=request.content
-    )
     
     return {"message": "Content updated successfully"}
 
@@ -290,7 +299,8 @@ async def test_knowledge_query(request: KnowledgeTestQueryRequest, x_user_id: Op
     if not query_str:
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
-    detailed_chunks = retrieve_business_context_detailed(
+    detailed_chunks = await asyncio.to_thread(
+        retrieve_business_context_detailed,
         user_id=user_id,
         task_intent=query_str,
         threshold=0.45,
@@ -336,11 +346,11 @@ Customer Question:
         answer_text = None
         for m_name in [
             "gemini-3.1-flash-lite",
-            "gemini-3.1-flash-lite-preview",
-            "gemini-3-flash-preview",
-            "gemini-3.5-flash",
-            "gemini-3.6-flash",
             "gemini-3.5-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-3-flash-preview",
         ]:
             try:
                 response = gemini_client.models.generate_content(

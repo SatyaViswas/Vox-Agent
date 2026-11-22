@@ -22,6 +22,7 @@ import {
   getAgentLogs,
   getAgents,
   getTriggerStatus,
+  getTriggerStatuses,
   updateAgent,
   updateAgentSchedule,
 } from "../api/agents";
@@ -133,32 +134,29 @@ export default function MyAgents() {
   });
 
   const fetchLastRuns = useCallback((list) => {
-    if (list.length === 0) return;
+    if (!list || list.length === 0) return;
+    const slice = list.slice(0, 10);
     setLastRunsLoading(true);
     Promise.all(
-      list.map((a) =>
-        getAgentLogs(a.id)
+      slice.map((a) =>
+        getAgentLogs(a.id, { limit: 1 })
           .then((res) => [a.id, res?.logs?.[0] || null])
           .catch(() => [a.id, null])
       )
     ).then((pairs) => {
-      setLastRuns(Object.fromEntries(pairs));
+      setLastRuns((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
       setLastRunsLoading(false);
     });
   }, []);
 
-  const fetchTriggerStatuses = useCallback((list) => {
-    const eventAgents = list.filter((a) => a.trigger_type === "event_trigger");
-    if (eventAgents.length === 0) return;
-    Promise.all(
-      eventAgents.map((a) =>
-        getTriggerStatus(a.id)
-          .then((res) => [a.id, { listening: !!res?.listening, reason: res?.reason || null }])
-          .catch(() => [a.id, { listening: false, reason: null }])
-      )
-    ).then((pairs) => {
-      setListeningStatus((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
-    });
+  const fetchTriggerStatuses = useCallback(() => {
+    getTriggerStatuses()
+      .then((res) => {
+        if (res?.statuses) {
+          setListeningStatus((prev) => ({ ...prev, ...res.statuses }));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const fetchAgents = useCallback(async () => {
@@ -168,14 +166,26 @@ export default function MyAgents() {
       const res = await getAgents(userId);
       const list = res?.agents || [];
       setAgents(list);
-      fetchLastRuns(list);
-      fetchTriggerStatuses(list);
+
+      // Hydrate last runs and live trigger statuses directly from the single getAgents response
+      const initialRuns = {};
+      const initialListening = {};
+      list.forEach((a) => {
+        if (a.last_run) {
+          initialRuns[a.id] = a.last_run;
+        }
+        if (a.trigger_type === "event_trigger") {
+          initialListening[a.id] = { listening: !!a.listening, reason: a.listening_reason || null };
+        }
+      });
+      setLastRuns(initialRuns);
+      setListeningStatus((prev) => ({ ...prev, ...initialListening }));
     } catch (err) {
       setLoadError(err.message || t("myAgents.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [userId, fetchLastRuns, fetchTriggerStatuses, t]);
+  }, [userId, t]);
 
   useEffect(() => {
     fetchAgents();
@@ -184,7 +194,7 @@ export default function MyAgents() {
   useEffect(() => {
     const hasEventAgents = agents.some((a) => a.trigger_type === "event_trigger");
     if (!hasEventAgents) return;
-    const interval = setInterval(() => fetchTriggerStatuses(agents), 15000);
+    const interval = setInterval(() => fetchTriggerStatuses(), 15000);
     return () => clearInterval(interval);
   }, [agents, fetchTriggerStatuses]);
 

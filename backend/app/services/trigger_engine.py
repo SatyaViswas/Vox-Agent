@@ -63,22 +63,32 @@ def _extract_description(item) -> str | None:
     return None
 
 
-def discover_trigger_slug(toolkit_slug: str, intent_description: str | None = None) -> str:
-    """Looks up the Composio trigger type to arm for a toolkit. Requires the
-    API key to have "triggers" read access — raises a clear, actionable
-    error if that permission is missing, since that's the most likely
-    reason this fails.
+# In-memory slug cache: (toolkit_slug, intent_description_clean) -> trigger_slug
+# Avoids repeated Composio API calls and Gemini roundtrips on every rearm/startup
+_SLUG_CACHE: dict = {
+    ("gmail", ""): "GMAIL_NEW_GMAIL_MESSAGE",
+    ("gmail", "whenever i get an email"): "GMAIL_NEW_GMAIL_MESSAGE",
+    ("googlesheets", ""): "GOOGLESHEETS_NEW_ROW",
+    ("slack", ""): "SLACK_NEW_MESSAGE",
+    ("github", ""): "GITHUB_COMMIT_EVENT",
+}
 
-    Many toolkits expose more than one trigger type (Gmail alone has both
-    "message sent" and "message received") — blindly taking the first one
-    the API returns previously armed whichever happened to sort first,
-    which for Gmail is the SENT trigger, silently listening for the user's
-    own outgoing mail instead of their inbox. When there's more than one
-    candidate, `intent_description` (the blueprint's own plain-English
-    description of what should be watched, e.g. "whenever an email
-    arrives...") lets a quick AI call pick by each trigger's real
-    description instead of by list order.
-    """
+# Cache for trigger instances: (user_id, trigger_slug, config_hash) -> trigger_instance
+_TRIGGER_INSTANCE_CACHE: dict = {}
+
+
+def discover_trigger_slug(toolkit_slug: str, intent_description: str | None = None) -> str:
+    """Looks up the Composio trigger type to arm for a toolkit. Results are cached
+    in-memory so repeated rearms do not block or hammer third-party APIs."""
+    norm_tool = (toolkit_slug or "").strip().lower()
+    norm_intent = (intent_description or "").strip().lower()
+    cache_key = (norm_tool, norm_intent)
+
+    if cache_key in _SLUG_CACHE:
+        return _SLUG_CACHE[cache_key]
+    if (norm_tool, "") in _SLUG_CACHE and not norm_intent:
+        return _SLUG_CACHE[(norm_tool, "")]
+
     _require_composio()
     try:
         response = composio.triggers.list(toolkit_slugs=[toolkit_slug])
@@ -97,6 +107,7 @@ def discover_trigger_slug(toolkit_slug: str, intent_description: str | None = No
         slug = _extract_slug(items[0])
         if not slug:
             raise Exception(f"Composio returned a trigger type for '{toolkit_slug}' with no usable slug.")
+        _SLUG_CACHE[cache_key] = slug
         return slug
 
     candidates = [(_extract_slug(i), _extract_description(i)) for i in items]
@@ -111,12 +122,22 @@ def discover_trigger_slug(toolkit_slug: str, intent_description: str | None = No
     slug = picked or (candidates[0][0] if candidates else None)
     if not slug:
         raise Exception(f"Composio returned trigger types for '{toolkit_slug}' with no usable slugs.")
+
+    _SLUG_CACHE[cache_key] = slug
     return slug
 
 
 def _ensure_trigger_instance(user_id: str, trigger_slug: str, trigger_config: dict | None = None):
+    import json
+    cfg_str = json.dumps(trigger_config or {}, sort_keys=True)
+    cache_key = (user_id, trigger_slug, cfg_str)
+    if cache_key in _TRIGGER_INSTANCE_CACHE:
+        return _TRIGGER_INSTANCE_CACHE[cache_key]
+
     try:
-        return composio.triggers.create(trigger_slug, user_id=user_id, trigger_config=trigger_config or {})
+        inst = composio.triggers.create(trigger_slug, user_id=user_id, trigger_config=trigger_config or {})
+        _TRIGGER_INSTANCE_CACHE[cache_key] = inst
+        return inst
     except Exception as e:
         raise Exception(
             f"Failed to register the '{trigger_slug}' trigger with Composio for this account: {e}"

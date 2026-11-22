@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.database import supabase
@@ -13,11 +14,14 @@ async def admin_signup(req: SignupRequest):
     try:
         # We use the admin API to bypass rate limits and auto-confirm emails for this demo/hackathon
         # This requires SUPABASE_SERVICE_ROLE_KEY to be set in the supabase client initialization
-        res = supabase.auth.admin.create_user({
-            "email": req.email,
-            "password": req.password,
-            "email_confirm": True
-        })
+        res = await asyncio.to_thread(
+            supabase.auth.admin.create_user,
+            {
+                "email": req.email,
+                "password": req.password,
+                "email_confirm": True
+            }
+        )
         
         # The postgres trigger 'on_auth_user_created' will automatically copy them to public.users
         return {"success": True, "message": "User created successfully"}

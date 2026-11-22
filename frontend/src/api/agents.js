@@ -60,6 +60,10 @@ export function getTriggerStatus(agentId) {
   return apiClient.get(`/agents/${agentId}/trigger-status`);
 }
 
+export function getTriggerStatuses() {
+  return apiClient.get("/agents/trigger-statuses");
+}
+
 export function getAgentLogs(agentId, { limit, offset } = {}) {
   return apiClient.get(`/agents/${agentId}/logs`, { params: { limit, offset } });
 }

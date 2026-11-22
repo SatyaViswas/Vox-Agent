@@ -131,7 +131,9 @@ async def arm_event_trigger(agent_id: str, user_id: str, blueprint: Dict[str, An
                     except Exception as ex:
                         print(f"Warning: Auto-resolve for spreadsheet_id failed: {ex}")
 
-            trigger_engine.start_event_trigger(
+            # Run synchronous Composio trigger registration in thread pool to prevent event loop starvation
+            await asyncio.to_thread(
+                trigger_engine.start_event_trigger,
                 agent_id, user_id, slug, loop,
                 trigger_config=trigger_config,
                 event_target=target.get("target"),
@@ -167,7 +169,7 @@ async def create_agent(request: AgentCreateRequest):
         bp = payload.get("json_blueprint") or {}
         payload["original_prompt"] = bp.get("original_prompt") or payload.get("title") or ""
     try:
-        response = supabase.table("agents").insert(payload).execute()
+        response = await asyncio.to_thread(lambda: supabase.table("agents").insert(payload).execute())
         if not response.data:
             raise HTTPException(status_code=500, detail="Failed to create agent")
         agent_id = response.data[0]["id"]
@@ -183,16 +185,65 @@ async def create_agent(request: AgentCreateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def _fetch_agents_bundle(user_id: str):
+    """Fetches user agents with their latest execution log and live trigger status
+    in a single non-blocking DB pass, eliminating 100+ separate HTTP queries on page load."""
+    response = supabase.table("agents").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    agents = response.data or []
+    if not agents:
+        return []
+
+    agent_ids = [a["id"] for a in agents]
+    latest_logs = {}
+    try:
+        logs_res = supabase.table("execution_logs") \
+            .select("id, agent_id, status, executed_at") \
+            .in_("agent_id", agent_ids) \
+            .order("executed_at", desc=True) \
+            .limit(500) \
+            .execute()
+        for log in (logs_res.data or []):
+            aid = log.get("agent_id")
+            if aid and aid not in latest_logs:
+                latest_logs[aid] = log
+    except Exception:
+        pass
+
+    results = []
+    for a in agents:
+        pub = _to_public_agent(a)
+        pub["last_run"] = latest_logs.get(a["id"])
+
+        is_listening = trigger_engine.is_agent_active(a["id"]) or telegram_client_engine.is_agent_active(a["id"])
+        reason = None if is_listening else (trigger_engine.get_last_error(a["id"]) or telegram_client_engine.get_last_error(a["id"]))
+        pub["listening"] = is_listening
+        pub["listening_reason"] = reason
+        results.append(pub)
+
+    return results
+
 @router.get("/agents")
 async def get_agents(user_id: str = Query("00000000-0000-0000-0000-000000000000")):
     if not supabase:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        response = supabase.table("agents").select("*").eq("user_id", user_id).execute()
-        return {"status": "success", "agents": [_to_public_agent(a) for a in response.data]}
+        agents = await asyncio.to_thread(_fetch_agents_bundle, user_id)
+        return {"status": "success", "agents": agents}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/agents/trigger-statuses")
+def get_all_trigger_statuses():
+    """Ultra-fast in-memory batch status check for all active event triggers."""
+    active_triggers = set(trigger_engine._active_agents.keys()) | set(telegram_client_engine._active_agents.keys())
+    statuses = {}
+    for aid in active_triggers:
+        statuses[aid] = {"listening": True, "reason": None}
+    for aid, err in {**trigger_engine._last_errors, **telegram_client_engine._last_errors}.items():
+        if aid not in statuses:
+            statuses[aid] = {"listening": False, "reason": err}
+    return {"status": "success", "statuses": statuses}
 
 @router.post("/execute/{agent_id}")
 async def execute_agent(agent_id: str, background_tasks: BackgroundTasks, user_id: str = Query("00000000-0000-0000-0000-000000000000")):
@@ -201,7 +252,7 @@ async def execute_agent(agent_id: str, background_tasks: BackgroundTasks, user_i
     trigger_data = None
     if supabase:
         try:
-            row = supabase.table("agents").select("trigger_type, json_blueprint").eq("id", agent_id).execute()
+            row = await asyncio.to_thread(lambda: supabase.table("agents").select("trigger_type, json_blueprint").eq("id", agent_id).execute())
             if row.data and row.data[0].get("trigger_type") == "event_trigger":
                 # There's no real captured event for a manual test run — an
                 # event-triggered agent's reaction steps expect real-looking
@@ -299,7 +350,7 @@ async def update_agent_schedule(agent_id: str, request: ScheduleUpdateRequest):
             payload["trigger_type"] = request.trigger_type
         if request.cron_schedule is not None:
             payload["cron_schedule"] = request.cron_schedule
-        response = supabase.table("agents").update(payload).eq("id", agent_id).execute()
+        response = await asyncio.to_thread(lambda: supabase.table("agents").update(payload).eq("id", agent_id).execute())
 
         if not response.data:
             raise HTTPException(status_code=404, detail="Agent not found")
@@ -350,7 +401,7 @@ async def update_agent(agent_id: str, request: AgentUpdateRequest):
     try:
         trigger_engine.stop_event_trigger(agent_id)
         telegram_client_engine.stop_event_trigger(agent_id)
-        response = supabase.table("agents").update(payload).eq("id", agent_id).execute()
+        response = await asyncio.to_thread(lambda: supabase.table("agents").update(payload).eq("id", agent_id).execute())
         if not response.data:
             raise HTTPException(status_code=404, detail="Agent not found")
             
@@ -385,7 +436,7 @@ async def delete_agent(agent_id: str):
         trigger_engine.stop_event_trigger(agent_id)
         telegram_client_engine.stop_event_trigger(agent_id)
         remove_job(agent_id)
-        response = supabase.table("agents").delete().eq("id", agent_id).execute()
+        response = await asyncio.to_thread(lambda: supabase.table("agents").delete().eq("id", agent_id).execute())
         if not response.data:
             raise HTTPException(status_code=404, detail="Agent not found")
         return {"status": "success", "message": "Agent deleted"}
@@ -400,18 +451,22 @@ async def get_agent_logs(agent_id: str, limit: int = Query(10, le=50), offset: i
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        response = supabase.table("execution_logs") \
-            .select("id, agent_id, status, log_messages, proof_screenshot_url, executed_at", count="exact") \
-            .eq("agent_id", agent_id) \
-            .order("executed_at", desc=True) \
-            .range(offset, offset + limit - 1) \
-            .execute()
-        total = response.count if response.count is not None else len(response.data)
+        def _fetch_logs():
+            response = supabase.table("execution_logs") \
+                .select("id, agent_id, status, log_messages, proof_screenshot_url, executed_at", count="exact") \
+                .eq("agent_id", agent_id) \
+                .order("executed_at", desc=True) \
+                .range(offset, offset + limit - 1) \
+                .execute()
+            total = response.count if response.count is not None else len(response.data)
+            return response.data, total
+
+        logs_data, total = await asyncio.to_thread(_fetch_logs)
         return {
             "status": "success",
-            "logs": response.data,
+            "logs": logs_data,
             "total": total,
-            "has_more": offset + len(response.data) < total,
+            "has_more": offset + len(logs_data) < total,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

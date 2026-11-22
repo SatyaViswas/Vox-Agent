@@ -60,24 +60,24 @@ async def _watchdog_loop():
         try:
             await asyncio.sleep(60)
             
-            # 1. Reconnect Telethon if dead
+            # 1. Reconnect Telethon if dead (non-blocking with timeout)
             for user_id, client in list(_live_clients.items()):
                 if not client.is_connected():
                     print(f"[Watchdog] Telethon client for {user_id} disconnected! Reconnecting...")
                     try:
-                        await client.connect()
+                        await asyncio.wait_for(client.connect(), timeout=5.0)
                     except Exception as e:
                         print(f"[Watchdog] Failed to reconnect Telethon: {e}")
                         
-            # 2. Reconnect Composio if dead
+            # 2. Reconnect Composio if dead (in thread to avoid blocking event loop)
             if _subscription is not None:
                 if hasattr(_subscription, "is_alive") and not _subscription.is_alive():
                     print("[Watchdog] Composio subscription died! Restarting...")
                     try:
                         if hasattr(_subscription, "restart"):
-                            _subscription.restart()
+                            await asyncio.to_thread(_subscription.restart)
                         elif hasattr(_subscription, "_pusher") and hasattr(_subscription._pusher, "connect"):
-                            _subscription._pusher.connect()
+                            await asyncio.to_thread(_subscription._pusher.connect)
                     except Exception as e:
                         print(f"[Watchdog] Failed to restart Composio: {e}")
                         
@@ -86,49 +86,63 @@ async def _watchdog_loop():
         except Exception as e:
             print(f"[Watchdog] Error: {e}")
 
-@app.on_event("startup")
-async def _rearm_event_trigger_agents():
-    """Event-trigger listeners live in memory (see trigger_engine.py) — they
-    don't survive a restart on their own, so re-register one for every
-    currently-active event_trigger agent when the server comes back up."""
+async def _background_startup_rearm():
+    """Rearms event listeners and scheduled jobs in background worker tasks so
+    Uvicorn starts serving HTTP requests immediately without blocking."""
     if not supabase:
         return
+
     try:
-        response = supabase.table("agents").select("*").eq("trigger_type", "event_trigger").eq("is_active", True).execute()
+        # Fetch agents concurrently without blocking the event loop
+        event_res, sched_res = await asyncio.gather(
+            asyncio.to_thread(lambda: supabase.table("agents").select("*").eq("trigger_type", "event_trigger").eq("is_active", True).execute()),
+            asyncio.to_thread(lambda: supabase.table("agents").select("*").eq("trigger_type", "scheduled").eq("is_active", True).execute()),
+            return_exceptions=True,
+        )
     except Exception:
         traceback.print_exc()
         return
 
-    # A brief grace period before reconnecting any Telegram-backed listener.
-    # `uvicorn --reload` kills the old worker and starts a new one on every
-    # file save; if the old worker hasn't fully released its Telegram
-    # connection by the time this new one reconnects with the SAME session
-    # file, Telegram sees the same auth key used from two places at once and
-    # permanently revokes it (AuthKeyDuplicatedError — unrecoverable in code,
-    # requires reconnecting in App Vault). This delay gives the old worker's
-    # shutdown handler (below) time to finish disconnecting first, shrinking
-    # that race window. It only matters when reload is actually in play; the
-    # cost on a normal single boot is one harmless second.
-    if any((agent.get("json_blueprint") or {}).get("trigger", {}).get("event_app", "").lower().startswith("telegram") for agent in (response.data or [])):
+    # 1. Arm scheduled jobs
+    if not isinstance(sched_res, Exception) and getattr(sched_res, "data", None):
+        for agent in sched_res.data:
+            cron = agent.get("cron_schedule")
+            if cron:
+                try:
+                    add_or_update_job(agent["id"], agent.get("user_id"), cron)
+                except Exception:
+                    traceback.print_exc()
+
+    # 2. Arm event triggers
+    event_agents = sched_res.data if False else (event_res.data if not isinstance(event_res, Exception) and getattr(event_res, "data", None) else [])
+    if any((agent.get("json_blueprint") or {}).get("trigger", {}).get("event_app", "").lower().startswith("telegram") for agent in event_agents):
         await asyncio.sleep(2)
 
-    for agent in response.data or []:
+    async def _safe_arm(agent):
         try:
-            await arm_event_trigger(agent["id"], agent.get("user_id"), agent.get("json_blueprint") or {})
+            # Enforce 10-second timeout per agent so slow third parties never freeze the process
+            await asyncio.wait_for(
+                arm_event_trigger(agent["id"], agent.get("user_id"), agent.get("json_blueprint") or {}),
+                timeout=10.0,
+            )
+        except asyncio.TimeoutError:
+            print(f"[Startup] Timed out arming trigger for agent {agent.get('id')} ({agent.get('title')})")
         except Exception:
             traceback.print_exc()
 
-    # Load scheduled agents and start the APScheduler
+    await asyncio.gather(*[_safe_arm(agent) for agent in event_agents], return_exceptions=True)
+    print(f"[Startup] Background rearm completed for {len(event_agents)} active event triggers.")
+
+@app.on_event("startup")
+async def _startup_handler():
+    """Starts scheduler and spawns background re-arming tasks so Uvicorn binds
+    and serves HTTP traffic immediately with zero cold-start delay."""
     try:
         scheduler.start()
-        sched_response = supabase.table("agents").select("*").eq("trigger_type", "scheduled").eq("is_active", True).execute()
-        for agent in sched_response.data or []:
-            cron = agent.get("cron_schedule")
-            if cron:
-                add_or_update_job(agent["id"], agent.get("user_id"), cron)
     except Exception:
         traceback.print_exc()
 
+    asyncio.create_task(_background_startup_rearm())
     asyncio.create_task(_watchdog_loop())
 
 @app.on_event("shutdown")

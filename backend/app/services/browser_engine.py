@@ -39,6 +39,10 @@ async def execute_browser_action(
             model="gemini-3.1-flash-lite",
             api_key=gemini_key
         )
+        fallback_llm = ChatGoogle(
+            model="gemini-3.5-flash-lite",
+            api_key=gemini_key
+        )
         
         # Setup Browser Context with stored session cookies from Vault if app_name is provided
         storage_state = None
@@ -102,6 +106,13 @@ async def execute_browser_action(
                         f"Then: {task_description}"
                     )
 
+        if not target_url and app_name:
+            app_clean = app_name.strip().lower()
+            if "." in app_clean and not app_clean.startswith("http"):
+                target_url = f"https://www.{app_clean}" if not app_clean.startswith("www.") else f"https://{app_clean}"
+            elif "amazon" in app_clean:
+                target_url = "https://www.amazon.in"
+
         if target_url and not sensitive_data:
             domain_only = target_url.split("//")[-1].split("/")[0]
             strict_nav_prompt = (
@@ -133,6 +144,7 @@ async def execute_browser_action(
         agent_kwargs = {
             "task": task_description,
             "llm": llm,
+            "fallback_llm": fallback_llm,
             "browser": browser,
             "use_vision": False,
             "llm_timeout": 150,
@@ -144,13 +156,55 @@ async def execute_browser_action(
         try:
             # max_steps ensures it doesn't loop infinitely if stuck
             history = await agent.run(max_steps=30)
-            extracted_text = history.final_result() if hasattr(history, "final_result") else str(history)
-            # The agent's own end-of-run self-assessment (True/False once
-            # it calls "done", None if it never did) — the orchestrator
-            # uses this (not just "no exception was raised") to decide
-            # whether this was a real success, e.g. a login wall the agent
-            # gave up on still returns cleanly here with no exception.
+            
+            # 1. Primary: Final result declared by the agent's done action
+            extracted_text = None
+            if hasattr(history, "final_result"):
+                extracted_text = history.final_result()
+
+            # 2. Secondary: If final_result is None or empty, search all extracted_content steps
+            if not extracted_text and hasattr(history, "extracted_content"):
+                all_extracted = [c for c in history.extracted_content() if c and str(c).strip()]
+                informative = [
+                    c for c in all_extracted 
+                    if not str(c).strip().startswith("🔗 Navigated") and not str(c).strip().startswith("Clicked")
+                ]
+                chosen = informative if informative else all_extracted
+                if chosen:
+                    extracted_text = "\n\n".join(str(c).strip() for c in chosen)
+
+            # 3. Tertiary: Action results from steps
+            if not extracted_text and hasattr(history, "action_results"):
+                res_texts = [r.extracted_content for r in history.action_results() if r and getattr(r, "extracted_content", None)]
+                if res_texts:
+                    extracted_text = "\n\n".join(str(c).strip() for c in res_texts if str(c).strip())
+
+            # 4. Quaternary: Goal evaluations in model thoughts
+            if not extracted_text and hasattr(history, "model_thoughts"):
+                thoughts = history.model_thoughts()
+                thought_texts = []
+                for t in thoughts:
+                    eval_prev = getattr(t, "evaluation_previous_goal", "") or ""
+                    if eval_prev and any(w in eval_prev.lower() for w in ("extracted", "found", "price", "laptop", "result", "title", "product")):
+                        thought_texts.append(eval_prev)
+                if thought_texts:
+                    extracted_text = "\n\n".join(thought_texts)
+
+            # The agent's own end-of-run self-assessment
             agent_success = history.is_successful() if hasattr(history, "is_successful") else None
+
+            # If no content was extracted and errors occurred during the session
+            if not extracted_text:
+                errors = history.errors() if hasattr(history, "errors") else []
+                has_errors = history.has_errors() if hasattr(history, "has_errors") else False
+                if has_errors or errors or agent_success is False:
+                    err_msg = "; ".join(str(e) for e in errors) if errors else "Browser agent finished without extracting content."
+                    return {
+                        "status": "error",
+                        "error": err_msg,
+                        "result": None,
+                        "agent_success": False
+                    }
 
             return {"status": "success", "result": extracted_text, "agent_success": agent_success}
         finally:

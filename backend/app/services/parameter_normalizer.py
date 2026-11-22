@@ -27,12 +27,13 @@ if settings.GEMINI_API_KEY:
 
 FALLBACK_MODELS = [
     "gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3-flash-preview",
-    "gemini-3.5-flash",
-    "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
 ]
+
+_NORMALIZATION_CACHE: Dict[tuple, Any] = {}
 
 # Fast regex patterns
 _EMAIL_PATTERN = re.compile(r"([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)")
@@ -249,6 +250,34 @@ def _fast_rule_normalize(
         if any(term in lowered for term in ("urgent", "issues", "open issues", "my issues", "action items")):
             return "is:issue state:open involves:@me"
 
+    # 7. Common resource names, titles, repositories, databases, boards
+    title_keys = {
+        "title", "name", "file_name", "filename", "repo", "repository",
+        "database", "database_id", "project_name", "board_name", "topic"
+    }
+    if parameter_key.lower().strip() in title_keys:
+        # Strip conversational wrappers e.g. "repo called vox-agent" -> "vox-agent", "database named Sales" -> "Sales"
+        clean = re.sub(
+            r"^(use\s+|open\s+|the\s+|my\s+)?(repo|repository|database|file|project|board|sheet|document)(\s+named|\s+called)?\s+",
+            "",
+            raw_str,
+            flags=re.I,
+        ).strip()
+        clean = re.sub(r"^(named|called)\s+", "", clean, flags=re.I).strip()
+        clean = clean.strip("\"'“”’ ")
+        if clean:
+            return clean
+
+    # 8. Numeric IDs or values (chat_id, user_id, count, limit, etc.)
+    if re.fullmatch(r"-?\d+", raw_str.strip()):
+        return raw_str.strip()
+
+    # 9. Direct URLs / links
+    if parameter_key.lower() in ("url", "link", "website", "uri", "endpoint"):
+        url_match = re.search(r"https?://[^\s<>'\"]+", raw_str)
+        if url_match:
+            return url_match.group(0).rstrip(".,;)>'\"]")
+
     return None
 
 
@@ -277,10 +306,20 @@ def normalize_action_parameter(
     if not raw_str:
         return raw_str
 
+    cache_key = (
+        (app or "").lower().strip(),
+        (action or "").lower().strip(),
+        (parameter_key or "").lower().strip(),
+        raw_str,
+    )
+    if cache_key in _NORMALIZATION_CACHE:
+        return _NORMALIZATION_CACHE[cache_key]
+
     # 1. Fast regex path (0ms latency)
     fast_result = _fast_rule_normalize(app, action, parameter_key, raw_str)
     if fast_result:
         logger.info(f"[ParameterNormalizer] Fast normalized '{raw_str}' -> '{fast_result}' for {app}.{parameter_key}")
+        _NORMALIZATION_CACHE[cache_key] = fast_result
         return fast_result
 
     # Skip expensive LLM normalization for free-form text/content fields, prompts, or long payloads
@@ -290,10 +329,12 @@ def normalize_action_parameter(
         "markdown", "values", "data", "rows", "snippet",
     }
     if parameter_key.lower().strip() in _CONTENT_PARAM_KEYS or len(raw_str) > 150 or "\n" in raw_str:
+        _NORMALIZATION_CACHE[cache_key] = raw_str
         return raw_str
 
     # If it's already a clean ID or short technical value without filler, keep as-is
     if len(raw_str.split()) == 1 and not re.search(r"[#]", raw_str):
+        _NORMALIZATION_CACHE[cache_key] = raw_str
         return raw_str
 
     # 2. General-purpose LLM normalizer for 500+ apps
@@ -339,6 +380,7 @@ Respond with ONLY a strict JSON object:
                         logger.info(
                             f"[ParameterNormalizer] LLM normalized '{raw_str}' -> '{norm_val}' for {app}.{parameter_key}"
                         )
+                        _NORMALIZATION_CACHE[cache_key] = norm_val
                         return norm_val
                 except Exception as model_err:
                     logger.warning(f"[ParameterNormalizer] {model_name} failed: {model_err}")
@@ -348,4 +390,5 @@ Respond with ONLY a strict JSON object:
             logger.warning(f"[ParameterNormalizer] LLM normalization failed: {e}")
 
     # Fallback to cleaned raw string
+    _NORMALIZATION_CACHE[cache_key] = raw_str
     return raw_str

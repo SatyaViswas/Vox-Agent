@@ -2,6 +2,7 @@ import os
 import asyncio
 import json
 import re
+import time
 import traceback
 from app.config import settings
 
@@ -35,6 +36,9 @@ async def _execute_composio_with_timeout(*args, **kwargs):
     )
 
 
+_TOOLKIT_EXISTS_CACHE: dict = {}
+
+
 def toolkit_exists(app_slug: str) -> bool:
     """Whether `app_slug` is a real Composio toolkit at all — as opposed to
     an app name the planner or user typed that Composio simply doesn't have
@@ -42,12 +46,17 @@ def toolkit_exists(app_slug: str) -> bool:
     actually use the 'composio_api' route or must fall back to
     'browser_agent' — and to avoid ever offering a Composio "Connect"
     button for an app that can only 500 when clicked."""
-    if not composio:
+    if not composio or not app_slug:
         return False
+    slug = app_slug.strip().lower()
+    if slug in _TOOLKIT_EXISTS_CACHE:
+        return _TOOLKIT_EXISTS_CACHE[slug]
     try:
-        composio.toolkits.get(slug=app_slug)
+        composio.toolkits.get(slug=slug)
+        _TOOLKIT_EXISTS_CACHE[slug] = True
         return True
     except Exception:
+        _TOOLKIT_EXISTS_CACHE[slug] = False
         return False
 
 # A separate, minimal Gemini client used only to disambiguate a guessed
@@ -58,11 +67,10 @@ _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY) if settings.GEMIN
 
 FALLBACK_GEMINI_MODELS = [
     "gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3-flash-preview",
-    "gemini-3.5-flash",
-    "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
 ]
 
 def _gemini_generate_with_fallback(contents, config=None):
@@ -982,6 +990,8 @@ def _looks_like_opaque_id(value) -> bool:
     """Heuristic for "this is already a real ID", not a name a person typed
     — Google/Composio-style resource IDs are long, unspaced alphanumeric
     tokens (e.g. a 44-character Sheets ID), unlike a human-readable name."""
+    if isinstance(value, int):
+        return True
     if not isinstance(value, str):
         return False
     value = value.strip()
@@ -991,10 +1001,13 @@ def _looks_like_opaque_id(value) -> bool:
         return True
     if re.fullmatch(r"[CGDU][A-Z0-9]{8,10}", value):
         return True
+    if re.fullmatch(r"-?\d{4,}", value):
+        return True
     return bool(re.fullmatch(r"[A-Za-z0-9_-]{15,}", value))
 
 
 _search_tool_cache: dict = {}
+_RESOURCE_ID_CACHE: dict = {}
 
 
 def _find_search_tool(toolkit_slug: str):
@@ -1211,6 +1224,19 @@ async def _auto_resolve_missing_ids(app: str, action_name: str, parameters: dict
 
     query_param = _search_tool_query_param(search_tool)
 
+    res_cache_key = (
+        str(entity_id or "").strip(),
+        str(toolkit_slug or "").strip().lower(),
+        str(name_value or "").strip().lower(),
+    ) if name_value else None
+
+    if res_cache_key and res_cache_key in _RESOURCE_ID_CACHE:
+        cached_id = _RESOURCE_ID_CACHE[res_cache_key]
+        print(f"Info: Using cached resource ID '{cached_id}' for '{app}' item \"{name_value}\".")
+        updated = dict(parameters)
+        updated[target_field] = cached_id
+        return updated, None
+
     if not name_value:
         # No name to search by at all — rather than immediately asking the
         # user, check whether there's only ONE item to begin with (e.g. a
@@ -1282,6 +1308,8 @@ async def _auto_resolve_missing_ids(app: str, action_name: str, parameters: dict
                 new_sheet_id = _extract_spreadsheet_id_from_result(create_res)
                 if new_sheet_id:
                     print(f"Self-Healing Success: Created new Google Sheet '{name_value}' (ID: {new_sheet_id}). Continuing append.")
+                    if res_cache_key:
+                        _RESOURCE_ID_CACHE[res_cache_key] = new_sheet_id
                     updated = dict(parameters)
                     updated[target_field] = new_sheet_id
                     return updated, None
@@ -1294,6 +1322,8 @@ async def _auto_resolve_missing_ids(app: str, action_name: str, parameters: dict
         return updated, {"field": target_field, "name": name_value}
 
     print(f"Info: Auto-resolved '{target_field}' to '{resolved_id}' via '{search_tool.slug}' for \"{name_value}\".")
+    if res_cache_key and resolved_id:
+        _RESOURCE_ID_CACHE[res_cache_key] = resolved_id
     updated = dict(parameters)
     updated[target_field] = resolved_id
     return updated, None
@@ -1842,6 +1872,8 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
 
                 if existing_sheet_id:
                     print(f"Info: User chose to add to existing Google Sheet '{title}' ({existing_sheet_id}).")
+                    if title:
+                        _RESOURCE_ID_CACHE[(str(entity_id or "").strip(), "googlesheets", str(title).strip().lower())] = existing_sheet_id
                     if parameters.get("values"):
                         try:
                             append_params = {"spreadsheet_id": existing_sheet_id, "values": parameters["values"]}
@@ -2074,6 +2106,7 @@ async def execute_composio_action(app: str, action: str, parameters: dict, entit
                 sheet_title = parameters.get("title") or parameters.get("spreadsheet_name")
                 if sheet_title:
                     execution_result["output"]["title"] = sheet_title
+                    _RESOURCE_ID_CACHE[(str(entity_id or "").strip(), "googlesheets", str(sheet_title).strip().lower())] = new_id
         execution_result["output"] = await _enrich_thin_composio_result(
             app, action_name, execution_result["output"], entity_id, result_limit
         )
@@ -2489,9 +2522,14 @@ def _find_resource_listing_tool(toolkit_slug: str, parameter_key: str = ""):
     return tool
 
 
+_CONNECTED_ACCOUNTS_CACHE: dict = {}  # (active_user_id, toolkit_slug) -> (has_active, timestamp)
+_INTROSPECT_RESOURCE_CACHE: dict = {}  # (active_user_id, toolkit_slug, parameter_key) -> (names, timestamp)
+
+
 async def introspect_app_resources(user_id: str, app: str, parameter_key: str = "") -> list:
     """Introspects available resource names (spreadsheets, channels, databases, etc.)
-    for a user's connected account in `app`. Returns a list of up to 8 clean names."""
+    for a user's connected account in `app`. Returns a list of up to 8 clean names.
+    Fast-pathed with a 45s in-memory cache to make workflow generation sub-second."""
     if not app or not is_introspectable_resource_param(parameter_key, app):
         return []
 
@@ -2506,23 +2544,41 @@ async def introspect_app_resources(user_id: str, app: str, parameter_key: str = 
     active_user_id = resolve_connected_user_id(user_id, app)
     toolkit_slug = slugify_app_name(app)
 
-    # Check if there is an active connected account for this toolkit
-    candidates = _candidate_user_ids(active_user_id)
-    try:
-        accounts = composio.connected_accounts.list(
-            user_ids=candidates,
-            toolkit_slugs=[toolkit_slug] if toolkit_slug else None,
-            statuses=["ACTIVE"],
-        )
-        has_active = bool(list(getattr(accounts, "items", accounts) or []))
-        if not has_active:
+    now = time.time()
+    res_cache_key = (str(active_user_id), str(toolkit_slug), str(parameter_key).lower())
+    if res_cache_key in _INTROSPECT_RESOURCE_CACHE:
+        cached_names, ts = _INTROSPECT_RESOURCE_CACHE[res_cache_key]
+        if now - ts < 45.0:
+            return cached_names
+
+    # Check connection cache
+    conn_cache_key = (str(active_user_id), str(toolkit_slug))
+    if conn_cache_key in _CONNECTED_ACCOUNTS_CACHE:
+        has_active, ts = _CONNECTED_ACCOUNTS_CACHE[conn_cache_key]
+        if now - ts < 45.0 and not has_active:
+            _INTROSPECT_RESOURCE_CACHE[res_cache_key] = ([], now)
             return []
-    except Exception as e:
-        print(f"Warning: Failed to check connection for introspection on '{app}': {e}")
-        return []
+    else:
+        candidates = _candidate_user_ids(active_user_id)
+        try:
+            accounts = await asyncio.to_thread(
+                composio.connected_accounts.list,
+                user_ids=candidates,
+                toolkit_slugs=[toolkit_slug] if toolkit_slug else None,
+                statuses=["ACTIVE"],
+            )
+            has_active = bool(list(getattr(accounts, "items", accounts) or []))
+            _CONNECTED_ACCOUNTS_CACHE[conn_cache_key] = (has_active, now)
+            if not has_active:
+                _INTROSPECT_RESOURCE_CACHE[res_cache_key] = ([], now)
+                return []
+        except Exception as e:
+            print(f"Warning: Failed to check connection for introspection on '{app}': {e}")
+            return []
 
     tool = _find_resource_listing_tool(toolkit_slug, parameter_key)
     if not tool:
+        _INTROSPECT_RESOURCE_CACHE[res_cache_key] = ([], now)
         return []
 
     query_param = _search_tool_query_param(tool)
@@ -2537,6 +2593,7 @@ async def introspect_app_resources(user_id: str, app: str, parameter_key: str = 
         )
     except Exception as e:
         print(f"Warning: Introspection execution '{tool.slug}' failed for '{app}': {e}")
+        _INTROSPECT_RESOURCE_CACHE[res_cache_key] = ([], now)
         return []
 
     items = _list_search_tool_items(result)
@@ -2558,7 +2615,9 @@ async def introspect_app_resources(user_id: str, app: str, parameter_key: str = 
                 if clean_name not in names:
                     names.append(clean_name)
 
-    return names[:15]
+    clean_names = names[:15]
+    _INTROSPECT_RESOURCE_CACHE[res_cache_key] = (clean_names, now)
+    return clean_names
 
 
 async def enrich_blueprint_with_connected_resources(blueprint_dict: dict, user_id: str) -> dict:
@@ -2569,8 +2628,8 @@ async def enrich_blueprint_with_connected_resources(blueprint_dict: dict, user_i
        connected resources using closest-match fuzzy resolution (threshold >= 0.55).
        If a close match is found, updates the parameter to the real resource name and marks
        it resolved. If irrelevant (score < 0.55), leaves it for the user to select.
-    2. Enriches missing_parameters with live resource options and auto-assumes closest
-       matches if tentative values were provided.
+    2. Enriches missing_parameters concurrently with live resource options and auto-assumes
+       closest matches if tentative values were provided.
     """
     if not blueprint_dict or not isinstance(blueprint_dict, dict):
         return blueprint_dict
@@ -2580,6 +2639,9 @@ async def enrich_blueprint_with_connected_resources(blueprint_dict: dict, user_i
 
     # 1. Inspect existing step parameters for closest-match resolution
     resolved_keys = set()
+    step_match_tasks = []
+    step_match_metadata = []
+
     for step in steps:
         if not isinstance(step, dict):
             continue
@@ -2592,16 +2654,20 @@ async def enrich_blueprint_with_connected_resources(blueprint_dict: dict, user_i
         for param_key, param_val in list(params.items()):
             if any(k in param_key.lower() for k in ("spreadsheet", "sheet", "channel", "database", "repo")):
                 if isinstance(param_val, str) and param_val.strip() and not _looks_like_opaque_id(param_val):
-                    try:
-                        resources = await introspect_app_resources(user_id=user_id, app=app, parameter_key=param_key)
-                        if resources:
-                            closest_match, score = find_closest_resource_match(param_val, resources, threshold=0.55)
-                            if closest_match:
-                                print(f"Info: Closest match resolved for step {s_num} '{param_key}': '{param_val}' -> '{closest_match}' (score: {score:.2f})")
-                                params[param_key] = closest_match
-                                resolved_keys.add((s_num, param_key))
-                    except Exception as e:
-                        print(f"Warning: Failed resolving closest match for step parameter '{param_key}' on '{app}': {e}")
+                    step_match_tasks.append(
+                        introspect_app_resources(user_id=user_id, app=app, parameter_key=param_key)
+                    )
+                    step_match_metadata.append((params, s_num, param_key, param_val, app))
+
+    if step_match_tasks:
+        match_results = await asyncio.gather(*step_match_tasks, return_exceptions=True)
+        for (params, s_num, param_key, param_val, app), resources in zip(step_match_metadata, match_results):
+            if isinstance(resources, list) and resources:
+                closest_match, score = find_closest_resource_match(param_val, resources, threshold=0.55)
+                if closest_match:
+                    print(f"Info: Closest match resolved for step {s_num} '{param_key}': '{param_val}' -> '{closest_match}' (score: {score:.2f})")
+                    params[param_key] = closest_match
+                    resolved_keys.add((s_num, param_key))
 
     missing_params = blueprint_dict.get("missing_parameters")
     if not missing_params or not isinstance(missing_params, list):
@@ -2615,8 +2681,10 @@ async def enrich_blueprint_with_connected_resources(blueprint_dict: dict, user_i
         ]
 
     updated_params = []
+    missing_introspect_tasks = []
+    missing_introspect_indices = []
 
-    for param in missing_params:
+    for idx, param in enumerate(missing_params):
         if not isinstance(param, dict):
             updated_params.append(param)
             continue
@@ -2643,30 +2711,29 @@ async def enrich_blueprint_with_connected_resources(blueprint_dict: dict, user_i
             continue
 
         existing_options = p_copy.get("options")
-        if existing_options and len(existing_options) > 0:
+        if (existing_options and len(existing_options) > 0) or not app:
             updated_params.append(p_copy)
             continue
 
-        if not app:
-            updated_params.append(p_copy)
-            continue
+        updated_params.append(p_copy)
+        missing_introspect_tasks.append(
+            introspect_app_resources(user_id=user_id, app=app, parameter_key=p_key)
+        )
+        missing_introspect_indices.append(len(updated_params) - 1)
 
-        try:
-            resources = await introspect_app_resources(user_id=user_id, app=app, parameter_key=p_key)
-            if resources:
-                p_copy["options"] = resources
-                p_copy["suggested_type"] = "select"
+    if missing_introspect_tasks:
+        resource_lists = await asyncio.gather(*missing_introspect_tasks, return_exceptions=True)
+        for target_idx, resources in zip(missing_introspect_indices, resource_lists):
+            if isinstance(resources, list) and resources:
+                p_ref = updated_params[target_idx]
+                p_ref["options"] = resources
+                p_ref["suggested_type"] = "select"
 
-                # Check if user had a tentative value (e.g. from prompt or previous edit)
-                tentative = p_copy.get("default_value") or p_copy.get("value")
+                tentative = p_ref.get("default_value") or p_ref.get("value")
                 if tentative and isinstance(tentative, str):
                     closest_opt, opt_score = find_closest_resource_match(tentative, resources, threshold=0.55)
                     if closest_opt:
-                        p_copy["default_value"] = closest_opt
-        except Exception as e:
-            print(f"Warning: Failed enriching missing param '{p_key}' for '{app}': {e}")
-
-        updated_params.append(p_copy)
+                        p_ref["default_value"] = closest_opt
 
     blueprint_dict["missing_parameters"] = updated_params
     return blueprint_dict

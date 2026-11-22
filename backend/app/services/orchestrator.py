@@ -647,15 +647,17 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
         parameters["_is_test_run"] = True
 
     # Universal parameter normalization across external API/tool routes (not ai_generate prompts)
-    if route != "ai_generate":
+    if route != "ai_generate" and parameters:
         from app.services.parameter_normalizer import normalize_action_parameter
-        clean_params = {}
-        for k, v in (parameters or {}).items():
-            if k.startswith("_"):
-                clean_params[k] = v
-            else:
-                clean_params[k] = await asyncio.to_thread(normalize_action_parameter, app, action, k, v)
-        parameters = clean_params
+        keys_to_norm = [k for k in parameters if not k.startswith("_")]
+        if keys_to_norm:
+            norm_values = await asyncio.gather(
+                *[asyncio.to_thread(normalize_action_parameter, app, action, k, parameters[k]) for k in keys_to_norm]
+            )
+            clean_params = {k: v for k, v in parameters.items() if k.startswith("_")}
+            for k, val in zip(keys_to_norm, norm_values):
+                clean_params[k] = val
+            parameters = clean_params
 
     if is_vault_notes_target(app):
         # No real destination was specified for extracted data (see
@@ -677,16 +679,27 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
         return {"status": "success", "result": saved_note}
 
     if route == "browser_agent":
-        # The acting LLM only ever sees task_description — passing the bare
-        # `action` string (e.g. "monitor_messages") gives it zero context on
-        # the app or target the blueprint's `app` and `parameters` fields
-        # already captured, so it has nothing to act on and asks a
-        # clarifying question back instead. Fold that context into the task
-        # text explicitly.
-        task_description = f"On {app}: {action}."
-        if parameters:
-            detail_str = ", ".join(f"{k}={v}" for k, v in parameters.items())
-            task_description += f" Relevant details: {detail_str}."
+        task_body = (
+            (parameters or {}).get("task")
+            or (parameters or {}).get("task_description")
+            or (parameters or {}).get("instructions")
+            or (parameters or {}).get("prompt")
+        )
+        if task_body:
+            task_description = f"On {app}: {task_body}"
+            other_params = {
+                k: v for k, v in (parameters or {}).items()
+                if k not in ("task", "task_description", "instructions", "prompt") and not k.startswith("_")
+            }
+            if other_params:
+                detail_str = ", ".join(f"{k}={v}" for k, v in other_params.items())
+                task_description += f" (Parameters: {detail_str})"
+        else:
+            task_description = f"On {app}: {action}."
+            if parameters:
+                detail_str = ", ".join(f"{k}={v}" for k, v in parameters.items() if not k.startswith("_"))
+                if detail_str:
+                    task_description += f" Relevant details: {detail_str}."
         return await execute_browser_action(task_description=task_description, user_id=user_id, app_name=app)
 
     if route == "composio_api":

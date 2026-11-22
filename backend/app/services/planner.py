@@ -10,12 +10,11 @@ from app.schemas.blueprint import WorkflowBlueprint
 client = genai.Client(api_key=settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else None
 
 FALLBACK_GEMINI_MODELS = [
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3-flash-preview",
-    "gemini-3.5-flash",
-    "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
 ]
 
 
@@ -90,9 +89,16 @@ def _generate_content_with_fallback(
 
     raise last_error or RuntimeError("All AI models failed to respond.")
 
+_CACHED_SYSTEM_PROMPT: Optional[str] = None
+
+
 def get_system_prompt() -> str:
+    global _CACHED_SYSTEM_PROMPT
+    if _CACHED_SYSTEM_PROMPT is not None:
+        return _CACHED_SYSTEM_PROMPT
+
     schema_json = json.dumps(WorkflowBlueprint.model_json_schema(), indent=2)
-    return f"""
+    _CACHED_SYSTEM_PROMPT = f"""
 You are VoxAgent AI, an expert automation workflow planner. 
 Your task is to parse the user's natural language request into a strict structured JSON workflow blueprint.
 
@@ -226,6 +232,7 @@ Rule 10 (Intelligent Data Extraction & Pagination Limits Across All Apps):
 Output exactly in the following JSON schema format:
 {schema_json}
 """
+    return _CACHED_SYSTEM_PROMPT
 
 # Routes whose `app` names something a real user might connect (an app the
 # Required Apps gate should offer a connect flow for). 'ai_generate' runs on
@@ -433,14 +440,7 @@ def _llm_repair_json(raw_text: str):
         "CRITICAL: Output ONLY the raw valid JSON string. Do not wrap in markdown code blocks, do not explain, and do not add commentary.\n\n"
         f"Malformed text:\n{raw_text}"
     )
-    for model_name in [
-        "gemini-3.1-flash-lite",
-        "gemini-3.1-flash-lite-preview",
-        "gemini-3-flash-preview",
-        "gemini-3.5-flash",
-        "gemini-3.6-flash",
-        "gemini-3.5-flash-lite",
-    ]:
+    for model_name in FALLBACK_GEMINI_MODELS:
         try:
             resp = client.models.generate_content(
                 model=model_name,
@@ -740,28 +740,71 @@ _LIST_GENERATION_INSTRUCTION = (
 import re
 import requests
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor
+
+_URL_CONTENT_CACHE: dict = {}
+_SKIP_URL_PATTERNS = re.compile(
+    r"(?:docs\.google\.com|drive\.google\.com|sheets\.google\.com|composio\.dev|localhost|127\.0\.0\.1|"
+    r"\.(?:png|jpg|jpeg|gif|webp|svg|pdf|mp4|mp3|wav|zip|tar|gz))$",
+    re.I
+)
+
+
+def _fetch_single_url_content(url: str) -> tuple[str, str | None]:
+    if url in _URL_CONTENT_CACHE:
+        return url, _URL_CONTENT_CACHE[url]
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        resp = requests.get(url, headers=headers, timeout=3.5)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            # Remove scripts and styles
+            for script in soup(["script", "style", "nav", "footer"]):
+                script.decompose()
+            text = soup.get_text(separator=' ', strip=True)
+            text = text[:15000]
+            _URL_CONTENT_CACHE[url] = text
+            return url, text
+    except Exception:
+        pass
+    _URL_CONTENT_CACHE[url] = None
+    return url, None
+
 
 def _inject_url_content(prompt: str) -> str:
-    url_pattern = re.compile(r'https?://[^\s<>"]+|www\.[^\s<>"]+')
-    urls = set(url_pattern.findall(prompt))
-    if not urls:
+    url_pattern = re.compile(r'https?://[^\s<>"]+')
+    found_urls = url_pattern.findall(prompt)
+    if not found_urls:
         return prompt
-    
+
+    # Filter out service / document / non-html URLs
+    valid_urls = []
+    seen = set()
+    for u in found_urls:
+        clean_u = u.rstrip(".,;)>'\"]")
+        if clean_u in seen or _SKIP_URL_PATTERNS.search(clean_u):
+            continue
+        seen.add(clean_u)
+        valid_urls.append(clean_u)
+
+    if not valid_urls:
+        return prompt
+
+    # Cap to max 2 URLs to keep latency negligible
+    target_urls = valid_urls[:2]
+
     appended_content = "\n\n--- External Content Extracted from URLs ---\n"
     added = False
-    for url in urls:
-        try:
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-            resp = requests.get(url, headers=headers, timeout=10)
-            if resp.status_code == 200:
-                soup = BeautifulSoup(resp.text, 'html.parser')
-                text = soup.get_text(separator=' ', strip=True)
-                text = text[:25000] # truncate to avoid blowing up context
+
+    with ThreadPoolExecutor(max_workers=min(len(target_urls), 2)) as executor:
+        results = executor.map(_fetch_single_url_content, target_urls)
+        for url, text in results:
+            if text:
                 appended_content += f"\nContent from {url}:\n{text}\n"
                 added = True
-        except Exception:
-            pass
-            
+
     if added:
         return prompt + appended_content
     return prompt

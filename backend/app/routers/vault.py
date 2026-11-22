@@ -1,3 +1,4 @@
+import asyncio
 import traceback
 from fastapi import APIRouter, HTTPException, Query, WebSocket
 from pydantic import BaseModel
@@ -55,7 +56,8 @@ async def get_composio_apps(
     """Dynamic catalog of Composio's full app library (1000+ toolkits,
     WhatsApp included) — replaces the old hardcoded ~20-app list."""
     try:
-        return {"status": "success", **list_composio_apps(search=search, cursor=cursor, limit=limit)}
+        catalog = await asyncio.to_thread(list_composio_apps, search=search, cursor=cursor, limit=limit)
+        return {"status": "success", **catalog}
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -67,7 +69,8 @@ async def get_composio_connections(user_id: str = Query("00000000-0000-0000-0000
     why this (and not the local `connected_apps` table) is the source of
     truth for apps connected via the OAuth "Connect (1-Click)" flow."""
     try:
-        return {"status": "success", "connections": list_composio_connected_accounts(user_id)}
+        connections = await asyncio.to_thread(list_composio_connected_accounts, user_id)
+        return {"status": "success", "connections": connections}
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -90,24 +93,7 @@ async def introspect_resources(
 _BUILTIN_APPS = {"voxagent ai", "voxagent vault notes"}
 
 
-@router.get("/vault/required-apps-status")
-async def required_apps_status(
-    apps: str = Query(..., description="Comma-separated app display names, e.g. a blueprint's required_apps"),
-    user_id: str = Query("00000000-0000-0000-0000-000000000000"),
-    routes: Optional[str] = Query(
-        None,
-        description="Comma-separated route per app, positionally paired with `apps` "
-        "(e.g. 'composio_api,browser_agent'). An app whose route is 'browser_agent' is "
-        "checked against the local App Vault session store instead of Composio.",
-    ),
-):
-    """Tells the caller, for a whole blueprint's required_apps list at once,
-    which apps are already usable and which still need connecting — lets
-    Agent Studio gate agent creation on this instead of creating an agent
-    that's silently broken until a step fails (or, for an event-triggered
-    agent, until a real event happens and nothing visibly comes of it)."""
-    names = [a.strip() for a in (apps or "").split(",") if a.strip()]
-    route_list = [r.strip() for r in (routes or "").split(",")] if routes else []
+def _compute_required_apps_status(names: list, route_list: list, user_id: str):
     connected_slugs = {c["slug"] for c in list_composio_connected_accounts(user_id)}
     user_apps = list_user_apps(user_id)
     vault_connected_names = {
@@ -133,14 +119,6 @@ async def required_apps_status(
         elif lowered == TELEGRAM_BOT_APP_NAME.lower():
             results.append({"app": name, "connected": telegram_bot_connected, "connect_via": "telegram_bot"})
         elif route == "browser_agent":
-            # A browser_agent step's "app" needs a saved App Vault session
-            # (cookies, or a username/password portal login — see
-            # PortalSessionFormModal / browser_engine.execute_browser_action),
-            # never a Composio connection — checking Composio here is exactly
-            # what used to 500 for an app Composio doesn't have at all
-            # (e.g. "zomato") and misleadingly offer an OAuth "Connect"
-            # button for one it does (e.g. "Google Slides") when the
-            # workflow never actually calls its API.
             results.append({
                 "app": name,
                 "connected": lowered in vault_connected_names,
@@ -151,12 +129,6 @@ async def required_apps_status(
             connected = slug in connected_slugs
             no_auth = False
             if not connected:
-                # A toolkit whose tools work with no connected account at all
-                # (e.g. Hacker News's public read API) has nothing to be
-                # "connected" in the first place — checking connected_slugs
-                # alone would permanently show it as needing a connection it
-                # can never actually gain, blocking or warning on agent
-                # creation for an app that already works.
                 try:
                     no_auth = get_toolkit_connect_requirements(slug).get("mode") == "none"
                 except Exception:
@@ -167,14 +139,35 @@ async def required_apps_status(
                 "slug": slug,
                 "no_auth_required": no_auth,
             })
+    return results
 
-    return {"status": "success", "apps": results}
+@router.get("/vault/required-apps-status")
+async def required_apps_status(
+    apps: str = Query(..., description="Comma-separated app display names, e.g. a blueprint's required_apps"),
+    user_id: str = Query("00000000-0000-0000-0000-000000000000"),
+    routes: Optional[str] = Query(
+        None,
+        description="Comma-separated route per app, positionally paired with `apps` "
+        "(e.g. 'composio_api,browser_agent'). An app whose route is 'browser_agent' is "
+        "checked against the local App Vault session store instead of Composio.",
+    ),
+):
+    """Tells the caller, for a whole blueprint's required_apps list at once,
+    which apps are already usable and which still need connecting."""
+    names = [a.strip() for a in (apps or "").split(",") if a.strip()]
+    route_list = [r.strip() for r in (routes or "").split(",")] if routes else []
+    try:
+        results = await asyncio.to_thread(_compute_required_apps_status, names, route_list, user_id)
+        return {"status": "success", "apps": results}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/vault/composio-connections/{connected_account_id}")
 async def delete_composio_connection(connected_account_id: str):
     try:
-        disconnect_composio_account(connected_account_id)
+        await asyncio.to_thread(disconnect_composio_account, connected_account_id)
         return {"status": "success", "message": "Connection removed"}
     except Exception as e:
         traceback.print_exc()
@@ -183,7 +176,7 @@ async def delete_composio_connection(connected_account_id: str):
 @router.get("/vault/apps")
 async def get_user_apps(user_id: str = Query("00000000-0000-0000-0000-000000000000")):
     try:
-        apps = list_user_apps(user_id)
+        apps = await asyncio.to_thread(list_user_apps, user_id)
         return {"status": "success", "apps": apps}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
