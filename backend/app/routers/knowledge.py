@@ -7,6 +7,8 @@ from app.schemas.knowledge import (
     KnowledgeTestQueryRequest,
     KnowledgeTestQueryResponse,
     PillarUpdateRequest,
+    KnowledgeStressTestRequest,
+    KnowledgeStressTestResponse,
 )
 from app.services.knowledge_ingestion import (
     process_and_store_knowledge,
@@ -399,3 +401,28 @@ async def update_business_pillar(request: PillarUpdateRequest, x_user_id: Option
         sources_added=chunks_inserted,
         cache_invalidated=True,
     )
+
+
+@router.post("/stress-test", response_model=KnowledgeStressTestResponse)
+async def stress_test_agent(
+    request: KnowledgeStressTestRequest = KnowledgeStressTestRequest(),
+    x_user_id: Optional[str] = Header(None)
+):
+    """Run an automated flight simulator stress-test synthesizing adversarial customer inquiries via Adaption Labs."""
+    user_id = get_user_id(x_user_id)
+    try:
+        from app.services.knowledge_simulator import run_knowledge_stress_test
+        report = await run_knowledge_stress_test(user_id=user_id, request=request)
+        return report
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Stress test simulation failed: {str(e)}")
+
+
+@router.get("/stress-test/latest", response_model=Optional[KnowledgeStressTestResponse])
+async def get_latest_stress_test(x_user_id: Optional[str] = Header(None)):
+    """Retrieve the latest cached stress test report."""
+    user_id = get_user_id(x_user_id)
+    from app.services.knowledge_simulator import get_latest_cached_stress_test
+    return get_latest_cached_stress_test(user_id)

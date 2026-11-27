@@ -45,6 +45,7 @@ import MobileSourceCard from "../components/knowledge/MobileSourceCard";
 import MobileIngestSheet from "../components/knowledge/MobileIngestSheet";
 import BusinessPillarsGrid from "../components/knowledge/BusinessPillarsGrid";
 import KnowledgeTestPlayground from "../components/knowledge/KnowledgeTestPlayground";
+import KnowledgeStressTestModal from "../components/knowledge/KnowledgeStressTestModal";
 
 /* ─────────────── helpers ─────────────── */
 const URL_RE = /^https?:\/\/.+/i;
@@ -770,6 +771,7 @@ export default function KnowledgeBase() {
   const [ingestSheetOpen, setIngestSheetOpen] = useState(false);
   const [ingestMode, setIngestMode] = useState("voice");
   const [searchQuery, setSearchQuery] = useState("");
+  const [stressTestModalOpen, setStressTestModalOpen] = useState(false);
 
   const {
     isSupported: voiceSearchSupported,
@@ -849,6 +851,29 @@ export default function KnowledgeBase() {
           toggleVoiceSearch={toggleVoiceSearch}
         />
 
+        {/* Mobile Flight Simulator Trigger Banner */}
+        <div className="glass-panel p-3.5 rounded-2xl border border-brand-500/25 bg-gradient-to-r from-brand-500/10 via-indigo-500/10 to-purple-500/10 flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-brand-500 to-indigo-600 text-white shrink-0 shadow-xs">
+              <ShieldCheck size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                Flight Simulator Stress-Test
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                Synthesize 8 adversarial customers (Adaption AI)
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setStressTestModalOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shrink-0 shadow-xs active:scale-95 transition-all"
+          >
+            Launch
+          </button>
+        </div>
+
         {/* Mobile Structured Pillars */}
         <BusinessPillarsGrid sources={sources} onPillarUpdated={fetchSources} />
 
@@ -927,6 +952,18 @@ export default function KnowledgeBase() {
               {t("knowledge.subtitle")}
             </p>
           </div>
+
+          <button
+            id="launch-stress-test-btn"
+            onClick={() => setStressTestModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-brand-500 via-indigo-600 to-purple-600 text-white font-semibold text-xs sm:text-sm shadow-md shadow-brand-500/25 hover:shadow-lg hover:shadow-brand-500/35 active:scale-95 transition-all touch-manipulation group"
+          >
+            <ShieldCheck size={17} className="text-white group-hover:scale-110 transition-transform" />
+            <span>Simulate & Stress-Test</span>
+            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-md bg-white/20 text-white backdrop-blur-xs">
+              Adaption AI
+            </span>
+          </button>
         </div>
 
         {/* Stats Strip */}
@@ -1040,6 +1077,12 @@ export default function KnowledgeBase() {
       {viewingSource && (
         <ViewSourceModal sourceName={viewingSource} onClose={() => setViewingSource(null)} />
       )}
+
+      {/* Autonomous Flight Simulator & Stress-Test Modal (Powered by Adaption Labs) */}
+      <KnowledgeStressTestModal
+        isOpen={stressTestModalOpen}
+        onClose={() => setStressTestModalOpen(false)}
+      />
     </div>
   );
 }

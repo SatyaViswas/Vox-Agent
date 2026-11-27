@@ -9,6 +9,51 @@ from app.schemas.blueprint import WorkflowBlueprint
 # Initialize Gemini Client using google-genai
 client = genai.Client(api_key=settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else None
 
+# Initialize Adaption Client if ADAPTION_API_KEY is configured
+adaption_client = None
+if getattr(settings, "ADAPTION_API_KEY", None):
+    try:
+        from adaption import Adaption
+        adaption_client = Adaption(api_key=settings.ADAPTION_API_KEY)
+    except Exception as _adapt_err:
+        print(f"[planner] Failed to initialize Adaption client: {_adapt_err}")
+
+ADAPTION_MODELS = [
+    getattr(settings, "ADAPTION_MODEL", "qwen3.8-27b") or "qwen3.8-27b",
+    "deepseek-v4-flash",
+    "glm-5.3-flash",
+]
+
+class _MockResp:
+    def __init__(self, text: str):
+        self.text = text
+
+
+def _call_adaption(
+    user_text: str,
+    system_instruction: str = None,
+    temperature: float = 0.1,
+) -> Optional[_MockResp]:
+    """Execute generation via Adaption Labs API."""
+    if not adaption_client:
+        return None
+    for model_name in ADAPTION_MODELS:
+        try:
+            print(f"[planner] Calling Adaption model {model_name}...")
+            resp = adaption_client.responses.create(
+                model=model_name,
+                instructions=system_instruction or "You are a helpful AI automation assistant. Output strict valid JSON.",
+                input=user_text,
+                temperature=temperature,
+            )
+            raw_out = getattr(resp, "output_text", None)
+            if raw_out and raw_out.strip():
+                return _MockResp(raw_out.strip())
+        except Exception as adapt_err:
+            print(f"[planner] Adaption model {model_name} failed: {adapt_err}")
+            continue
+    return None
+
 FALLBACK_GEMINI_MODELS = [
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
@@ -24,32 +69,54 @@ def _generate_content_with_fallback(
     response_mime_type: str = None,
     temperature: float = 0.1,
 ):
-    """Call Gemini with multi-model fallback to protect against 503 high-demand spikes."""
-    if not client:
-        raise ValueError("GEMINI_API_KEY is not configured.")
+    """Call LLM with multi-provider fallback (Gemini -> Adaption Labs -> Groq) to protect against quotas and 503 spikes."""
+    user_text = ""
+    if isinstance(contents, list) and len(contents) > 0:
+        parts = getattr(contents[0], "parts", [])
+        if parts and hasattr(parts[0], "text"):
+            user_text = parts[0].text
+        else:
+            user_text = str(contents)
+    else:
+        user_text = str(contents)
 
+    # 1. Check if Adaption is explicitly flagged as primary planner
+    if getattr(settings, "ADAPTION_PRIMARY", False) or os.getenv("USE_ADAPTION_PRIMARY", "").lower() == "true":
+        adapt_res = _call_adaption(user_text, system_instruction=system_instruction, temperature=temperature)
+        if adapt_res:
+            return adapt_res
+
+    # 2. Primary: Gemini models
     last_error = None
-    for model_name in FALLBACK_GEMINI_MODELS:
-        try:
-            config_params = {"temperature": temperature}
-            if system_instruction:
-                config_params["system_instruction"] = system_instruction
-            if response_mime_type:
-                config_params["response_mime_type"] = response_mime_type
+    if client:
+        for model_name in FALLBACK_GEMINI_MODELS:
+            try:
+                config_params = {"temperature": temperature}
+                if system_instruction:
+                    config_params["system_instruction"] = system_instruction
+                if response_mime_type:
+                    config_params["response_mime_type"] = response_mime_type
 
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=types.GenerateContentConfig(**config_params),
-            )
-            return response
-        except Exception as e:
-            err_str = str(e)
-            print(f"[planner] Gemini model {model_name} failed ({err_str[:120]}), attempting fallback...")
-            last_error = e
-            continue
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(**config_params),
+                )
+                return response
+            except Exception as e:
+                err_str = str(e)
+                print(f"[planner] Gemini model {model_name} failed ({err_str[:120]}), attempting fallback...")
+                last_error = e
+                continue
 
-    # Secondary fallback to Groq if all Gemini models are experiencing 503 / spikes
+    # 3. High-Tier Fallback: Adaption Labs (quota resilient, fast, high capacity)
+    if adaption_client:
+        print("[planner] Gemini unavailable or failed, falling back to Adaption Labs...")
+        adapt_res = _call_adaption(user_text, system_instruction=system_instruction, temperature=temperature)
+        if adapt_res:
+            return adapt_res
+
+    # 4. Secondary Fallback: Groq
     if settings.GROQ_API_KEY:
         for groq_model in ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]:
             try:
@@ -58,18 +125,8 @@ def _generate_content_with_fallback(
                 messages = []
                 if system_instruction:
                     messages.append({"role": "system", "content": system_instruction})
-                user_text = ""
-                if isinstance(contents, list) and len(contents) > 0:
-                    parts = getattr(contents[0], "parts", [])
-                    if parts and hasattr(parts[0], "text"):
-                        user_text = parts[0].text
-                    else:
-                        user_text = str(contents)
-                else:
-                    user_text = str(contents)
-
                 messages.append({"role": "user", "content": user_text})
-                print(f"[planner] Gemini unavailable, attempting Groq fallback with {groq_model}...")
+                print(f"[planner] Attempting Groq fallback with {groq_model}...")
                 chat_resp = groq_client.chat.completions.create(
                     messages=messages,
                     model=groq_model,
@@ -77,17 +134,12 @@ def _generate_content_with_fallback(
                     temperature=temperature,
                 )
                 raw_out = chat_resp.choices[0].message.content
-
-                class _MockResp:
-                    def __init__(self, text):
-                        self.text = text
-
                 return _MockResp(raw_out)
             except Exception as groq_err:
                 print(f"[planner] Groq model {groq_model} failed: {groq_err}")
                 continue
 
-    raise last_error or RuntimeError("All AI models failed to respond.")
+    raise last_error or RuntimeError("All AI models (Gemini, Adaption, Groq) failed to respond.")
 
 _CACHED_SYSTEM_PROMPT: Optional[str] = None
 
@@ -440,18 +492,38 @@ def _llm_repair_json(raw_text: str):
         "CRITICAL: Output ONLY the raw valid JSON string. Do not wrap in markdown code blocks, do not explain, and do not add commentary.\n\n"
         f"Malformed text:\n{raw_text}"
     )
-    for model_name in FALLBACK_GEMINI_MODELS:
-        try:
-            resp = client.models.generate_content(
-                model=model_name,
-                contents=[types.Content(role="user", parts=[types.Part.from_text(text=repair_prompt)])],
-                config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.0)
-            )
-            cand = _extract_json_candidate(resp.text.strip())
-            return json.loads(cand)
-        except Exception as e:
-            print(f"[planner] Model {model_name} repair failed: {e}")
-            continue
+    if client:
+        for model_name in FALLBACK_GEMINI_MODELS:
+            try:
+                resp = client.models.generate_content(
+                    model=model_name,
+                    contents=[types.Content(role="user", parts=[types.Part.from_text(text=repair_prompt)])],
+                    config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.0)
+                )
+                cand = _extract_json_candidate(resp.text.strip())
+                return json.loads(cand)
+            except Exception as e:
+                print(f"[planner] Model {model_name} repair failed: {e}")
+                continue
+
+    # Fallback to Adaption for JSON repair
+    if adaption_client:
+        for adapt_m in ["qwen3.8-27b", "deepseek-v4-flash"]:
+            try:
+                resp = adaption_client.responses.create(
+                    model=adapt_m,
+                    instructions="You are a strict JSON syntax repair tool. Fix errors and output ONLY valid JSON.",
+                    input=repair_prompt,
+                    temperature=0.0,
+                )
+                raw = getattr(resp, "output_text", "") or ""
+                cand = _extract_json_candidate(raw.strip())
+                if cand:
+                    return json.loads(cand)
+            except Exception as _adapt_rep_err:
+                print(f"[planner] Adaption {adapt_m} JSON repair failed: {_adapt_rep_err}")
+                continue
+
     return None
 
 

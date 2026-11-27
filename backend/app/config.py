@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     TELEGRAM_API_ID: int | None = None
     TELEGRAM_API_HASH: str | None = None
     GROQ_API_KEY: str | None = None
+    # Adaption Labs AI Configuration (continual adaptation, automated ML research, and fast fallback)
+    ADAPTION_API_KEY: str | None = None
+    ADAPTION_BASE_URL: str = "https://api.prod.adaptionlabs.ai/api/v1"
+    ADAPTION_MODEL: str = "qwen3.8-27b"
+    ADAPTION_PRIMARY: bool = False
     # Gnani AI platform configuration (Prisma STT, Timbre TTS, Voice Cloning)
     GNANI_API_KEY: str | None = None
     GNANI_BASE_URL: str = "https://api.vachana.ai"

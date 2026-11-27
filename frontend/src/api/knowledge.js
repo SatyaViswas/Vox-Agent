@@ -115,3 +115,27 @@ export async function saveBusinessPillar({ pillar_key, title, content }) {
   if (!res.ok) throw new ApiError(data?.detail || "Failed to save pillar", res.status, data);
   return data;
 }
+
+/** Run automated flight simulator stress-test powered by Adaption Labs. */
+export async function runStressTest({ count = 8, category_filter = null, language_mix = "indic-multilingual" } = {}) {
+  const userId = getUserId();
+  const res = await fetch(`${BASE_URL}/knowledge/stress-test`, {
+    method: "POST",
+    headers: { "X-User-Id": userId, "Content-Type": "application/json" },
+    body: JSON.stringify({ count, category_filter, language_mix }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(data?.detail || "Stress test simulation failed", res.status, data);
+  return data;
+}
+
+/** Get the latest cached stress-test report. */
+export async function getLatestStressTest() {
+  const userId = getUserId();
+  const res = await fetch(`${BASE_URL}/knowledge/stress-test/latest`, {
+    headers: { "X-User-Id": userId },
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(data?.detail || "Failed to fetch latest stress test", res.status, data);
+  return data;
+}

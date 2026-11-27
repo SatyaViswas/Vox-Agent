@@ -45,34 +45,62 @@ async def propose_repair(
     errors, times out, or can't propose anything usable. Never raises —
     a failed repair attempt should fall back to the normal pause/failure
     path, not break the run."""
-    if not settings.GROQ_API_KEY:
+    if not settings.GROQ_API_KEY and not getattr(settings, "ADAPTION_API_KEY", None):
         return None
-    try:
-        from groq import AsyncGroq
 
-        client = AsyncGroq(api_key=settings.GROQ_API_KEY)
-        user_content = json.dumps(
-            {
-                "app": app,
-                "action": action,
-                "current_parameters": parameters,
-                "error_or_question": error_text,
-            }
-        )
-        response = await client.chat.completions.create(
-            model=settings.MUTAGENT_REPAIR_MODEL,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=0,
-            response_format={"type": "json_object"},
-            timeout=20,
-        )
-        raw = response.choices[0].message.content
-        parsed = json.loads(raw)
-        fixed = parsed.get("parameters")
-        return fixed if isinstance(fixed, dict) else None
-    except Exception as e:
-        logger.warning("LLMRepairMutator: Groq repair call failed for %s.%s: %s", app, action, e)
-        return None
+    user_content = json.dumps(
+        {
+            "app": app,
+            "action": action,
+            "current_parameters": parameters,
+            "error_or_question": error_text,
+        }
+    )
+
+    if settings.GROQ_API_KEY:
+        try:
+            from groq import AsyncGroq
+
+            client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+            response = await client.chat.completions.create(
+                model=settings.MUTAGENT_REPAIR_MODEL,
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=0,
+                response_format={"type": "json_object"},
+                timeout=20,
+            )
+            raw = response.choices[0].message.content
+            parsed = json.loads(raw)
+            fixed = parsed.get("parameters")
+            if isinstance(fixed, dict):
+                return fixed
+        except Exception as e:
+            logger.warning("LLMRepairMutator: Groq repair call failed for %s.%s: %s", app, action, e)
+
+    # Fallback to Adaption Labs for parameter repair
+    if getattr(settings, "ADAPTION_API_KEY", None):
+        try:
+            from adaption import AsyncAdaption
+            import re
+            adapt_client = AsyncAdaption(api_key=settings.ADAPTION_API_KEY)
+            model_to_use = getattr(settings, "ADAPTION_MODEL", "qwen3.8-27b") or "qwen3.8-27b"
+            resp = await adapt_client.responses.create(
+                model=model_to_use,
+                instructions=_SYSTEM_PROMPT,
+                input=user_content,
+                temperature=0,
+            )
+            raw = getattr(resp, "output_text", "") or ""
+            m = re.search(r"\{[\s\S]*\}", raw)
+            if m:
+                parsed = json.loads(m.group(0))
+                fixed = parsed.get("parameters")
+                if isinstance(fixed, dict):
+                    return fixed
+        except Exception as adapt_err:
+            logger.warning("LLMRepairMutator: Adaption repair call failed for %s.%s: %s", app, action, adapt_err)
+
+    return None

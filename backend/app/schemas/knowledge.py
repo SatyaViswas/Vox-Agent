@@ -43,3 +43,38 @@ class PillarUpdateRequest(BaseModel):
     pillar_key: str  # "profile", "pricing", "policies", "faq"
     title: str
     content: str
+
+
+class StressTestScenario(BaseModel):
+    id: int
+    category: str
+    scenario_title: str
+    customer_query: str
+    expected_behavior: str
+    agent_answer: str
+    verdict: str  # "passed" | "warning" | "failed"
+    explanation: str
+    grounded: bool = True
+    sources: List[str] = []
+    confidence: float = 0.0
+
+
+class KnowledgeStressTestRequest(BaseModel):
+    count: Optional[int] = 8
+    category_filter: Optional[str] = None
+    language_mix: Optional[str] = "indic-multilingual"
+
+
+class KnowledgeStressTestResponse(BaseModel):
+    timestamp: str
+    reliability_score: float
+    readiness_status: str  # "DEPLOYMENT_READY" | "ACCEPTABLE" | "NEEDS_REVIEW"
+    summary: str
+    total_scenarios: int
+    passed_count: int
+    warning_count: int
+    failed_count: int
+    category_breakdown: dict = {}
+    scenarios: List[StressTestScenario] = []
+    adaption_model: str = "qwen3.8-27b"
+    powered_by: str = "Adaption Labs"

@@ -1,0 +1,10 @@
+{
+  "total_evaluations": 5,
+  "average_parity_score": 61.0,
+  "pass_rate_percent": 0.0,
+  "avg_baseline_latency_ms": 3500,
+  "avg_candidate_latency_ms": 4208,
+  "speedup_factor": "0.83x",
+  "promotion_ready": false,
+  "last_updated": "2026-11-22T06:32:48.642458+00:00"
+}
