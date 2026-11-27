@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, CheckCircle2, Circle, HelpCircle, ImageIcon, Loader2, Radio } from "lucide-react";
+import { Link } from "react-router-dom";
+import { AlertCircle, CheckCircle2, Circle, ExternalLink, FileText, HelpCircle, ImageIcon, Loader2, Radio } from "lucide-react";
 
 const RUN_STATUS_CONFIG = {
   idle: { labelKey: "telemetry.idle", icon: Circle, classes: "text-slate-400" },
@@ -38,6 +39,22 @@ export default function TelemetryPanel({ runStatus, logs }) {
   const StatusIcon = statusConfig.icon;
   const screenshots = logs.filter((l) => l.screenshotUrl);
 
+  const { githubLinks, savedToVault } = useMemo(() => {
+    const links = new Set();
+    let hasVault = false;
+    for (const log of logs) {
+      const msg = typeof log.message === "string" ? log.message : "";
+      const matches = msg.match(/https:\/\/github\.com\/[^\s"'`,)}\]]+/g);
+      if (matches) {
+        matches.forEach((u) => links.add(u));
+      }
+      if (msg.includes("VoxAgent Vault Notes") || msg.includes("SAVE_NOTE")) {
+        hasVault = true;
+      }
+    }
+    return { githubLinks: Array.from(links), savedToVault: hasVault };
+  }, [logs]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex items-center justify-between mb-3">
@@ -64,7 +81,7 @@ export default function TelemetryPanel({ runStatus, logs }) {
             <div key={i} className="flex items-start gap-2 text-slate-300">
               <span className={`mt-1 w-1.5 h-1.5 rounded-full shrink-0 ${LEVEL_DOT[log.level] || LEVEL_DOT.info}`} />
               <span className="text-slate-500 shrink-0">{log.timestamp}</span>
-              <span className={log.level === "error" ? "text-red-300" : log.level === "success" ? "text-emerald-300" : ""}>
+              <span className={`whitespace-pre-wrap break-words ${log.level === "error" ? "text-red-300" : log.level === "success" ? "text-emerald-300" : ""}`}>
                 {log.message}
               </span>
             </div>
@@ -91,6 +108,35 @@ export default function TelemetryPanel({ runStatus, logs }) {
               </a>
             ))}
           </div>
+        </div>
+      )}
+
+      {(githubLinks.length > 0 || (savedToVault && runStatus === "success")) && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {githubLinks.map((url) => {
+            const isPr = url.includes("/pull/");
+            return (
+              <a
+                key={url}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 transition-colors"
+              >
+                <ExternalLink size={13} />
+                <span>{isPr ? "Open Pull Request on GitHub" : "View Branch on GitHub"}</span>
+              </a>
+            );
+          })}
+          {savedToVault && runStatus === "success" && (
+            <Link
+              to="/notes"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-brand-500/15 hover:bg-brand-500/25 text-brand-700 dark:text-brand-300 border border-brand-500/30 transition-colors"
+            >
+              <FileText size={13} />
+              <span>View in Vault Notes</span>
+            </Link>
+          )}
         </div>
       )}
     </div>

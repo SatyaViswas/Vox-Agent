@@ -4,8 +4,34 @@ from typing import Dict, Any, Literal, Optional
 from app.services.composio_engine import execute_composio_action
 from app.services.browser_engine import execute_browser_action
 from app.services.http_engine import execute_http_webhook
+from app.services.git_engine import discover_local_repos, git_status
+from pathlib import Path
+import asyncio
 
 router = APIRouter(tags=["engines"])
+
+
+@router.get("/git/repos")
+async def list_local_git_repositories():
+    """Returns discovered local Git repositories for the Studio workspace selector."""
+    try:
+        repos = await asyncio.to_thread(discover_local_repos, False)
+        async def _enrich(r):
+            try:
+                st = await git_status(Path(r["path"]))
+                return {
+                    **r,
+                    "branch": st.get("branch"),
+                    "is_clean": st.get("is_clean", True),
+                    "changes_count": (st.get("staged_count", 0) + st.get("unstaged_count", 0) + st.get("untracked_count", 0)),
+                }
+            except Exception:
+                return r
+
+        enriched = await asyncio.gather(*[_enrich(r) for r in repos])
+        return {"status": "success", "repositories": enriched}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 class TestEngineRequest(BaseModel):
     route: Literal["browser_agent", "composio_api", "http_webhook"]

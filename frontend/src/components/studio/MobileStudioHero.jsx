@@ -17,6 +17,30 @@ import VoiceLanguagePicker from "../shared/VoiceLanguagePicker";
 
 const STUDIO_QUICK_PROMPTS = [
   {
+    icon: "🚀",
+    title: "Smart Git Push",
+    text: "Push my local changes with an AI Conventional Commit message and upstream tracking",
+    tag: "Local Git",
+  },
+  {
+    icon: "📑",
+    title: "Open GitHub PR",
+    text: "Push my current changes to feature/auth and open a pull request on GitHub",
+    tag: "Git + GitHub",
+  },
+  {
+    icon: "☕",
+    title: "Git Daily Standup",
+    text: "Generate a daily standup summary from my git commits since yesterday",
+    tag: "Git Standup",
+  },
+  {
+    icon: "🛠️",
+    title: "Init Git Repo",
+    text: "Initialize a new git repo called my-new-project with gitignore and README",
+    tag: "Scaffold",
+  },
+  {
     icon: "📧",
     title: "Email Summary",
     text: "Send an email with a project summary to mvsviswas@gmail.com",
@@ -33,12 +57,6 @@ const STUDIO_QUICK_PROMPTS = [
     title: "Telegram Alert",
     text: "Send a message on Telegram personal account with today's status",
     tag: "Telegram",
-  },
-  {
-    icon: "📝",
-    title: "Notion to Slack",
-    text: "Read recent items from Notion and post an update to Slack",
-    tag: "Notion + Slack",
   },
 ];
 

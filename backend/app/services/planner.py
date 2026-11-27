@@ -170,6 +170,7 @@ Rules for route classification:
 - 'ai_generate': For a step whose job is purely to generate, draft, summarize, translate, or rewrite text/content with AI — e.g. "write a caption", "summarize this", "draft a reply" — with NO external app connection required (it runs on VoxAgent's own built-in AI). Set `app` to "VoxAgent AI", `action` to "GENERATE_TEXT", and `parameters` to `{{"prompt": "<full instructions for what to generate, including any context from earlier steps via {{step_N_result}}>"}}`. Never route plain text-generation to 'composio_api' with an OpenAI/Gemini/Anthropic app — those require a connected account the user probably doesn't have; 'ai_generate' needs nothing.
 - 'http_webhook': For custom URLs, REST endpoints, or triggering other external software.
 - 'telegram_client': For automating the user's OWN personal Telegram account — reading or sending in Saved Messages, DMs, or any chat they're personally part of. See the Telegram rule below.
+- 'git_client': For local Git repository developer operations (e.g. push changes, smart commit, create/checkout branch, inspect diff, git status, git log for standups). Runs safely on the developer's local workspace on disk with automated secret protection (.env and credentials automatically blocked and shielded). Set `app` to "Local Git".
 
 Telegram rule — there are TWO distinct Telegram identities. YOU MUST pick the right one (BOTH use 'telegram_client' as the route):
 - If the user explicitly asks to use their PERSONAL account (e.g. "my telegram", "saved messages", "any message I get on telegram", "send from my account"), set `app` to "Telegram Personal Account".
@@ -180,7 +181,7 @@ For both, the action is "SEND_MESSAGE". For the `target` parameter:
 - Otherwise, set it to a chat name/username, or "me" for Saved Messages.
 Do NOT use 'composio_api' for Telegram.
 
-Rule 1 (Default Storage): If the user asks to extract, scrape, or fetch information from a website or portal but DOES NOT specify where to save/store it, set the final step's target app to "VoxAgent Vault Notes" with route "http_webhook".
+Rule 1 (Default Storage): Whenever the user asks to check, inspect, show, extract, scrape, fetch, or generate/summarize information (from a website, portal, Local Git repo, emails, AI standups, or reports) and DOES NOT specify where to send, post, email, or store it (e.g., they did NOT ask to email it, send it to Slack, post to Telegram, or save to Google Sheets/Notion), ALWAYS add a final step saving the output to "VoxAgent Vault Notes" (`route: "http_webhook"`, `app: "VoxAgent Vault Notes"`, `action: "SAVE_NOTE"`, `parameters: {{"content": "{{{{step_<prev>_result}}}}"}}`). Do NOT skip this default storage step when the user only asked to "show", "check", or "generate" data without naming a destination app.
 
 Rule 2 (Disambiguation & Missing Params): If an action requires specific parameters that the user did not provide (e.g., target Google Sheet name, the specific TABLE within a named Airtable base or Notion workspace — naming the base alone is not enough to address a table, target WhatsApp phone number, specific threshold value, or ERP portal URL):
 - Do NOT invent or guess fake names or numbers.
@@ -256,8 +257,24 @@ Rule 10 (Intelligent Data Extraction & Pagination Limits Across All Apps):
     - Chat & Messaging (Slack, Discord, MS Teams): set `"limit": 5` (never default to 100 which dumps entire channel history).
     - Email (Gmail, Outlook): set `"max_results": 5` (or `1` for latest). Use `query` for Gmail filters (e.g. `query: "from:boss@company.com is:unread"`). When the user asks to "email me a digest" or send results to themselves, set `recipient_email: "me"`. Downstream steps reference `{{step_1_result}}` directly.
     - Calendar (Google Calendar, Outlook): set `"maxResults": 5` (or `1` for next event). Set action to `GOOGLECALENDAR_FIND_EVENT`. For date filtering (e.g. "tomorrow's schedule"), set `calendar_id: "primary"`, `time_min: "tomorrow"`, `time_max: "tomorrow"`. Conversational relative dates are converted to RFC3339 timestamps automatically.
-    - Code & Developer (GitHub, GitLab):
-      - For checking notifications: set route `composio_api`, app `GitHub`, action `GITHUB_LIST_NOTIFICATIONS`, parameters `{{"per_page": 5}}`.
+    - Code & Developer (GitHub, GitLab, Local Git):
+      - Optional `"repository"` parameter on ALL `git_client` actions (`GIT_STATUS`, `GIT_DIFF`, `GIT_LOG`, `GIT_SMART_PUSH`, `GIT_CHECKOUT`): if the user specifies a repository name or folder (e.g. "in sift-recovery-engine repo"), pass `"repository": "<name>"`. If the user says "all local repos", "across all my repos", or "local", pass `"repository": "local"`. Omit `"repository"` if they didn't specify one (defaults to current workspace).
+      - For local Git chores ("push my changes", "smart push", "commit code", "push to branch", "git sync"):
+        Set route `git_client`, app `Local Git`, action `GIT_SMART_PUSH`. Parameters: `{{"branch": "<branch or target branch if specified>", "commit_message": "<commit message or omit for auto AI Conventional Commit message>"}}`. The engine inspects diff, blocks secret files, generates a Conventional Commit message with AI, stages safe files, and pushes with upstream tracking.
+      - For pushing code AND opening a Pull Request on GitHub ("push changes to feature/auth and open a PR on GitHub"):
+        Step 1: Set route `git_client`, app `Local Git`, action `GIT_SMART_PUSH`, parameters `{{"branch": "<feature branch>"}}`. (Do NOT add a separate `GIT_CHECKOUT` step — `GIT_SMART_PUSH` handles branch switching automatically.)
+        Step 2: Set route `composio_api`, app `GitHub`, action `GITHUB_CREATE_A_PULL_REQUEST`, parameters `{{"owner": "{{step_1_result.owner}}", "repo": "{{step_1_result.repo}}", "title": "{{step_1_result.pr_title}}", "head": "{{step_1_result.branch}}", "base": "{{step_1_result.default_branch}}", "body": "{{step_1_result.pr_body}}"}}`.
+      - For initializing or scaffolding a new local repository ("initialize git repo", "create new repo folder X with gitignore and README"):
+        Set route `git_client`, app `Local Git`, action `GIT_INIT`, parameters `{{"repository": "<folder name or path>"}}`.
+        - Remote Setup Rule: If the user did NOT provide a GitHub remote URL in the prompt, set `needs_clarification` to true and add a `missing_parameters` entry: `step_number: <step_number>`, `parameter_key: "remote_url"`, `label: "GitHub Remote URL (or 'create' / 'local')"`, `description: "Paste your GitHub repository URL (e.g. https://github.com/user/repo.git) to set up origin & push, type 'create' to auto-create on GitHub, or type 'local' for local-only initialization."`, `suggested_type: "text"`. Leave `remote_url` out of `parameters`.
+      - For generating daily standups from git activity ("generate standup from my git commits", "what did I commit today"):
+        Step 1: Set route `git_client`, app `Local Git`, action `GIT_LOG`, parameters `{{"limit": 10, "since": "yesterday"}}`.
+        Step 2: Set route `ai_generate`, app `VoxAgent AI`, action `GENERATE_TEXT`, parameters `{{"prompt": "Generate a crisp, professional 3-bullet Daily Standup (Yesterday, Today, Blockers) from these git commits:\n{{step_1_result}}"}}`.
+        Step 3 (if user did NOT specify Slack/Telegram/Email): Under Rule 1, save to `VoxAgent Vault Notes` (route `http_webhook`, app `VoxAgent Vault Notes`, action `SAVE_NOTE`, parameters `{{"content": "{{step_2_result}}"}}`).
+      - For checking git status or inspecting unstaged changes ("check git status and show unstaged changes"):
+        Step 1: Set route `git_client`, app `Local Git`, action `GIT_STATUS` (or `GIT_DIFF`).
+        Step 2 (if user did NOT specify where to send/post the status): Under Rule 1, save to `VoxAgent Vault Notes` (route `http_webhook`, app `VoxAgent Vault Notes`, action `SAVE_NOTE`, parameters `{{"content": "{{step_1_result}}"}}`).
+      - For checking remote GitHub notifications: set route `composio_api`, app `GitHub`, action `GITHUB_LIST_NOTIFICATIONS`, parameters `{{"per_page": 5}}`.
       - For checking/listing/searching issues across user repos: set route `composio_api`, app `GitHub`, action `GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS`, parameters `{{"q": "is:open is:issue involves:@me", "per_page": 5}}`.
       - For listing repositories: set route `composio_api`, app `GitHub`, action `GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER`, parameters `{{"per_page": 5}}`.
     - Spreadsheets & Databases (Google Sheets, Airtable, Notion):

@@ -18,6 +18,7 @@ from app.services.mutagent import classify_failure, execute_with_mutation
 from app.services.mutagent import memory as mutation_memory
 from app.services.planner import generate_ai_content
 from app.services.telegram_client_engine import execute_telegram_client_action
+from app.services.git_engine import execute_git_action
 from app.services.vault import is_vault_notes_target, save_vault_note
 
 logger = logging.getLogger(__name__)
@@ -667,11 +668,17 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
         prev_step = steps[index - 1] if index > 0 else {}
         source_app = prev_step.get("app", app)
         source_action = prev_step.get("action", action)
+        raw_prev_data = step_results.get(step_number - 1, parameters)
+        clean_note_data = (
+            raw_prev_data["human_summary"]
+            if isinstance(raw_prev_data, dict) and raw_prev_data.get("human_summary")
+            else raw_prev_data
+        )
         note_content = {
             "agent_name": blueprint.get("title") or "VoxAgent Automation",
             "source_app": source_app,
             "action": source_action,
-            "data": step_results.get(step_number - 1, parameters),
+            "data": clean_note_data,
             "extracted_at": datetime.now(timezone.utc).isoformat(),
         }
         note_title = f"{source_app} — {source_action}"[:255]
@@ -703,6 +710,52 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
         return await execute_browser_action(task_description=task_description, user_id=user_id, app_name=app)
 
     if route == "composio_api":
+        # Auto-enrich GitHub repository/PR actions from prior git_client step outputs
+        if app and app.strip().lower() == "github":
+            params_copy = dict(parameters or {})
+            needs_owner = not params_copy.get("owner") or "{" in str(params_copy.get("owner"))
+            needs_repo = not params_copy.get("repo") or "{" in str(params_copy.get("repo"))
+            needs_base = not params_copy.get("base") or "{" in str(params_copy.get("base"))
+            if needs_owner or needs_repo or needs_base:
+                git_meta = None
+                for val in reversed(list((step_results or {}).values())):
+                    if isinstance(val, dict) and (val.get("owner") or val.get("repo") or val.get("branch")):
+                        git_meta = val
+                        break
+                if not git_meta:
+                    try:
+                        from app.services.git_engine import DEFAULT_REPO_PATH, git_status
+                        from pathlib import Path
+                        git_meta = await git_status(Path(DEFAULT_REPO_PATH))
+                    except Exception:
+                        git_meta = {}
+                if git_meta:
+                    if needs_owner and git_meta.get("owner"):
+                        params_copy["owner"] = git_meta["owner"]
+                    if needs_repo and git_meta.get("repo"):
+                        params_copy["repo"] = git_meta["repo"]
+                    if needs_base and git_meta.get("default_branch"):
+                        params_copy["base"] = git_meta["default_branch"]
+                    if (not params_copy.get("head") or "{" in str(params_copy.get("head"))) and git_meta.get("branch"):
+                        params_copy["head"] = git_meta["branch"]
+                # Ensure base branch (e.g. main) exists on origin before opening a GitHub PR
+                if (
+                    action and "PULL_REQUEST" in action.upper()
+                    and git_meta and git_meta.get("repo_path")
+                    and params_copy.get("base") and params_copy.get("head")
+                    and params_copy["base"] != params_copy["head"]
+                ):
+                    try:
+                        from app.services.git_engine import ensure_remote_base_branch
+                        from pathlib import Path
+                        await ensure_remote_base_branch(
+                            Path(git_meta["repo_path"]),
+                            params_copy["base"],
+                            params_copy["head"],
+                        )
+                    except Exception:
+                        pass
+                parameters = params_copy
         return await execute_composio_action(app=app, action=action, parameters=parameters, entity_id=user_id)
 
     if route == "http_webhook":
@@ -713,6 +766,9 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
         # Supports both "Telegram Personal Account" and "Telegram Bot" apps.
         # Resolves via telegram_client_engine using the specific app_name.
         return await execute_telegram_client_action(user_id=user_id, action=action, parameters=parameters, app_name=app)
+
+    if route == "git_client":
+        return await execute_git_action(action=action, parameters=parameters, user_id=user_id)
 
     if route == "ai_generate":
         # Runs entirely on VoxAgent's own built-in AI — no external app

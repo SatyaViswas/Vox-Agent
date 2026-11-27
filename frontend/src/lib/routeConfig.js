@@ -1,4 +1,4 @@
-import { Globe, Plug, Webhook } from "lucide-react";
+import { Globe, Plug, Webhook, GitBranch, Sparkles, Send } from "lucide-react";
 
 export const ROUTE_CONFIG = {
   browser_agent: {
@@ -18,6 +18,24 @@ export const ROUTE_CONFIG = {
     icon: Webhook,
     classes: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30",
     dot: "bg-teal-500",
+  },
+  git_client: {
+    label: "Local Git",
+    icon: GitBranch,
+    classes: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+    dot: "bg-emerald-500",
+  },
+  ai_generate: {
+    label: "VoxAgent AI",
+    icon: Sparkles,
+    classes: "bg-brand-500/10 text-brand-600 dark:text-brand-400 border-brand-500/30",
+    dot: "bg-brand-500",
+  },
+  telegram_client: {
+    label: "Telegram Client",
+    icon: Send,
+    classes: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30",
+    dot: "bg-sky-500",
   },
 };
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { AlertCircle, CheckCircle2, Loader2, Mic, MinusCircle, PlayCircle, Radio, SendHorizontal, Sparkles, Workflow } from "lucide-react";
+import { AlertCircle, CheckCircle2, GitBranch, Loader2, Mic, MinusCircle, PlayCircle, Radio, RefreshCw, SendHorizontal, Sparkles, Workflow } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useSpeechRecognition } from "../hooks/useSpeechRecognition";
 import { useVoiceFeedback } from "../hooks/useVoiceFeedback";
@@ -23,7 +23,7 @@ import {
   resumeAgent,
   telemetrySocketUrl,
 } from "../api/agents";
-import { getRequiredAppsStatus, introspectAppResources } from "../api/vault";
+import { getLocalGitRepos, getRequiredAppsStatus, introspectAppResources } from "../api/vault";
 import BlueprintFlow from "../components/studio/BlueprintFlow";
 import DisambiguationPanel, { paramKey } from "../components/studio/DisambiguationPanel";
 import PendingActionCard from "../components/studio/PendingActionCard";
@@ -37,10 +37,12 @@ const POLL_INTERVAL_MS = 2000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 const STUDIO_QUICK_PROMPTS = [
+  { label: "🚀 Smart Git Push", text: "Push my local changes with an AI Conventional Commit message and upstream tracking" },
+  { label: "📑 Open GitHub PR", text: "Push my changes to feature/auth and open a pull request on GitHub" },
+  { label: "☕ Git Daily Standup", text: "Generate a daily standup summary from my git commits since yesterday" },
+  { label: "🛠️ Init Git Repo", text: "Initialize a new git repo called my-new-project with gitignore and README" },
   { label: "📧 Email Report", text: "Send an email with a project summary to mvsviswas@gmail.com" },
   { label: "📊 Google Sheets", text: "Extract full sheet from Google Sheets and create a summary in Google Docs" },
-  { label: "⚡ Telegram Alert", text: "Send a message on Telegram personal account with today's status" },
-  { label: "📝 Notion & Slack", text: "Read recent items from Notion and post an update to Slack" },
 ];
 
 function cloneBlueprint(blueprint) {
@@ -88,7 +90,7 @@ function needsAttention(blueprint) {
 
 function summarizeLogMessages(entries) {
   if (!Array.isArray(entries) || entries.length === 0) return "no step detail returned";
-  const failed = entries.filter((e) => e.result?.status === "error").length;
+  const failed = entries.filter((e) => e.result?.status === "error" || e.result?.status === "failed").length;
   const skipped = entries.filter((e) => e.result?.status === "skipped").length;
   const succeeded = entries.filter((e) => e.result?.status === "success" || (!e.result?.status && !e.result?.error)).length;
 
@@ -99,6 +101,45 @@ function summarizeLogMessages(entries) {
     return `${succeeded} step(s) executed, ${skipped} skipped`;
   }
   return `${entries.length} step(s) executed successfully`;
+}
+
+function formatStepEntryForTelemetry(entry) {
+  const header = `Step ${entry.step} (${entry.app} · ${entry.action})`;
+  const res = entry.result;
+  if (!res) return `${header}: completed`;
+  if (res.status === "error" || res.status === "failed") {
+    return `${header} error: ${res.error || res.message || "Unknown error"}`;
+  }
+  if (res.status === "skipped") return `${header} skipped: ${res.reason || "condition not met"}`;
+
+  const payload = res.result ?? res.output ?? res.data ?? res;
+  if (typeof payload === "string") {
+    return `${header}:\n${payload.slice(0, 1500)}`;
+  }
+  if (payload && typeof payload === "object") {
+    if (payload.human_summary) {
+      return `${header}:\n${payload.human_summary}`;
+    }
+    const parts = [];
+    if (payload.message) parts.push(payload.message);
+    const prUrl = payload.html_url || payload.data?.html_url || payload.pull_request_url;
+    if (prUrl) parts.push(`URL: ${prUrl}`);
+    if (payload.remote_branch_url && payload.remote_branch_url !== prUrl) {
+      parts.push(`Branch: ${payload.remote_branch_url}`);
+    }
+    if (payload.unstaged_diff_preview) parts.push(`Unstaged diff:\n${payload.unstaged_diff_preview}`);
+    if (payload.diff && !payload.unstaged_diff_preview) parts.push(payload.diff.slice(0, 1500));
+    if (Array.isArray(payload.commits) && payload.commits.length > 0) {
+      parts.push(
+        payload.commits
+          .map((c) => `• ${c.hash || ""} ${c.message || c.raw || ""} (${c.date || ""})`.trim())
+          .join("\n")
+      );
+    }
+    if (parts.length > 0) return `${header}:\n${parts.join("\n")}`;
+    return `${header}: ${JSON.stringify(payload).slice(0, 1000)}`;
+  }
+  return `${header}: ${String(payload)}`;
 }
 
 function isRunCommand(text) {
@@ -160,6 +201,81 @@ export default function AgentStudio() {
   const [disambigResolving, setDisambigResolving] = useState(false);
   const [mobileStudioTab, setMobileStudioTab] = useState("blueprint");
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [localRepos, setLocalRepos] = useState([]);
+  const [refreshingRepos, setRefreshingRepos] = useState(false);
+  const [selectedRepo, setSelectedRepo] = useState("auto");
+  const selectedRepoRef = useRef("auto");
+  selectedRepoRef.current = selectedRepo;
+
+  const refreshLocalRepos = useCallback(() => {
+    setRefreshingRepos(true);
+    return getLocalGitRepos()
+      .then((res) => setLocalRepos(res?.repositories || []))
+      .catch(() => {})
+      .finally(() => setRefreshingRepos(false));
+  }, []);
+
+  useEffect(() => {
+    refreshLocalRepos();
+  }, [refreshLocalRepos]);
+
+  useEffect(() => {
+    if (runStatus === "success" && (blueprintRef.current?.steps || []).some((s) => s.route === "git_client")) {
+      refreshLocalRepos();
+    }
+  }, [runStatus, refreshLocalRepos]);
+
+  const applySelectedRepoToBlueprint = useCallback((bp, repoVal) => {
+    if (!bp || !Array.isArray(bp.steps) || !repoVal || repoVal === "auto") return bp;
+    const cloned = cloneBlueprint(bp);
+    cloned.steps = cloned.steps.map((step) => {
+      if (step?.route === "git_client") {
+        return {
+          ...step,
+          parameters: {
+            ...(step.parameters || {}),
+            repository: repoVal,
+          },
+        };
+      }
+      return step;
+    });
+    if (Array.isArray(cloned.missing_parameters) && cloned.missing_parameters.length > 0) {
+      cloned.missing_parameters = cloned.missing_parameters.filter(
+        (mp) => mp.parameter_key !== "repository" && mp.parameter_key !== "repo_path"
+      );
+      if (cloned.missing_parameters.length === 0) {
+        cloned.needs_clarification = false;
+        cloned.clarification_question = null;
+      }
+    }
+    return cloned;
+  }, []);
+
+  const handleSelectRepoChange = useCallback(
+    (newRepoVal) => {
+      setSelectedRepo(newRepoVal);
+      selectedRepoRef.current = newRepoVal;
+      if (blueprintRef.current) {
+        if (newRepoVal === "auto") {
+          // Clear explicit override only if switching back to auto
+          const cloned = cloneBlueprint(blueprintRef.current);
+          cloned.steps = (cloned.steps || []).map((step) => {
+            if (step?.route === "git_client" && step.parameters?.repository) {
+              const nextParams = { ...step.parameters };
+              delete nextParams.repository;
+              return { ...step, parameters: nextParams };
+            }
+            return step;
+          });
+          setBlueprint(cloned);
+        } else {
+          setBlueprint(applySelectedRepoToBlueprint(blueprintRef.current, newRepoVal));
+        }
+      }
+    },
+    [applySelectedRepoToBlueprint, setBlueprint]
+  );
 
   const isListeningForDisambigRef = useRef(false);
   const activeParamListeningRef = useRef(null);
@@ -538,6 +654,23 @@ export default function AgentStudio() {
             return;
           }
 
+          const existingLogs = useStudioStore.getState().logs || [];
+          (latest.log_messages || []).forEach((entry) => {
+            if (entry.step != null) {
+              const alreadyLogged = existingLogs.some(
+                (l) =>
+                  typeof l.message === "string" &&
+                  (l.message.includes(`Step ${entry.step} completed`) || l.message.includes(`Step ${entry.step} (`))
+              );
+              if (!alreadyLogged) {
+                appendLog({
+                  level: entry.result?.status === "error" ? "error" : "info",
+                  message: formatStepEntryForTelemetry(entry),
+                });
+              }
+            }
+          });
+
           appendLog({
             level: latest.status === "success" ? "success" : "error",
             message: `Execution ${latest.status}: ${summarizeLogMessages(latest.log_messages)}`,
@@ -617,30 +750,31 @@ export default function AgentStudio() {
         if (data) {
           data.original_prompt = finalPromptToSave;
         }
+        const finalData = applySelectedRepoToBlueprint(data, selectedRepoRef.current);
 
         // Language Continuity: Localize clarification question for voice & display if non-English
-        if (data.needs_clarification && data.clarification_question && activeWebsiteLanguage && activeWebsiteLanguage !== "en") {
+        if (finalData.needs_clarification && finalData.clarification_question && activeWebsiteLanguage && activeWebsiteLanguage !== "en") {
           try {
             const localizedQ = await translateText(
-              data.clarification_question,
+              finalData.clarification_question,
               "en",
               activeWebsiteLanguage
             );
             if (localizedQ) {
-              data.clarification_question = localizedQ;
+              finalData.clarification_question = localizedQ;
             }
           } catch (locErr) {
             console.warn("Failed to localize clarification question:", locErr);
           }
         }
 
-        setBlueprint(data);
-        setStepStatuses(Object.fromEntries((data.steps || []).map((s) => [s.step_number, "pending"])));
+        setBlueprint(finalData);
+        setStepStatuses(Object.fromEntries((finalData.steps || []).map((s) => [s.step_number, "pending"])));
         setPrompt("");
 
         // Migrate and retain previously entered values for surviving missing parameters
         const migratedValues = {};
-        const missingParams = data.missing_parameters || [];
+        const missingParams = finalData.missing_parameters || [];
         missingParams.forEach((param) => {
           const newKey = paramKey(param);
           if (prevDisambigValues[newKey]) {
@@ -1434,6 +1568,58 @@ export default function AgentStudio() {
           onStop={stopSpeaking}
         />
 
+        {!blueprint && !planning && (
+          <div className="flex flex-col gap-2.5 pt-1 pb-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                <Sparkles size={13} className="text-brand-500" />
+                <span>Quick Presets & Developer Automations</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <GitBranch size={13} className="text-emerald-500 shrink-0" />
+                <span className="text-slate-500 dark:text-slate-400 font-medium">Target Repo:</span>
+                <select
+                  value={selectedRepo}
+                  onChange={(e) => handleSelectRepoChange(e.target.value)}
+                  className="rounded-lg bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 px-2 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:border-emerald-500/50 cursor-pointer"
+                >
+                  <option value="auto">Auto-detect (from prompt)</option>
+                  <option value="local">All Local Repos (local)</option>
+                  {localRepos.map((repo) => (
+                    <option key={repo.path} value={repo.name}>
+                      {repo.name} {repo.branch ? `(${repo.branch})` : ""} {repo.changes_count > 0 ? `• ${repo.changes_count} changed` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={refreshLocalRepos}
+                  disabled={refreshingRepos}
+                  title="Rescan local repositories"
+                  className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={refreshingRepos ? "animate-spin" : ""} />
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {STUDIO_QUICK_PROMPTS.map((item, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setPrompt(item.text);
+                    handleGenerate(item.text);
+                  }}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100/80 hover:bg-brand-50 dark:bg-white/5 dark:hover:bg-brand-500/15 text-slate-700 hover:text-brand-600 dark:text-slate-300 dark:hover:text-brand-300 border border-slate-200/80 dark:border-white/10 hover:border-brand-500/30 transition-all text-left flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-2xs"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {speechError && (
           <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
             <AlertCircle size={16} className="shrink-0" />
@@ -1490,6 +1676,53 @@ export default function AgentStudio() {
             error={resumeError}
           />
         )}
+
+        {blueprint && (blueprint.steps || []).some((s) => s.route === "git_client") && !agentId && (() => {
+          const gitPushStep = (blueprint.steps || []).find(
+            (s) => s.route === "git_client" && /PUSH/i.test(s.action || "")
+          );
+          const pushTargetBranch = (gitPushStep?.parameters?.branch || "").toLowerCase();
+          const isDirectProtectedPush = Boolean(gitPushStep) && (pushTargetBranch === "main" || pushTargetBranch === "master");
+          return (
+            <div className="glass-panel px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 border-emerald-500/20 bg-emerald-500/[0.03]">
+              <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                <GitBranch size={15} className="text-emerald-500 shrink-0" />
+                <span>Target Local Repository:</span>
+                {isDirectProtectedPush && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[11px] font-semibold">
+                    ⚠️ Direct push to {pushTargetBranch}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={selectedRepo}
+                  onChange={(e) => handleSelectRepoChange(e.target.value)}
+                  className="rounded-lg bg-white dark:bg-slate-900 border border-emerald-500/30 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
+                >
+                  <option value="auto">
+                    Auto-detected ({blueprint.steps.find((s) => s.route === "git_client")?.parameters?.repository || "Current Workspace"})
+                  </option>
+                  <option value="local">All Local Repos (local)</option>
+                  {localRepos.map((repo) => (
+                    <option key={repo.path} value={repo.name}>
+                      {repo.name} {repo.branch ? `(${repo.branch})` : ""} {repo.changes_count > 0 ? `• ${repo.changes_count} changed` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={refreshLocalRepos}
+                  disabled={refreshingRepos}
+                  title="Rescan local repositories"
+                  className="p-1.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-500 dark:text-slate-400 border border-emerald-500/30 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw size={13} className={refreshingRepos ? "animate-spin" : ""} />
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {blueprint && (
           <div className="glass-panel p-4 flex items-center justify-between gap-3 shadow-sm">

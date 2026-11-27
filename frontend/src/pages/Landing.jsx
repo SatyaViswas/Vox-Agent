@@ -17,9 +17,11 @@ import { useTheme } from "../context/ThemeContext";
 import useSpeechRecognition from "../hooks/useSpeechRecognition";
 
 const QUICK_PROMPTS = [
+  "🚀 Push my local changes with an AI commit message",
+  "📑 Push changes and open a pull request on GitHub",
+  "☕ Generate daily standup from my git commits",
   "Email me daily sheets report",
   "Send Telegram alert when form submitted",
-  "Summarize unread Gmails in Notion",
 ];
 
 export default function Landing() {
