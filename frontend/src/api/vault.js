@@ -57,6 +57,10 @@ export function getVaultNotes(userId) {
   return apiClient.get("/vault/notes", { params: { user_id: userId } });
 }
 
+export function getLocalGitRepos() {
+  return apiClient.get("/git/repos");
+}
+
 export function startWhatsAppQrSession(userId) {
   return apiClient.post("/vault/whatsapp/qr", { user_id: userId });
 }

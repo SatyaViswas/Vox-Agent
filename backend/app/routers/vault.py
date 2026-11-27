@@ -90,7 +90,7 @@ async def introspect_resources(
         traceback.print_exc()
         return {"status": "error", "app": app, "resources": [], "error": str(e)}
 
-_BUILTIN_APPS = {"voxagent ai", "voxagent vault notes"}
+_BUILTIN_APPS = {"voxagent ai", "voxagent vault notes", "local git", "git"}
 
 
 def _compute_required_apps_status(names: list, route_list: list, user_id: str):
@@ -112,7 +112,7 @@ def _compute_required_apps_status(names: list, route_list: list, user_id: str):
     for i, name in enumerate(names):
         lowered = name.lower()
         route = route_list[i] if i < len(route_list) else None
-        if lowered in _BUILTIN_APPS:
+        if lowered in _BUILTIN_APPS or route == "git_client":
             results.append({"app": name, "connected": True, "builtin": True})
         elif lowered == TELEGRAM_PERSONAL_APP_NAME.lower():
             results.append({"app": name, "connected": telegram_personal_connected, "connect_via": "telegram_personal"})
