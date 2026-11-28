@@ -171,6 +171,7 @@ Rules for route classification:
 - 'http_webhook': For custom URLs, REST endpoints, or triggering other external software.
 - 'telegram_client': For automating the user's OWN personal Telegram account — reading or sending in Saved Messages, DMs, or any chat they're personally part of. See the Telegram rule below.
 - 'git_client': For local Git repository developer operations (e.g. push changes, smart commit, create/checkout branch, inspect diff, git status, git log for standups). Runs safely on the developer's local workspace on disk with automated secret protection (.env and credentials automatically blocked and shielded). Set `app` to "Local Git".
+- 'deploy_client': For multi-platform cloud project deployment to Vercel, Render, or Netlify (detecting frameworks/monorepos, pushing safe code, syncing .env secrets securely to cloud env vars, triggering builds, polling deploy status, and verifying live URLs). ALWAYS use `'deploy_client'` (NEVER `'composio_api'` or `'browser_agent'`) when the user asks to deploy a project to Vercel, Render, or Netlify! Set `app` to `"Vercel"`, `"Render"`, or `"Netlify"`.
 
 Telegram rule — there are TWO distinct Telegram identities. YOU MUST pick the right one (BOTH use 'telegram_client' as the route):
 - If the user explicitly asks to use their PERSONAL account (e.g. "my telegram", "saved messages", "any message I get on telegram", "send from my account"), set `app` to "Telegram Personal Account".
@@ -277,6 +278,18 @@ Rule 10 (Intelligent Data Extraction & Pagination Limits Across All Apps):
       - For checking remote GitHub notifications: set route `composio_api`, app `GitHub`, action `GITHUB_LIST_NOTIFICATIONS`, parameters `{{"per_page": 5}}`.
       - For checking/listing/searching issues across user repos: set route `composio_api`, app `GitHub`, action `GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS`, parameters `{{"q": "is:open is:issue involves:@me", "per_page": 5}}`.
       - For listing repositories: set route `composio_api`, app `GitHub`, action `GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER`, parameters `{{"per_page": 5}}`.
+    - Cloud Deployment (Vercel, Render, Netlify — ALWAYS use route `deploy_client`):
+      - For deploying a project to Vercel, Render, or Netlify ("deploy voxagent-judge-demo to Vercel", "deploy my site to Netlify", "deploy backend to Render"):
+        Set route `deploy_client`, app `"Vercel"` | `"Render"` | `"Netlify"`, action `DEPLOY_PROJECT`, parameters `{{"platform": "vercel" | "render" | "netlify", "repository": "<repo name if specified>", "sync_env": true}}`. (Omit `"repository"` if user didn't name one so the safety selector asks them or the Studio Repo dropdown fills it in.)
+      - If the user asks to deploy to Render AND says "push changes first" (or Render needs latest code on GitHub):
+        Step 1: `git_client` (`Local Git`, `GIT_SMART_PUSH`, parameters `{{"repository": "<repo name>"}}`).
+        Step 2: `deploy_client` (`Render`, `DEPLOY_PROJECT`, parameters `{{"platform": "render", "repository": "<repo name>", "sync_env": true}}`).
+      - For fullstack monorepo deployments ("deploy backend to Render and frontend to Vercel"):
+        Step 1: `deploy_client`, app `Render`, action `DEPLOY_PROJECT`, parameters `{{"platform": "render", "subdir": "backend", "repository": "<repo name>", "sync_env": true}}`.
+        Step 2: `deploy_client`, app `Vercel`, action `DEPLOY_PROJECT`, parameters `{{"platform": "vercel", "subdir": "frontend", "repository": "<repo name>", "sync_env": true, "env_vars": {{"VITE_API_URL": "{{step_1_result.live_url}}"}}}}`.
+      - For analyzing a repo's stack / framework before deploying ("detect stack of repo X", "what framework is repo X using"):
+        Step 1: `deploy_client`, app `Vercel`, action `DEPLOY_DETECT_STACK`, parameters `{{"repository": "<repo name>"}}`.
+        Step 2 (if no destination given): Under Rule 1, save to `VoxAgent Vault Notes` (`http_webhook`, `VoxAgent Vault Notes`, `SAVE_NOTE`, `{{"content": "{{step_1_result}}"}}`).
     - Spreadsheets & Databases (Google Sheets, Airtable, Notion):
       - Google Sheets Semantic Intent Decider (Understand user intention across diverse conversational phrasing — never rely on rigid keyword matches like "add" or "read"):
         1. CREATING A NEW SPREADSHEET (Intent: Initialization / Fresh Document / Data Export):
@@ -308,7 +321,7 @@ Output exactly in the following JSON schema format:
 # VoxAgent's own built-in AI (see the 'ai_generate' rule above) and
 # 'http_webhook' targets a plain URL, not a connectable app — neither needs
 # an entry here even when they appear alongside connectable steps.
-_CONNECTABLE_ROUTES = {"composio_api", "browser_agent", "telegram_client"}
+_CONNECTABLE_ROUTES = {"composio_api", "browser_agent", "telegram_client", "deploy_client"}
 
 
 def _apply_route_fallback_and_required_apps(parsed_json: dict, prompt: str = "") -> None:
@@ -337,16 +350,29 @@ def _apply_route_fallback_and_required_apps(parsed_json: dict, prompt: str = "")
             seen.add(name)
             required.append(name)
 
+    trigger = parsed_json.get("trigger") or {}
+    trigger_is_tg_bot = trigger.get("type") == "webhook" and "bot" in (trigger.get("event_app") or "").lower() and "telegram" in (trigger.get("event_app") or "").lower()
+
     for step in steps:
         app = step.get("app")
         route = step.get("route")
+        if app and app.strip().lower() in ("vercel", "render", "netlify"):
+            step["route"] = "deploy_client"
+            route = "deploy_client"
+            params = step.get("parameters") or {}
+            params.setdefault("platform", app.strip().lower())
+            step["parameters"] = params
+        if route == "telegram_client" and trigger_is_tg_bot:
+            raw_target = str((step.get("parameters") or {}).get("target") or "")
+            if "trigger_chat_id" in raw_target or (app or "").strip().lower() == "telegram":
+                step["app"] = "Telegram Bot"
+                app = "Telegram Bot"
         if route == "composio_api" and app and not toolkit_exists(slugify_app_name(app)):
             step["route"] = "browser_agent"
             route = "browser_agent"
         if route in _CONNECTABLE_ROUTES:
             _add(app)
 
-    trigger = parsed_json.get("trigger") or {}
     if trigger.get("type") == "webhook":
         _add(trigger.get("event_app"))
 

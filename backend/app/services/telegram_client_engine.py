@@ -289,6 +289,10 @@ def _register_event_handler(client: TelegramClient, user_id: str, app_name: str)
                     _client_me_ids[client_key] = me_id
 
             is_saved = bool(me_id is not None and event.is_private and event.chat_id == me_id)
+            is_outgoing = bool(getattr(event, "out", False) or (me_id is not None and getattr(event, "sender_id", None) == me_id))
+            # Never trigger on outgoing replies/messages from our own side unless it's Personal Saved Messages
+            if is_outgoing and not (app_name == TELEGRAM_PERSONAL_APP_NAME and is_saved):
+                return
             chat = await event.get_chat()
             chat_title = getattr(chat, "title", None)
             chat_username = getattr(chat, "username", None)
@@ -427,17 +431,15 @@ _TEXT_PARAM_KEYS = ("text", "message", "content", "body")
 
 
 async def execute_telegram_client_action(user_id: str, action: str, parameters: dict, app_name: str = TELEGRAM_PERSONAL_APP_NAME) -> dict:
-    """The execution side of the personal-account integration — currently
-    just sending a message to any chat/user reachable by the connected
-    account. A small, explicitly-owned action surface (unlike the 1000+ app
-    Composio adapter) since this is VoxAgent's own single-purpose client."""
+    """The execution side of the Telegram integration — supports both Personal Account and Bot."""
+    resolved_app_name = TELEGRAM_BOT_APP_NAME if "bot" in (app_name or "").lower() else TELEGRAM_PERSONAL_APP_NAME
     action_name = (action or "").upper().strip()
     if action_name not in _SEND_ACTIONS:
-        message = f"Unsupported Telegram personal-account action: '{action}'. Only sending a message is supported."
+        message = f"Unsupported Telegram action: '{action}'. Only sending a message is supported."
         return {"status": "error", "error": message, "message": message}
 
     try:
-        client = await _get_or_start_live_client(user_id, app_name)
+        client = await _get_or_start_live_client(user_id, resolved_app_name)
     except Exception as e:
         return {"status": "error", "error": str(e), "message": str(e)}
 

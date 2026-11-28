@@ -96,6 +96,17 @@ class TestGitPlannerOrchestrator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(called_params["head"], "feature/auth")
         self.assertEqual(called_params["base"], "main")
 
+    async def test_mutation_memory_never_caches_remote_url_or_repository(self):
+        from unittest.mock import patch, AsyncMock
+        from app.services.orchestrator import _maybe_record_learned_fix
+
+        with patch("app.services.orchestrator.mutation_memory.record_fix", AsyncMock()) as mock_rec:
+            step_logs = [{"step": 1, "result": {"status": "success"}}]
+            resumed_step = {"step_number": 1, "app": "Local Git", "action": "GIT_SMART_PUSH"}
+            await _maybe_record_learned_fix(step_logs, resumed_step, "remote_url", "https://github.com/u/r.git")
+            await _maybe_record_learned_fix(step_logs, resumed_step, "repository", "student-demo-app")
+            mock_rec.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,14 @@ import {
   connectAppWithCredentials,
   getConnectRequirements,
   getRequiredAppsStatus,
+  saveSession,
 } from "../../api/vault";
+
+const DEPLOY_TOKEN_HINTS = {
+  vercel: "https://vercel.com/account/tokens",
+  render: "https://dashboard.render.com/u/settings#api-keys",
+  netlify: "https://app.netlify.com/user/applications#personal-access-tokens",
+};
 import CredentialConnectModal from "../vault/CredentialConnectModal";
 import PortalSessionFormModal from "../vault/PortalSessionFormModal";
 import TelegramLoginModal from "../vault/TelegramLoginModal";
@@ -113,8 +120,17 @@ export default function RequiredAppsGate({ requiredApps, userId, onStatusChange 
   };
 
   const handleCredentialSubmit = async (values) => {
-    const { app } = credentialTarget;
-    await connectAppWithCredentials(userId, app.slug, values);
+    const { app, connectVia } = credentialTarget;
+    if (connectVia === "deploy_vault") {
+      await saveSession({
+        userId,
+        appName: app.name,
+        authType: "api_key",
+        credentials: values,
+      });
+    } else {
+      await connectAppWithCredentials(userId, app.slug, values);
+    }
     setCredentialTarget(null);
     refresh();
   };
@@ -179,6 +195,28 @@ export default function RequiredAppsGate({ requiredApps, userId, onStatusChange 
                 ) : a.connect_via === "telegram_bot" ? (
                   <button
                     onClick={() => setTelegramTarget({ mode: "bot" })}
+                    className="flex items-center gap-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-[11px] font-medium px-3 py-1.5 transition-colors"
+                  >
+                    {t("requiredApps.connect")}
+                  </button>
+                ) : a.connect_via === "deploy_vault" ? (
+                  <button
+                    onClick={() =>
+                      setCredentialTarget({
+                        app: { name: a.app, slug: a.app.toLowerCase() },
+                        connectVia: "deploy_vault",
+                        fields: [
+                          {
+                            name: "api_key",
+                            display_name: `${a.app} API Token`,
+                            is_secret: true,
+                            description: `Generate a personal API token at ${
+                              DEPLOY_TOKEN_HINTS[a.app.toLowerCase()] || "your provider settings"
+                            }. Stored encrypted in App Vault.`,
+                          },
+                        ],
+                      })
+                    }
                     className="flex items-center gap-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-[11px] font-medium px-3 py-1.5 transition-colors"
                   >
                     {t("requiredApps.connect")}

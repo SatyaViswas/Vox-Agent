@@ -19,6 +19,7 @@ from app.services.mutagent import memory as mutation_memory
 from app.services.planner import generate_ai_content
 from app.services.telegram_client_engine import execute_telegram_client_action
 from app.services.git_engine import execute_git_action
+from app.services.deploy_engine import execute_deploy_action
 from app.services.vault import is_vault_notes_target, save_vault_note
 
 logger = logging.getLogger(__name__)
@@ -764,11 +765,21 @@ async def _dispatch_action(agent_id, user_id, blueprint, steps, index, step_numb
 
     if route == "telegram_client":
         # Supports both "Telegram Personal Account" and "Telegram Bot" apps.
-        # Resolves via telegram_client_engine using the specific app_name.
-        return await execute_telegram_client_action(user_id=user_id, action=action, parameters=parameters, app_name=app)
+        # If triggered by Telegram Bot and replying back to {{trigger_chat_id}},
+        # ensure the reply always goes out from the Bot (never personal side).
+        effective_app = app
+        trigger_app = ((blueprint or {}).get("trigger") or {}).get("event_app") or ""
+        raw_step_params = (steps[index] if 0 <= index < len(steps) else {}).get("parameters") or {}
+        raw_target = str(raw_step_params.get("target") or raw_step_params.get("chat_id") or "")
+        if "bot" in trigger_app.lower() and "trigger_chat_id" in raw_target:
+            effective_app = "Telegram Bot"
+        return await execute_telegram_client_action(user_id=user_id, action=action, parameters=parameters, app_name=effective_app)
 
     if route == "git_client":
         return await execute_git_action(action=action, parameters=parameters, user_id=user_id)
+
+    if route == "deploy_client":
+        return await execute_deploy_action(action=action, parameters=parameters, user_id=user_id)
 
     if route == "ai_generate":
         # Runs entirely on VoxAgent's own built-in AI — no external app
@@ -1006,7 +1017,15 @@ async def _run_single_step(agent_id, user_id, blueprint, steps, index, step_numb
 
     step_results[step_number] = extracted_value
     step_logs.append(_log_entry(step_number, app, action, route, result_data))
-    await telemetry_manager.send_log(agent_id, f"Step {step_number} completed: {json.dumps(result_data)[:200]}", level="success")
+    if isinstance(extracted_value, dict) and extracted_value.get("human_summary"):
+        completion_summary = str(extracted_value["human_summary"])[:1500]
+    elif isinstance(extracted_value, dict) and (extracted_value.get("live_url") or extracted_value.get("message")):
+        msg_part = str(extracted_value.get("message") or "")
+        url_part = f"\nLive URL: {extracted_value['live_url']}" if extracted_value.get("live_url") and extracted_value["live_url"] not in msg_part else ""
+        completion_summary = f"{msg_part}{url_part}"[:1500]
+    else:
+        completion_summary = json.dumps(result_data)[:600]
+    await telemetry_manager.send_log(agent_id, f"Step {step_number} completed:\n{completion_summary}", level="success")
     return "success"
 
 
@@ -1375,13 +1394,17 @@ async def run_agent_workflow(
     await telemetry_manager.send_log(agent_id, final_msg, level=("success" if outcome == "success" else "error"))
 
 
+_NON_REUSABLE_FIELDS = {"_approved", "remote_url", "repository", "repo", "repo_path", "api_token"}
+
+
 async def _maybe_record_learned_fix(step_logs, resumed_step, missing_field, answer):
     """MutAgent Phase 3 — if the answer the human just gave actually
     resolved the paused step (its fresh result in step_logs shows
     "success"), remember it in mutation_memory so the exact same
     (app, action, missing_field) gap self-heals next time instead of
-    pausing again. Never records a "fix" that didn't actually work."""
-    if not (settings.MUTAGENT_ENABLED and missing_field and missing_field != "_approved"):
+    pausing again. Never records a "fix" that didn't actually work,
+    and never caches per-repo targets/secrets across different repos."""
+    if not (settings.MUTAGENT_ENABLED and missing_field and missing_field not in _NON_REUSABLE_FIELDS):
         return
     step_number = resumed_step.get("step_number")
     matching = next((entry for entry in step_logs if entry.get("step") == step_number), None)

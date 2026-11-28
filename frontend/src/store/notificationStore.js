@@ -2,7 +2,16 @@ import { create } from "zustand";
 import { queueVoiceNotification } from "../hooks/useVoiceFeedback";
 
 const NOTIFICATIONS_STORAGE_KEY = "voxagent_execution_notifications";
+const NOTIFICATIONS_MUTED_KEY = "voxagent_notifications_muted";
 const DEDUP_WINDOW_MS = 15000; // 15 seconds sliding window to suppress duplicate notifications
+
+function loadMutedState() {
+  try {
+    return localStorage.getItem(NOTIFICATIONS_MUTED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 function loadSavedNotifications() {
   try {
@@ -42,6 +51,19 @@ const recentDedupMap = new Map();
 
 export const useNotificationStore = create((set, get) => ({
   notifications: loadSavedNotifications(),
+  isMuted: loadMutedState(),
+
+  toggleMute: () => {
+    set((state) => {
+      const next = !state.isMuted;
+      try {
+        localStorage.setItem(NOTIFICATIONS_MUTED_KEY, String(next));
+      } catch {
+        // ignore
+      }
+      return { isMuted: next };
+    });
+  },
 
   addNotification: ({
     agentId,
@@ -116,6 +138,7 @@ export const useNotificationStore = create((set, get) => ({
     });
 
     // Native browser system notification if user allowed
+    const muted = get().isMuted;
     if (
       typeof window !== "undefined" &&
       "Notification" in window &&
@@ -125,14 +148,15 @@ export const useNotificationStore = create((set, get) => ({
         new Notification(newNotif.title, {
           body: newNotif.message,
           icon: "/favicon.ico",
+          silent: muted,
         });
       } catch {
         // ignore
       }
     }
 
-    // Spoken voice update (queued: if voice is already speaking, completes sentence first)
-    if (spokenMessage) {
+    // Spoken voice update (only suppressed when notification sound/voice is muted; rest of site TTS stays active)
+    if (spokenMessage && !muted) {
       queueVoiceNotification(spokenMessage);
     }
   },

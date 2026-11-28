@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { AlertCircle, CheckCircle2, Circle, ExternalLink, FileText, HelpCircle, ImageIcon, Loader2, Radio } from "lucide-react";
+import { AlertCircle, CheckCircle2, Circle, ExternalLink, FileText, HelpCircle, ImageIcon, Loader2, Radio, Rocket } from "lucide-react";
 
 const RUN_STATUS_CONFIG = {
   idle: { labelKey: "telemetry.idle", icon: Circle, classes: "text-slate-400" },
@@ -39,20 +39,32 @@ export default function TelemetryPanel({ runStatus, logs }) {
   const StatusIcon = statusConfig.icon;
   const screenshots = logs.filter((l) => l.screenshotUrl);
 
-  const { githubLinks, savedToVault } = useMemo(() => {
-    const links = new Set();
+  const { githubLinks, deployLinks, savedToVault } = useMemo(() => {
+    const ghLinks = new Set();
+    const liveLinks = new Set();
     let hasVault = false;
     for (const log of logs) {
       const msg = typeof log.message === "string" ? log.message : "";
-      const matches = msg.match(/https:\/\/github\.com\/[^\s"'`,)}\]]+/g);
-      if (matches) {
-        matches.forEach((u) => links.add(u));
+      const ghMatches = msg.match(/https:\/\/github\.com\/[^\s"'`,)}\]]+/g);
+      if (ghMatches) {
+        ghMatches.forEach((u) => ghLinks.add(u));
+      }
+      const liveMatches = msg.match(/(?:Live URL:\s*)(https:\/\/[^\s"'`,)}\]]+)/gi);
+      if (liveMatches) {
+        liveMatches.forEach((m) => {
+          const clean = m.replace(/^Live URL:\s*/i, "").trim();
+          if (clean) liveLinks.add(clean);
+        });
+      }
+      const hostMatches = msg.match(/https:\/\/[^\s"'`,)}\]]+\.(?:vercel\.app|netlify\.app|onrender\.com)(?:\/[^\s"'`,)}\]]*)?/g);
+      if (hostMatches) {
+        hostMatches.forEach((u) => liveLinks.add(u));
       }
       if (msg.includes("VoxAgent Vault Notes") || msg.includes("SAVE_NOTE")) {
         hasVault = true;
       }
     }
-    return { githubLinks: Array.from(links), savedToVault: hasVault };
+    return { githubLinks: Array.from(ghLinks), deployLinks: Array.from(liveLinks), savedToVault: hasVault };
   }, [logs]);
 
   return (
@@ -111,8 +123,21 @@ export default function TelemetryPanel({ runStatus, logs }) {
         </div>
       )}
 
-      {(githubLinks.length > 0 || (savedToVault && runStatus === "success")) && (
+      {(deployLinks.length > 0 || githubLinks.length > 0 || (savedToVault && runStatus === "success")) && (
         <div className="mt-3 flex flex-wrap gap-2">
+          {deployLinks.map((url) => (
+            <a
+              key={url}
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 transition-colors"
+            >
+              <Rocket size={13} />
+              <span>Open Live App</span>
+              <ExternalLink size={11} />
+            </a>
+          ))}
           {githubLinks.map((url) => {
             const isPr = url.includes("/pull/");
             return (

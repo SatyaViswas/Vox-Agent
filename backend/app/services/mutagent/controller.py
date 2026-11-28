@@ -102,7 +102,7 @@ async def execute_with_mutation(
     # step's `parameters` dict (see orchestrator._run_action_and_classify).
     if settings.MUTAGENT_ENABLED and not breaker_open and app and action and result_data.get("status") == "needs_input":
         missing_field = result_data.get("missing_field")
-        if missing_field and missing_field != "_approved":
+        if missing_field and missing_field not in {"_approved", "remote_url", "repository", "repo", "repo_path", "api_token"}:
             remembered = await memory.lookup_fix(app, action, missing_field)
             if remembered and remembered.get("fix_type") == "param_map":
                 fix_value = (remembered.get("fix_payload") or {}).get("value")

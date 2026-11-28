@@ -11,7 +11,7 @@ class MissingParameter(BaseModel):
 
 class WorkflowStep(BaseModel):
     step_number: int
-    route: Literal["browser_agent", "composio_api", "http_webhook", "telegram_client", "ai_generate", "git_client"]
+    route: Literal["browser_agent", "composio_api", "http_webhook", "telegram_client", "ai_generate", "git_client", "deploy_client"]
     app: str
     action: str
     parameters: Dict[str, Any]

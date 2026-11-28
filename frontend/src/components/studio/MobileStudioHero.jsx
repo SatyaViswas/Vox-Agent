@@ -41,6 +41,18 @@ const STUDIO_QUICK_PROMPTS = [
     tag: "Scaffold",
   },
   {
+    icon: "🌐",
+    title: "Deploy to Vercel",
+    text: "Deploy my project to Vercel and sync environment variables safely",
+    tag: "Vercel",
+  },
+  {
+    icon: "⚙️",
+    title: "Deploy to Render",
+    text: "Push my backend code and deploy to Render",
+    tag: "Render",
+  },
+  {
     icon: "📧",
     title: "Email Summary",
     text: "Send an email with a project summary to mvsviswas@gmail.com",

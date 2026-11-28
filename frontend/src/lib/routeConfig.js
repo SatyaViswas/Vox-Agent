@@ -1,4 +1,4 @@
-import { Globe, Plug, Webhook, GitBranch, Sparkles, Send } from "lucide-react";
+import { Globe, Plug, Webhook, GitBranch, Sparkles, Send, Rocket } from "lucide-react";
 
 export const ROUTE_CONFIG = {
   browser_agent: {
@@ -24,6 +24,12 @@ export const ROUTE_CONFIG = {
     icon: GitBranch,
     classes: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
     dot: "bg-emerald-500",
+  },
+  deploy_client: {
+    label: "Cloud Deploy",
+    icon: Rocket,
+    classes: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30",
+    dot: "bg-cyan-500",
   },
   ai_generate: {
     label: "VoxAgent AI",

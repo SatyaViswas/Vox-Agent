@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Bell, CheckCircle2, AlertCircle, X, Trash2, Clock, Radio, Zap, HelpCircle } from "lucide-react";
+import { Bell, CheckCircle2, AlertCircle, X, Trash2, Clock, Radio, Zap, HelpCircle, Volume2, VolumeX } from "lucide-react";
 import { approvePendingAction, getPausedRuns, rejectPendingAction, resumeAgent } from "../../api/agents";
 import { useAuth } from "../../context/AuthContext";
 import { useNotificationStore } from "../../store/notificationStore";
@@ -26,6 +26,8 @@ export default function NotificationsDropdown() {
   const dropdownRef = useRef(null);
 
   const executionNotifications = useNotificationStore((state) => state.notifications);
+  const isMuted = useNotificationStore((state) => state.isMuted);
+  const toggleMute = useNotificationStore((state) => state.toggleMute);
   const markAllAsRead = useNotificationStore((state) => state.markAllAsRead);
   const clearAllNotifications = useNotificationStore((state) => state.clearAll);
   const removeNotification = useNotificationStore((state) => state.removeNotification);
@@ -122,6 +124,20 @@ export default function NotificationsDropdown() {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  className={`text-xs flex items-center gap-1 px-2 py-1 rounded-lg border transition-colors ${
+                    isMuted
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                      : "bg-slate-200/60 dark:bg-white/5 text-slate-600 dark:text-slate-300 border-slate-300/60 dark:border-white/10 hover:text-brand-500"
+                  }`}
+                  title={isMuted ? "Unmute notification sound & voice alerts" : "Mute notification sound & voice alerts"}
+                  aria-label={isMuted ? "Unmute notifications" : "Mute notifications"}
+                >
+                  {isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                  <span>{isMuted ? "Muted" : "Sound On"}</span>
+                </button>
                 {executionNotifications.length > 0 && (
                   <button
                     type="button"

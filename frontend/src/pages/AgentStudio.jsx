@@ -39,10 +39,11 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 const STUDIO_QUICK_PROMPTS = [
   { label: "🚀 Smart Git Push", text: "Push my local changes with an AI Conventional Commit message and upstream tracking" },
   { label: "📑 Open GitHub PR", text: "Push my changes to feature/auth and open a pull request on GitHub" },
+  { label: "🌐 Deploy to Vercel", text: "Deploy my project to Vercel and sync environment variables safely" },
+  { label: "⚡ Deploy to Netlify", text: "Deploy my project to Netlify and verify the live site URL" },
+  { label: "⚙️ Deploy to Render", text: "Push my backend code and deploy to Render" },
   { label: "☕ Git Daily Standup", text: "Generate a daily standup summary from my git commits since yesterday" },
   { label: "🛠️ Init Git Repo", text: "Initialize a new git repo called my-new-project with gitignore and README" },
-  { label: "📧 Email Report", text: "Send an email with a project summary to mvsviswas@gmail.com" },
-  { label: "📊 Google Sheets", text: "Extract full sheet from Google Sheets and create a summary in Google Docs" },
 ];
 
 function cloneBlueprint(blueprint) {
@@ -53,7 +54,7 @@ function cloneBlueprint(blueprint) {
 // planner.py's _CONNECTABLE_ROUTES exactly. 'ai_generate' runs on
 // VoxAgent's own built-in AI and 'http_webhook' targets a plain URL, not a
 // connectable app.
-const CONNECTABLE_ROUTES = new Set(["composio_api", "browser_agent", "telegram_client"]);
+const CONNECTABLE_ROUTES = new Set(["composio_api", "browser_agent", "telegram_client", "deploy_client"]);
 
 // Required-apps list for RequiredAppsGate, derived straight from the
 // blueprint's own steps (+ an event trigger's watched app) instead of
@@ -122,6 +123,7 @@ function formatStepEntryForTelemetry(entry) {
     }
     const parts = [];
     if (payload.message) parts.push(payload.message);
+    if (payload.live_url) parts.push(`Live URL: ${payload.live_url}`);
     const prUrl = payload.html_url || payload.data?.html_url || payload.pull_request_url;
     if (prUrl) parts.push(`URL: ${prUrl}`);
     if (payload.remote_branch_url && payload.remote_branch_url !== prUrl) {
@@ -229,7 +231,7 @@ export default function AgentStudio() {
     if (!bp || !Array.isArray(bp.steps) || !repoVal || repoVal === "auto") return bp;
     const cloned = cloneBlueprint(bp);
     cloned.steps = cloned.steps.map((step) => {
-      if (step?.route === "git_client") {
+      if (step?.route === "git_client" || step?.route === "deploy_client") {
         return {
           ...step,
           parameters: {
@@ -261,7 +263,7 @@ export default function AgentStudio() {
           // Clear explicit override only if switching back to auto
           const cloned = cloneBlueprint(blueprintRef.current);
           cloned.steps = (cloned.steps || []).map((step) => {
-            if (step?.route === "git_client" && step.parameters?.repository) {
+            if ((step?.route === "git_client" || step?.route === "deploy_client") && step.parameters?.repository) {
               const nextParams = { ...step.parameters };
               delete nextParams.repository;
               return { ...step, parameters: nextParams };
@@ -1677,7 +1679,7 @@ export default function AgentStudio() {
           />
         )}
 
-        {blueprint && (blueprint.steps || []).some((s) => s.route === "git_client") && !agentId && (() => {
+        {blueprint && (blueprint.steps || []).some((s) => s.route === "git_client" || s.route === "deploy_client") && !agentId && (() => {
           const gitPushStep = (blueprint.steps || []).find(
             (s) => s.route === "git_client" && /PUSH/i.test(s.action || "")
           );
@@ -1701,7 +1703,7 @@ export default function AgentStudio() {
                   className="rounded-lg bg-white dark:bg-slate-900 border border-emerald-500/30 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer"
                 >
                   <option value="auto">
-                    Auto-detected ({blueprint.steps.find((s) => s.route === "git_client")?.parameters?.repository || "Current Workspace"})
+                    Auto-detected ({blueprint.steps.find((s) => s.route === "git_client" || s.route === "deploy_client")?.parameters?.repository || "Select Repository"})
                   </option>
                   <option value="local">All Local Repos (local)</option>
                   {localRepos.map((repo) => (
