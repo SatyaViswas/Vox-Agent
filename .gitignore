@@ -165,3 +165,4 @@ vite.config.ts.timestamp-*
 .mutagent/monitor/
 .mutagent/apply/
 .mutagent/slack-inbox.jsonl
+

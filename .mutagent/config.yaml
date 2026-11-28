@@ -36,3 +36,4 @@ lifecycle:
     judge_runtime: "in-house"
   diagnostics:
     apply: "code-pr"
+

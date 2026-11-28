@@ -464,3 +464,4 @@ $$;
 | **Frontend** | `npm run build` | Build production-ready assets |
 | **Frontend** | `npm run lint` | Run Oxlint fast lint checks |
 | **Frontend** | `npm run dev` | Start development web server |
+

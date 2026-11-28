@@ -129,4 +129,3 @@ VoxAgent combines **Voice Ingestion & Translation**, **Cognitive Planning**, **T
 ---
 
 *VoxAgent AI — Giving voice to every software workflow.*
-

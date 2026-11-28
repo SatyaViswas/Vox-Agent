@@ -111,3 +111,4 @@ all of them; it talks to each via its public skill contract, never by reaching i
 - **Routing only.** Helix sequences stages and adjudicates gates; it never performs a stage's inner
   work.
 - **Standalone.** The system carries its own context — no external framework coupling.
+

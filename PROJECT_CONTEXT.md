@@ -21,3 +21,4 @@ Tables:
 ## 4. Folder Structure
 - `backend/`: Python FastAPI app, requirements, environment variables (`.env`).
 - `frontend/`: React Vite app, environment variables (`.env`).
+

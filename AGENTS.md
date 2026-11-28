@@ -14,3 +14,4 @@ setup/onboarding · state), and the command roster. Replace ONLY the `{placehold
 live values; change NOTHING else. Do NOT summarize, shorten, paraphrase, drop panels, or convert it
 to Markdown headings/tables/bullets unless the operator explicitly asks for a condensed view.
 <!-- @mutagent/helix boot -->
+
